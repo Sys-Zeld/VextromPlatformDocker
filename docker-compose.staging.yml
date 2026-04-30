@@ -1,0 +1,29 @@
+# Ambiente de staging — testa a imagem de produção (target: prod) sem Nginx/SSL.
+# Roda isolado do stack de produção via --project-name vextrom-staging.
+# A porta 8080 é exposta diretamente no host para acesso HTTP simples.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+#     --env-file .env.staging -p vextrom-staging up -d --build
+
+services:
+  postgres:
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  redis:
+    restart: "no"
+
+  app:
+    build:
+      target: prod           # testa exatamente a imagem que vai para produção
+    restart: "no"
+    ports:
+      - "80:3000"            # acesso direto: http://IP-DO-SERVIDOR
+    env_file:
+      - .env.staging
+    deploy:
+      resources:
+        limits:
+          memory: 512M

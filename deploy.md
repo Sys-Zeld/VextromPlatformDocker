@@ -13,8 +13,9 @@
 ## Estrutura de arquivos
 
 ```
-docker-compose.yml               → base compartilhado (dev + prod)
+docker-compose.yml               → base compartilhado (dev + prod + staging)
 docker-compose.override.yml      → overrides de desenvolvimento (carregado automaticamente)
+docker-compose.staging.yml       → overrides de staging (teste no servidor, sem SSL)
 docker-compose.prod.yml          → overrides de produção
 docker-compose.certbot-init.yml  → emissão inicial do certificado SSL (uso único)
 Dockerfile                       → multi-stage: target dev | target prod
@@ -63,6 +64,110 @@ docker compose logs -f app
 Acesse: http://localhost:3000
 
 As portas do PostgreSQL (5432) e Redis (6379) ficam expostas para ferramentas locais (DBeaver, Redis Insight, etc).
+
+---
+
+## Staging (teste no servidor antes da produção)
+
+O ambiente de staging roda a **imagem de produção** (`target: prod`) diretamente na porta `8080`, sem Nginx nem SSL.
+Isso permite validar a build e as regras de negócio no servidor real antes de liberar o tráfego em produção.
+
+Os dados ficam **completamente isolados** da produção — volumes separados via `--project-name vextrom-staging`.
+
+### 1. Configurar o .env.staging
+
+```bash
+nano .env.staging
+```
+
+Ajuste apenas estes campos:
+
+| Variável | O que colocar |
+|---|---|
+| `APP_BASE_URL` | `http://IP-DO-SERVIDOR` |
+| `POSTGRES_PASSWORD` | Qualquer senha (só para staging) |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Chave real se quiser testar IA, senão deixe vazio |
+
+> SMTP fica desabilitado no `.env.staging` por padrão para não disparar e-mails reais.
+
+### 2. Subir o staging
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging.yml \
+  --env-file .env.staging \
+  -p vextrom-staging \
+  up -d --build
+```
+
+### 3. Rodar as migrations
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging.yml \
+  --env-file .env.staging \
+  -p vextrom-staging \
+  exec app npm run db:migrate
+```
+
+### 4. Verificar status
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging.yml \
+  --env-file .env.staging \
+  -p vextrom-staging \
+  ps
+```
+
+Acesse: `http://IP-DO-SERVIDOR`
+
+> Certifique-se de que a porta **80** está liberada no firewall do servidor.
+> ```bash
+> # Ubuntu/Debian com ufw
+> ufw allow 80/tcp
+> ```
+
+### 5. Ver logs do staging
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging.yml \
+  --env-file .env.staging \
+  -p vextrom-staging \
+  logs -f app
+```
+
+### 6. Derrubar o staging após validação
+
+```bash
+# Para os containers e remove os volumes de staging
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging.yml \
+  --env-file .env.staging \
+  -p vextrom-staging \
+  down -v
+```
+
+> O `-v` remove apenas os volumes do projeto `vextrom-staging`. Os volumes de produção não são afetados.
+
+### Checklist de validação no staging
+
+Antes de liberar para produção, verifique:
+
+- [ ] Login admin funciona
+- [ ] Criação e edição de equipamentos
+- [ ] Upload e download de documentos
+- [ ] Geração de PDF
+- [ ] Módulo Report Service (ordens de serviço)
+- [ ] Links públicos de token
+- [ ] Backup e restore de banco (`npm run db:backup:all`)
+- [ ] Logs sem erros críticos (`logs -f app`)
 
 ---
 
