@@ -1,0 +1,197 @@
+<%
+  function formatClassicDate(value) {
+    if (!value) return "-";
+    const raw = String(value).trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "-";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear());
+    return `${day}/${month}/${year}`;
+  }
+
+  function formatClassicDateTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear()).slice(-2);
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  }
+%>
+
+<article class="report-doc" id="report-pages" data-continuation-label="<%= uiLabels && uiLabels.continuation ? uiLabels.continuation : '(continuacao...)' %>">
+  <section class="report-page report-page-cover">
+    <div class="topbar">
+      <div class="brand-left">
+        <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+      </div>
+      <div class="brand-right">
+        <% if (brandAssets?.logoChloride) { %>
+          <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+        <% } else { %>
+          <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+        <% } %>
+      </div>
+    </div>
+    <div class="cover-center">
+      <img class="cover-logo-image" src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Vextrom" />
+      <div class="cover-sub">atmosferas sob controle</div>
+      <div class="cover-title"><%= report?.title || "SERVICE REPORT" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.customer || "Cliente" %>:</strong> <%= customer?.name || "-" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.site || "Site" %>:</strong> <%= site?.site_name || "-" %></div>
+      <div class="report-cover-subtitle"><%= order?.service_order_display || "-" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.reportLabel || "Relatorio" %>:</strong> <%= report?.report_number || "-" %> / <%= uiLabels?.rev || "Rev." %> <%= report?.revision || "-" %></div>
+    </div>
+  </section>
+
+  <section class="report-page">
+    <div class="topbar">
+      <div class="brand-left">
+        <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+      </div>
+      <div class="brand-right">
+        <% if (brandAssets?.logoChloride) { %>
+          <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+        <% } else { %>
+          <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="report-section-title"><%= uiLabels?.metadata || "METADADOS" %></div>
+    <div class="report-meta-grid">
+      <div class="report-meta-item"><strong><%= uiLabels?.preparedBy || "Executado por" %></strong><span><%= report?.prepared_by || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels?.revision || "Revisao" %></strong><span><%= report?.revision || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels?.lastRevision || "Ultima revisao" %></strong><span><%= formatClassicDate(report?.issue_date || report?.last_modified_at || generatedAt) %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels?.os || "OS" %></strong><span><%= order?.service_order_number || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels?.updatedAt || "Atualizado em" %></strong><span><%= formatClassicDateTime(report?.last_modified_at || generatedAt) %></span></div>
+    </div>
+
+    <div class="report-summary-block">
+      <div class="report-section-title"><%= uiLabels?.toc || "SUMARIO" %></div>
+      <ul class="report-toc">
+        <% if (!toc || !toc.length) { %>
+          <li>
+            <span><%= uiLabels?.tocEmpty || "Sem capitulos." %></span>
+            <span class="report-toc-page">-</span>
+          </li>
+        <% } %>
+        <% (toc || []).forEach((item) => { %>
+          <li>
+            <a class="report-toc-link report-toc-title" href="#<%= item.anchorId %>"><%= item.title %></a>
+            <span class="report-toc-dots"></span>
+            <a class="report-toc-link report-toc-page" href="#<%= item.anchorId %>"><%= item.startPage %></a>
+          </li>
+        <% }) %>
+      </ul>
+    </div>
+  </section>
+
+  <% (orderedVisibleSections || []).forEach((section, index) => { %>
+    <section
+      class="report-page"
+      data-auto-paginate="true"
+      id="<%= section.anchor_id || ('section-' + (index + 1)) %>"
+    >
+      <div class="topbar">
+        <div class="brand-left">
+          <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+        </div>
+        <div class="brand-right">
+          <% if (brandAssets?.logoChloride) { %>
+            <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+          <% } else { %>
+            <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="report-page-content">
+        <div class="section-title">
+          <span class="section-title-number"><%= index + 1 %>.</span>
+          <div class="report-section-title-rich">
+            <%- section.section_title_html_preview || section.section_title_html || section.section_title || uiLabels?.chapter || "CAPITULO" %>
+          </div>
+        </div>
+        <div class="rich-output">
+          <%- section.content_html_preview || section.content_html || "<p><br></p>" %>
+        </div>
+      </div>
+    </section>
+  <% }) %>
+</article>
+
+<div class="modal fade" id="previewImageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0" id="previewImageModalLabel">Visualizacao da imagem</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body text-center p-3">
+        <img
+          id="previewImageModalImg"
+          src=""
+          alt=""
+          style="max-width:100%;max-height:82vh;object-fit:contain;width:auto;height:auto;border-radius:6px;"
+        />
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    function initImagePreviewModal() {
+      var modalEl = document.getElementById("previewImageModal");
+      var modalImg = document.getElementById("previewImageModalImg");
+      var modalLabel = document.getElementById("previewImageModalLabel");
+      if (!modalEl || !modalImg || !modalLabel) return;
+
+      function resolveCaptionFromImage(img) {
+        var alt = img.getAttribute("alt") || "";
+        if (alt) return alt;
+        var figure = img.closest ? img.closest("figure") : null;
+        var caption = figure ? figure.querySelector("figcaption") : null;
+        return caption ? String(caption.textContent || "").trim() : "";
+      }
+
+      document.addEventListener("click", function (event) {
+        var img = event.target && event.target.closest ? event.target.closest(".rich-output img") : null;
+        if (!img) return;
+        var src = img.getAttribute("src") || "";
+        if (!src) return;
+        var alt = resolveCaptionFromImage(img);
+
+        if (!window.bootstrap || !window.bootstrap.Modal) {
+          window.open(src, "_blank", "noopener");
+          return;
+        }
+
+        modalImg.src = src;
+        modalImg.alt = alt || "Imagem";
+        modalLabel.textContent = alt || "Visualizacao da imagem";
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      });
+
+      modalEl.addEventListener("hidden.bs.modal", function () {
+        modalImg.src = "";
+        modalImg.alt = "";
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initImagePreviewModal, { once: true });
+    } else {
+      initImagePreviewModal();
+    }
+  })();
+</script>
+

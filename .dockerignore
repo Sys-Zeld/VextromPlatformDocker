@@ -1,0 +1,9 @@
+node_modules
+.git
+.env
+.env.prod
+dados
+*.log
+npm-debug.log*
+.postman
+postman

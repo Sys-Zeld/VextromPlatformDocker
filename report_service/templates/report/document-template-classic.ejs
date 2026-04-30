@@ -1,0 +1,184 @@
+<%
+  function formatClassicDateTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear()).slice(-2);
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  }
+%>
+
+<article class="report-doc report-doc-classic" id="report-pages" data-continuation-label="<%= uiLabels && uiLabels.continuation ? uiLabels.continuation : '(continuacao...)' %>">
+  <section class="report-page report-page-cover">
+    <div class="topbar">
+      <div class="brand-left">
+        <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+      </div>
+      <div class="brand-right">
+        <% if (brandAssets?.logoChloride) { %>
+          <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+        <% } else { %>
+          <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+        <% } %>
+      </div>
+    </div>
+    <div class="cover-center">
+      <img class="cover-logo-image" src="<%= brandAssets?.logoCover || brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Vextrom" />
+      <div class="cover-sub">classic report template</div>
+      <div class="cover-title"><%= report?.title || "SERVICE REPORT" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.customer || "Cliente" %>:</strong> <%= customer?.name || "-" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.site || "Site" %>:</strong> <%= site?.site_name || "-" %></div>
+      <div class="report-cover-subtitle"><%= order?.service_order_display || "-" %></div>
+      <div class="report-cover-subtitle"><strong><%= uiLabels?.reportLabel || "Relatorio" %>:</strong> <%= report?.report_number || "-" %> / <%= uiLabels?.rev || "Rev." %> <%= report?.revision || "-" %></div>
+    </div>
+    <% if (footerHtml) { %><div class="report-footer"><%- footerHtml %></div><% } %>
+  </section>
+
+  <section class="report-page">
+    <div class="topbar">
+      <div class="brand-left">
+        <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+      </div>
+      <div class="brand-right">
+        <% if (brandAssets?.logoChloride) { %>
+          <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+        <% } else { %>
+          <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="report-section-title"><%= uiLabels.metadata %></div>
+    <div class="report-meta-grid">
+      <div class="report-meta-item"><strong><%= uiLabels.preparedBy %></strong><span><%= report?.prepared_by || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels.revision %></strong><span><%= report?.revision || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels.os %></strong><span><%= order?.service_order_number || "-" %></span></div>
+      <div class="report-meta-item"><strong><%= uiLabels.updatedAt %></strong><span><%= formatClassicDateTime(report?.last_modified_at || generatedAt) %></span></div>
+    </div>
+
+    <div class="report-section-title mt-4"><%= uiLabels.toc %></div>
+    <ul class="report-toc">
+      <% if (!toc || !toc.length) { %>
+        <li>
+          <span><%= uiLabels.tocEmpty %></span>
+          <span class="report-toc-page">-</span>
+        </li>
+      <% } %>
+      <% (toc || []).forEach((item) => { %>
+        <li>
+          <a class="report-toc-link report-toc-title" href="#<%= item.anchorId %>"><%= item.title %></a>
+          <span class="report-toc-dots"></span>
+          <a class="report-toc-link report-toc-page" href="#<%= item.anchorId %>"><%= item.startPage %></a>
+        </li>
+      <% }) %>
+    </ul>
+    <% if (footerHtml) { %><div class="report-footer"><%- footerHtml %></div><% } %>
+  </section>
+
+  <%
+    const validSigs = (signatures || []).filter(function(s) { return s.signer_name || s.signature_data; });
+  %>
+
+  <% (orderedVisibleSections || []).forEach((section, index) => { %>
+    <section
+      class="report-page"
+      data-auto-paginate="true"
+      id="<%= section.anchor_id || ('section-' + (index + 1)) %>"
+    >
+      <div class="topbar">
+        <div class="brand-left">
+          <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+        </div>
+        <div class="brand-right">
+          <% if (brandAssets?.logoChloride) { %>
+            <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+          <% } else { %>
+            <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="report-page-content">
+        <div class="section-title">
+          <span class="section-title-number"><%= index + 1 %>.</span>
+          <div class="report-section-title-rich">
+            <%- section.section_title_html_preview || section.section_title_html || section.section_title || uiLabels?.chapter || "CAPITULO" %>
+          </div>
+        </div>
+        <div class="rich-output">
+          <%- section.content_html_preview || section.content_html || "<p><br></p>" %>
+          <% if (validSigs.length > 0 && index === (orderedVisibleSections.length - 1)) { %>
+            <div class="report-signatures-block avoid-break">
+              <div class="report-signatures-label"><%= uiLabels.signatures %></div>
+              <div class="report-signatures-row">
+                <% validSigs.forEach(function(sig) { %>
+                  <div class="report-signature-item">
+                    <div class="report-signature-canvas">
+                      <% if (sig.signature_data && sig.signature_data.indexOf('data:') === 0) { %>
+                        <img class="report-signature-img" src="<%= sig.signature_data %>" alt="<%= uiLabels?.signatureAlt || 'Assinatura' %>" />
+                      <% } %>
+                    </div>
+                    <div class="report-signature-line-hr"></div>
+                    <div class="report-signature-meta">
+                      <div class="report-signature-name"><%= sig.signer_name || '-' %></div>
+                      <% if (sig.signer_role) { %><div class="report-signature-detail"><%= sig.signer_role %></div><% } %>
+                      <% if (sig.signer_company) { %><div class="report-signature-detail"><%= sig.signer_company %></div><% } %>
+                      <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString(uiLabels?.dateLocale || 'pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div><% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+          <% } %>
+        </div>
+      </div>
+      <% if (footerHtml) { %><div class="report-footer"><%- footerHtml %></div><% } %>
+    </section>
+  <% }) %>
+
+  <% if (validSigs.length > 0 && !(orderedVisibleSections || []).length) { %>
+    <section class="report-page report-page-signatures">
+      <div class="topbar">
+        <div class="brand-left">
+          <img src="<%= brandAssets?.logoVextrom || '/public/img/logo-vextrom.svg' %>" alt="Logo Vextrom" />
+        </div>
+        <div class="brand-right">
+          <% if (brandAssets?.logoChloride) { %>
+            <img src="<%= brandAssets.logoChloride %>" alt="Logo Chloride" />
+          <% } else { %>
+            <div class="report-brand-slot"><%= uiLabels?.logoPlaceholder || "Espaco para logo" %></div>
+          <% } %>
+        </div>
+      </div>
+      <div class="report-page-content">
+        <div class="report-signatures-block">
+          <div class="report-signatures-label"><%= uiLabels.signatures %></div>
+          <div class="report-signatures-row">
+            <% validSigs.forEach(function(sig) { %>
+              <div class="report-signature-item">
+                <div class="report-signature-canvas">
+                  <% if (sig.signature_data && sig.signature_data.indexOf('data:') === 0) { %>
+                    <img class="report-signature-img" src="<%= sig.signature_data %>" alt="Assinatura" />
+                  <% } %>
+                </div>
+                <div class="report-signature-line-hr"></div>
+                <div class="report-signature-meta">
+                  <div class="report-signature-name"><%= sig.signer_name || '-' %></div>
+                  <% if (sig.signer_role) { %><div class="report-signature-detail"><%= sig.signer_role %></div><% } %>
+                  <% if (sig.signer_company) { %><div class="report-signature-detail"><%= sig.signer_company %></div><% } %>
+                  <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div><% } %>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+      <% if (footerHtml) { %><div class="report-footer"><%- footerHtml %></div><% } %>
+    </section>
+  <% } %>
+</article>

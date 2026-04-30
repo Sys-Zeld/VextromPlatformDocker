@@ -1,0 +1,704 @@
+<%- include("partials/head", { pageTitle }) %>
+
+<div class="card app-card mb-4">
+  <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <div>
+      <h1 class="h4 app-card-title mb-1">Manutencao SpecFlow</h1>
+      <p class="text-muted mb-0">Configuracoes exclusivas do modulo SpecFlow.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/maintenance/system">Manutencao do sistema</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens">Voltar para tokens</a>
+      <form method="post" action="/admin/logout">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn btn-outline-secondary btn-sm" type="submit"><%= t("admin.logoutSessionButton") %></button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<% if (commandResult) { %>
+  <div class="alert <%= commandResult.ok ? 'alert-success' : 'alert-danger' %>">
+    <div><strong>Comando:</strong> <code><%= commandResult.label %></code></div>
+    <div><strong>Exit code:</strong> <%= commandResult.code %></div>
+  </div>
+  <div class="card app-card mb-4">
+    <div class="card-body">
+      <h2 class="h6 app-card-title">Saida</h2>
+      <% if (commandResult.downloadPath) { %>
+        <div class="mb-2">
+          <a class="btn btn-sm btn-outline-primary" href="<%= commandResult.downloadPath %>">Baixar backup .sql</a>
+        </div>
+      <% } %>
+      <pre class="mb-0" style="white-space: pre-wrap;"><%= commandResult.output || "(sem saida)" %></pre>
+    </div>
+  </div>
+<% } %>
+
+<% if (smtpUpdateResult) { %>
+  <div class="alert <%= smtpUpdateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= smtpUpdateResult.message %></div>
+<% } %>
+<% if (smtpTestResult) { %>
+  <div class="alert <%= smtpTestResult.ok ? 'alert-success' : 'alert-danger' %>"><%= smtpTestResult.message %></div>
+<% } %>
+<% if (emailTemplatesUpdateResult) { %>
+  <div class="alert <%= emailTemplatesUpdateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= emailTemplatesUpdateResult.message %></div>
+<% } %>
+<% if (pdfTemplateUpdateResult) { %>
+  <div class="alert <%= pdfTemplateUpdateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= pdfTemplateUpdateResult.message %></div>
+<% } %>
+<% if (pdfTemplateDefaultResult) { %>
+  <div class="alert <%= pdfTemplateDefaultResult.ok ? 'alert-success' : 'alert-danger' %>"><%= pdfTemplateDefaultResult.message %></div>
+<% } %>
+<% if (defaultRecipientsUpdateResult) { %>
+  <div class="alert <%= defaultRecipientsUpdateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= defaultRecipientsUpdateResult.message %></div>
+<% } %>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2">Links publicos por perfil</h2>
+    <p class="text-muted mb-3">Criacao e exclusao de links publicos em pagina separada.</p>
+    <a class="btn btn-primary btn-sm" href="/admin/public-token-links">Abrir gestao de links publicos</a>
+  </div>
+</div>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2">Templates de geracao de PDF</h2>
+    <p class="text-muted mb-3">Cadastre templates por tema e defina qual e o padrao para cada tema ativo.</p>
+
+    <form method="post" action="/admin/maintenance/pdf-templates/save" class="row g-3" id="pdf-template-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" id="pdf_template_id" name="template_id" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.template_id ? pdfTemplateEditorValues.template_id : '' %>" />
+
+      <div class="col-12 col-md-5">
+        <label class="form-label" for="pdf_template_name">Nome do template</label>
+        <input id="pdf_template_name" name="template_name" type="text" class="form-control" maxlength="120" required value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.template_name ? pdfTemplateEditorValues.template_name : '' %>" />
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label" for="pdf_template_theme">Tema alvo</label>
+        <select id="pdf_template_theme" name="template_theme" class="form-select" required>
+          <% (pdfTemplateThemes || []).forEach((themeName) => { %>
+            <option value="<%= themeName %>" <%= pdfTemplateEditorValues && pdfTemplateEditorValues.template_theme === themeName ? 'selected' : '' %>><%= themeName %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_card_background">Card BG</label>
+        <input id="pdf_card_background" name="card_background" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.card_background ? pdfTemplateEditorValues.card_background : '#f4f7f5' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_border_color">Borda</label>
+        <input id="pdf_border_color" name="border_color" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.border_color ? pdfTemplateEditorValues.border_color : '#b9cec0' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_title_color">Titulo</label>
+        <input id="pdf_title_color" name="title_color" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.title_color ? pdfTemplateEditorValues.title_color : '#12353f' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_header_color">Cabecalho</label>
+        <input id="pdf_header_color" name="header_color" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.header_color ? pdfTemplateEditorValues.header_color : '#1e6738' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_text_color">Texto</label>
+        <input id="pdf_text_color" name="text_color" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.text_color ? pdfTemplateEditorValues.text_color : '#0f2531' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_row_even_background">Linha par</label>
+        <input id="pdf_row_even_background" name="row_even_background" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.row_even_background ? pdfTemplateEditorValues.row_even_background : '#dde4e0' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_row_odd_background">Linha impar</label>
+        <input id="pdf_row_odd_background" name="row_odd_background" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.row_odd_background ? pdfTemplateEditorValues.row_odd_background : '#f0f3f2' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_line_color">Divisoria</label>
+        <input id="pdf_line_color" name="line_color" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.line_color ? pdfTemplateEditorValues.line_color : '#b7c8bd' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_badge_background">Badge BG</label>
+        <input id="pdf_badge_background" name="badge_background" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.badge_background ? pdfTemplateEditorValues.badge_background : '#d8e9db' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_badge_border">Badge borda</label>
+        <input id="pdf_badge_border" name="badge_border" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.badge_border ? pdfTemplateEditorValues.badge_border : '#9dbca5' %>" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="pdf_badge_text">Badge texto</label>
+        <input id="pdf_badge_text" name="badge_text" type="color" class="form-control form-control-color" value="<%= pdfTemplateEditorValues && pdfTemplateEditorValues.badge_text ? pdfTemplateEditorValues.badge_text : '#1f5a2a' %>" />
+      </div>
+
+      <div class="col-12">
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-primary btn-sm" type="submit">Salvar template PDF</button>
+          <button class="btn btn-outline-primary btn-sm" id="pdf-template-preview" type="button">Preview (dados aleatorios)</button>
+          <button class="btn btn-outline-secondary btn-sm" id="pdf-template-reset" type="button">Novo template</button>
+        </div>
+      </div>
+    </form>
+
+    <hr class="my-4" />
+
+    <h3 class="h6 app-card-title mb-2">Templates cadastrados</h3>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 app-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Tema</th>
+            <th>Atualizado em</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!pdfTemplateSettings || !pdfTemplateSettings.templates || !pdfTemplateSettings.templates.length) { %>
+            <tr><td colspan="4" class="text-muted">Nenhum template PDF cadastrado.</td></tr>
+          <% } %>
+          <% (pdfTemplateSettings && pdfTemplateSettings.templates ? pdfTemplateSettings.templates : []).forEach((template) => { %>
+            <tr>
+              <td><strong><%= template.name %></strong></td>
+              <td>
+                <code><%= template.theme %></code>
+                <% if (pdfTemplateSettings.defaultsByTheme && pdfTemplateSettings.defaultsByTheme[template.theme] === template.id) { %>
+                  <span class="badge text-bg-success ms-1">Padrao</span>
+                <% } %>
+              </td>
+              <td><%= template.updatedAt ? new Date(template.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
+              <td>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-outline-primary btn-sm pdf-template-edit-btn"
+                    type="button"
+                    data-template-id="<%= template.id %>"
+                    data-template-name="<%= template.name %>"
+                    data-template-theme="<%= template.theme %>"
+                  >
+                    Editar
+                  </button>
+                  <form method="post" action="/admin/maintenance/pdf-templates/default" class="maintenance-command-form" data-confirm="Confirma definir este template como padrao para o tema?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <input type="hidden" name="template_id" value="<%= template.id %>" />
+                    <input type="hidden" name="theme" value="<%= template.theme %>" />
+                    <button class="btn btn-outline-success btn-sm" type="submit" <%= pdfTemplateSettings.defaultsByTheme && pdfTemplateSettings.defaultsByTheme[template.theme] === template.id ? "disabled" : "" %>>Definir padrao</button>
+                  </form>
+                  <form method="post" action="/admin/maintenance/pdf-templates/<%= template.id %>/delete" class="maintenance-command-form" data-confirm="Confirma remover este template PDF?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                  </form>
+                </div>
+                <textarea id="pdf-template-palette-<%= template.id %>" class="d-none"><%= JSON.stringify(template.palette || {}) %></textarea>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2">Configuracao SMTP (Mailtrap)</h2>
+    <p class="text-muted mb-3">Essas configuracoes valem apenas para o envio de documentos do modulo SpecFlow.</p>
+    <form method="post" action="/admin/maintenance/smtp" class="row g-3">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="smtp_host">SMTP Host (Mailtrap)</label>
+        <input id="smtp_host" name="smtp_host" type="text" class="form-control" required value="<%= emailSettings && emailSettings.smtp ? emailSettings.smtp.host : '' %>" />
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label" for="smtp_port">SMTP Port</label>
+        <input id="smtp_port" name="smtp_port" type="number" class="form-control" min="1" max="65535" required value="<%= emailSettings && emailSettings.smtp ? emailSettings.smtp.port : 587 %>" />
+      </div>
+      <div class="col-12 col-md-3 d-flex align-items-end">
+        <div class="form-check mb-2">
+          <input id="smtp_secure" name="smtp_secure" type="checkbox" class="form-check-input" value="true" <%= emailSettings && emailSettings.smtp && emailSettings.smtp.secure ? "checked" : "" %> />
+          <label class="form-check-label" for="smtp_secure">SSL/TLS</label>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="smtp_user">SMTP User</label>
+        <input id="smtp_user" name="smtp_user" type="text" class="form-control" value="<%= emailSettings && emailSettings.smtp ? emailSettings.smtp.user : '' %>" />
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="smtp_from">SMTP From</label>
+        <input id="smtp_from" name="smtp_from" type="email" class="form-control" required value="<%= emailSettings && emailSettings.smtp ? emailSettings.smtp.from : '' %>" />
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label" for="smtp_pass">SMTP Password</label>
+        <input id="smtp_pass" name="smtp_pass" type="password" class="form-control" autocomplete="new-password" placeholder="Preencha para atualizar a senha" />
+        <small class="text-muted">Senha atual: <%= emailSettings && emailSettings.hasEffectiveSmtpPass ? "configurada" : "nao configurada" %>.</small>
+      </div>
+      <div class="col-12 col-md-6 d-flex align-items-end">
+        <div class="form-check mb-2">
+          <input id="smtp_pass_clear" name="smtp_pass_clear" type="checkbox" class="form-check-input" value="true" />
+          <label class="form-check-label" for="smtp_pass_clear">Remover senha salva</label>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <button class="btn btn-primary btn-sm" type="submit">Salvar SMTP</button>
+      </div>
+    </form>
+
+    <hr class="my-4" />
+
+    <form method="post" action="/admin/maintenance/smtp/test" class="row g-3">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="col-12 col-md-8">
+        <label class="form-label" for="test_email_to">E-mail para teste SMTP</label>
+        <input
+          id="test_email_to"
+          name="test_email_to"
+          type="email"
+          class="form-control"
+          required
+          placeholder="destinatario@dominio.com"
+          value="<%= maintenanceEmailTestTo || '' %>"
+        />
+      </div>
+      <div class="col-12 col-md-4 d-flex align-items-end">
+        <button class="btn btn-outline-primary btn-sm" type="submit">Testar envio</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2">Modelos HTML de e-mail</h2>
+    <p class="text-muted mb-3">
+      Placeholders disponiveis:
+      <code>{{token}}</code>, <code>{{cliente}}</code>, <code>{{contato}}</code>,
+      <code>{{perfil-formulario}}</code>, <code>{{nome_perfil_formulario}}</code>, <code>{{token_link}}</code>,
+      <code>{{review_link}}</code>, <code>{{specification_link}}</code>,
+      <code>{{purchaser}}</code>, <code>{{project_name}}</code>, <code>{{site_name}}</code>, <code>{{address}}</code>.
+    </p>
+
+    <form method="post" action="/admin/maintenance/email-templates/save" class="row g-3" id="email-template-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" id="template_id" name="template_id" value="<%= emailTemplateEditorValues && emailTemplateEditorValues.template_id ? emailTemplateEditorValues.template_id : '' %>" />
+      <div class="col-12 col-md-5">
+        <label class="form-label" for="template_name">Nome do modelo</label>
+        <input
+          id="template_name"
+          name="template_name"
+          type="text"
+          class="form-control"
+          required
+          maxlength="120"
+          placeholder="Ex.: Modelo comercial Vextrom"
+          value="<%= emailTemplateEditorValues && emailTemplateEditorValues.template_name ? emailTemplateEditorValues.template_name : '' %>"
+        />
+      </div>
+      <div class="col-12 col-md-7">
+        <label class="form-label" for="template_subject">Assunto do e-mail</label>
+        <input
+          id="template_subject"
+          name="template_subject"
+          type="text"
+          class="form-control"
+          required
+          maxlength="200"
+          placeholder="Ex.: Vextrom SpecFlow - {{token}}"
+          value="<%= emailTemplateEditorValues && emailTemplateEditorValues.template_subject ? emailTemplateEditorValues.template_subject : '' %>"
+        />
+      </div>
+      <div class="col-12 col-md-8">
+        <label class="form-label" for="template_html">HTML do modelo</label>
+        <textarea
+          id="template_html"
+          name="template_html"
+          class="form-control"
+          rows="12"
+          required
+          maxlength="120000"
+          placeholder="Cole aqui o HTML completo do modelo..."
+        ><%= emailTemplateEditorValues && emailTemplateEditorValues.template_html ? emailTemplateEditorValues.template_html : "" %></textarea>
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label" for="template_html_file">Importar arquivo .html</label>
+        <input id="template_html_file" type="file" class="form-control mb-3" accept=".html,text/html" />
+        <div class="form-check mb-3">
+          <input
+            id="set_default_template"
+            name="set_default_template"
+            type="checkbox"
+            value="true"
+            class="form-check-input"
+            <%= emailTemplateEditorValues && emailTemplateEditorValues.set_default_template ? "checked" : "" %>
+          />
+          <label class="form-check-label" for="set_default_template">Definir como padrao ao salvar</label>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-primary btn-sm" type="submit">Salvar modelo</button>
+          <button class="btn btn-outline-secondary btn-sm" id="email-template-reset" type="button">Novo modelo</button>
+        </div>
+      </div>
+    </form>
+
+    <hr class="my-4" />
+
+    <h3 class="h6 app-card-title mb-2">Modelos cadastrados</h3>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 app-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Assunto</th>
+            <th>Atualizado em</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!emailSettings || !emailSettings.emailTemplates || !emailSettings.emailTemplates.length) { %>
+            <tr>
+              <td colspan="4" class="text-muted">Nenhum modelo HTML cadastrado.</td>
+            </tr>
+          <% } %>
+          <% (emailSettings && emailSettings.emailTemplates ? emailSettings.emailTemplates : []).forEach((template) => { %>
+            <tr>
+              <td>
+                <strong><%= template.name %></strong>
+                <% if (emailSettings.defaultTemplateId === template.id) { %>
+                  <span class="badge text-bg-success ms-1">Padrao</span>
+                <% } %>
+              </td>
+              <td><code><%= template.subject %></code></td>
+              <td><%= template.updatedAt ? new Date(template.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
+              <td>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-outline-primary btn-sm email-template-edit-btn"
+                    type="button"
+                    data-template-id="<%= template.id %>"
+                    data-template-name="<%= template.name %>"
+                    data-template-subject="<%= template.subject %>"
+                    data-template-default="<%= emailSettings.defaultTemplateId === template.id ? '1' : '0' %>"
+                  >
+                    Editar
+                  </button>
+                  <form method="post" action="/admin/maintenance/email-templates/default" class="maintenance-command-form" data-confirm="Confirma definir este modelo como padrao?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <input type="hidden" name="template_id" value="<%= template.id %>" />
+                    <button class="btn btn-outline-success btn-sm" type="submit" <%= emailSettings.defaultTemplateId === template.id ? "disabled" : "" %>>Definir padrao</button>
+                  </form>
+                  <form method="post" action="/admin/maintenance/email-templates/<%= template.id %>/delete" class="maintenance-command-form" data-confirm="Confirma remover este modelo HTML?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                  </form>
+                </div>
+                <textarea id="email-template-html-<%= template.id %>" class="d-none"><%= template.html %></textarea>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-2">Destinatarios padrao de documentos</h2>
+    <p class="text-muted mb-3">
+      Esses e-mails sao enviados por padrao junto com os destinatarios informados no fluxo Envio + PDF.
+      Use <code>;</code>, <code>,</code> ou quebra de linha para separar os e-mails.
+    </p>
+    <form method="post" action="/admin/maintenance/default-recipients" class="row g-3">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="col-12">
+        <label class="form-label" for="default_email_recipients">E-mails padrao</label>
+        <textarea
+          id="default_email_recipients"
+          name="default_email_recipients"
+          class="form-control"
+          rows="4"
+          maxlength="4000"
+          placeholder="comercial@empresa.com; engenharia@empresa.com"
+        ><%= emailSettings && emailSettings.defaultRecipientsRaw ? emailSettings.defaultRecipientsRaw : "" %></textarea>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary btn-sm" type="submit">Salvar destinatarios padrao</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-3">Manutencao do banco (SpecFlow)</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <form method="post" action="/admin/maintenance/command" class="maintenance-command-form" data-confirm="Confirma resetar banco e reaplicar seed?">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="action" value="db_reseed" />
+        <button class="btn btn-outline-danger btn-sm" type="submit">Reset banco</button>
+      </form>
+      <form method="post" action="/admin/maintenance/command" class="maintenance-command-form" data-confirm="Confirma executar seed padrao?">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="action" value="db_seed_default" />
+        <button class="btn btn-outline-primary btn-sm" type="submit">Seed padrao</button>
+      </form>
+      <form method="post" action="/admin/maintenance/command" class="maintenance-command-form" data-confirm="Confirma gerar backup do banco SpecFlow?">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="action" value="db_backup" />
+        <button class="btn btn-outline-primary btn-sm" type="submit">Backup banco</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var forms = document.querySelectorAll(".maintenance-command-form");
+    forms.forEach(function (form) {
+      form.addEventListener("submit", function (event) {
+        var message = form.getAttribute("data-confirm") || "Confirma executar este comando?";
+        if (!window.confirm(message)) {
+          event.preventDefault();
+        }
+      });
+    });
+
+    var templateForm = document.getElementById("email-template-form");
+    var templateIdInput = document.getElementById("template_id");
+    var templateNameInput = document.getElementById("template_name");
+    var templateSubjectInput = document.getElementById("template_subject");
+    var templateHtmlInput = document.getElementById("template_html");
+    var templateSetDefaultInput = document.getElementById("set_default_template");
+    var templateFileInput = document.getElementById("template_html_file");
+    var templateResetBtn = document.getElementById("email-template-reset");
+    var templateEditButtons = document.querySelectorAll(".email-template-edit-btn");
+    var pdfTemplateForm = document.getElementById("pdf-template-form");
+    var pdfTemplateIdInput = document.getElementById("pdf_template_id");
+    var pdfTemplateNameInput = document.getElementById("pdf_template_name");
+    var pdfTemplateThemeInput = document.getElementById("pdf_template_theme");
+    var pdfTemplateResetBtn = document.getElementById("pdf-template-reset");
+    var pdfTemplatePreviewBtn = document.getElementById("pdf-template-preview");
+    var pdfTemplateEditButtons = document.querySelectorAll(".pdf-template-edit-btn");
+    var pdfColorFieldMap = {
+      cardBackground: document.getElementById("pdf_card_background"),
+      borderColor: document.getElementById("pdf_border_color"),
+      titleColor: document.getElementById("pdf_title_color"),
+      headerColor: document.getElementById("pdf_header_color"),
+      textColor: document.getElementById("pdf_text_color"),
+      rowEvenBackground: document.getElementById("pdf_row_even_background"),
+      rowOddBackground: document.getElementById("pdf_row_odd_background"),
+      lineColor: document.getElementById("pdf_line_color"),
+      badgeBackground: document.getElementById("pdf_badge_background"),
+      badgeBorder: document.getElementById("pdf_badge_border"),
+      badgeText: document.getElementById("pdf_badge_text")
+    };
+    var pdfThemePalettes = {
+      soft: {
+        cardBackground: "#f4f7f5",
+        borderColor: "#b9cec0",
+        titleColor: "#12353f",
+        headerColor: "#1e6738",
+        textColor: "#0f2531",
+        rowEvenBackground: "#dde4e0",
+        rowOddBackground: "#f0f3f2",
+        lineColor: "#b7c8bd",
+        badgeBackground: "#d8e9db",
+        badgeBorder: "#9dbca5",
+        badgeText: "#1f5a2a"
+      },
+      vextrom: {
+        cardBackground: "#eef5ef",
+        borderColor: "#b0c8b3",
+        titleColor: "#1d4626",
+        headerColor: "#2d7b3b",
+        textColor: "#10321a",
+        rowEvenBackground: "#d5e4d7",
+        rowOddBackground: "#e6efe8",
+        lineColor: "#a7beaa",
+        badgeBackground: "#d2e8d7",
+        badgeBorder: "#8db898",
+        badgeText: "#205e2f"
+      },
+      xvextrom: {
+        cardBackground: "#f3f8f2",
+        borderColor: "#b9d1b9",
+        titleColor: "#1d4b2c",
+        headerColor: "#2d7b3b",
+        textColor: "#143526",
+        rowEvenBackground: "#dce9db",
+        rowOddBackground: "#edf4ec",
+        lineColor: "#b0c7b1",
+        badgeBackground: "#d9ecd9",
+        badgeBorder: "#95bc9b",
+        badgeText: "#205d2e"
+      }
+    };
+
+    function normalizePdfThemeName(theme) {
+      var normalized = String(theme || "").trim().toLowerCase();
+      if (normalized === "xvetrom") return "xvextrom";
+      if (normalized === "soft" || normalized === "vextrom" || normalized === "xvextrom") return normalized;
+      return "xvextrom";
+    }
+
+    function applyPdfThemePalette(theme) {
+      var palette = pdfThemePalettes[normalizePdfThemeName(theme)] || pdfThemePalettes.xvextrom;
+      Object.keys(pdfColorFieldMap).forEach(function (key) {
+        if (!pdfColorFieldMap[key] || !palette[key]) return;
+        pdfColorFieldMap[key].value = String(palette[key]);
+      });
+    }
+
+    function resetTemplateEditor() {
+      if (templateIdInput) templateIdInput.value = "";
+      if (templateNameInput) templateNameInput.value = "";
+      if (templateSubjectInput) templateSubjectInput.value = "";
+      if (templateHtmlInput) templateHtmlInput.value = "";
+      if (templateSetDefaultInput) templateSetDefaultInput.checked = false;
+      if (templateFileInput) templateFileInput.value = "";
+    }
+
+    if (templateFileInput && templateHtmlInput) {
+      templateFileInput.addEventListener("change", function () {
+        var file = templateFileInput.files && templateFileInput.files[0] ? templateFileInput.files[0] : null;
+        if (!file) return;
+        if (!String(file.name || "").toLowerCase().endsWith(".html")) {
+          window.alert("Selecione um arquivo .html valido.");
+          templateFileInput.value = "";
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          templateHtmlInput.value = typeof reader.result === "string" ? reader.result : "";
+        };
+        reader.onerror = function () {
+          window.alert("Falha ao ler arquivo .html.");
+        };
+        reader.readAsText(file, "utf-8");
+      });
+    }
+
+    if (templateResetBtn) {
+      templateResetBtn.addEventListener("click", function () {
+        resetTemplateEditor();
+      });
+    }
+
+    templateEditButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (!templateForm) return;
+        var templateId = button.getAttribute("data-template-id") || "";
+        var templateName = button.getAttribute("data-template-name") || "";
+        var templateSubject = button.getAttribute("data-template-subject") || "";
+        var isDefault = button.getAttribute("data-template-default") === "1";
+        var htmlSourceEl = document.getElementById("email-template-html-" + templateId);
+        var templateHtml = htmlSourceEl ? htmlSourceEl.value : "";
+
+        if (templateIdInput) templateIdInput.value = templateId;
+        if (templateNameInput) templateNameInput.value = templateName;
+        if (templateSubjectInput) templateSubjectInput.value = templateSubject;
+        if (templateHtmlInput) templateHtmlInput.value = templateHtml;
+        if (templateSetDefaultInput) templateSetDefaultInput.checked = isDefault;
+        if (templateFileInput) templateFileInput.value = "";
+
+        templateForm.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    function resetPdfTemplateEditor() {
+      if (pdfTemplateIdInput) pdfTemplateIdInput.value = "";
+      if (pdfTemplateNameInput) pdfTemplateNameInput.value = "";
+      if (pdfTemplateThemeInput) pdfTemplateThemeInput.value = "xvextrom";
+      applyPdfThemePalette("xvextrom");
+    }
+
+    if (pdfTemplateResetBtn) {
+      pdfTemplateResetBtn.addEventListener("click", function () {
+        resetPdfTemplateEditor();
+      });
+    }
+
+    if (pdfTemplateThemeInput) {
+      pdfTemplateThemeInput.addEventListener("change", function () {
+        if (pdfTemplateIdInput && String(pdfTemplateIdInput.value || "").trim()) return;
+        applyPdfThemePalette(pdfTemplateThemeInput.value);
+      });
+    }
+
+    pdfTemplateEditButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (!pdfTemplateForm) return;
+        var templateId = button.getAttribute("data-template-id") || "";
+        var templateName = button.getAttribute("data-template-name") || "";
+        var templateTheme = button.getAttribute("data-template-theme") || "soft";
+        var paletteRawEl = document.getElementById("pdf-template-palette-" + templateId);
+        var palette = {};
+        try {
+          palette = paletteRawEl && paletteRawEl.value ? JSON.parse(paletteRawEl.value) : {};
+        } catch (_err) {
+          palette = {};
+        }
+
+        if (pdfTemplateIdInput) pdfTemplateIdInput.value = templateId;
+        if (pdfTemplateNameInput) pdfTemplateNameInput.value = templateName;
+        if (pdfTemplateThemeInput) pdfTemplateThemeInput.value = templateTheme;
+        Object.keys(pdfColorFieldMap).forEach(function (key) {
+          if (pdfColorFieldMap[key] && palette[key]) {
+            pdfColorFieldMap[key].value = String(palette[key]);
+          }
+        });
+
+        pdfTemplateForm.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    if (pdfTemplatePreviewBtn && pdfTemplateForm) {
+      pdfTemplatePreviewBtn.addEventListener("click", async function () {
+        var popup = window.open("", "_blank");
+        try {
+          var formData = new FormData(pdfTemplateForm);
+          if (!String(formData.get("template_name") || "").trim()) {
+            formData.set("template_name", "Preview Template");
+          }
+          var payload = new URLSearchParams();
+          formData.forEach(function (value, key) {
+            payload.append(key, String(value));
+          });
+
+          var response = await fetch("/admin/maintenance/pdf-templates/preview", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+            },
+            body: payload.toString()
+          });
+
+          if (!response.ok) {
+            var errText = await response.text();
+            if (popup) popup.close();
+            window.alert(errText || "Falha ao gerar preview do template PDF.");
+            return;
+          }
+
+          var blob = await response.blob();
+          var blobUrl = URL.createObjectURL(blob);
+          if (popup) {
+            popup.location.href = blobUrl;
+          } else {
+            window.open(blobUrl, "_blank");
+          }
+          window.setTimeout(function () {
+            URL.revokeObjectURL(blobUrl);
+          }, 60000);
+        } catch (err) {
+          if (popup) popup.close();
+          window.alert((err && err.message) ? err.message : "Falha ao gerar preview do template PDF.");
+        }
+      });
+    }
+  })();
+</script>
+
+<%- include("partials/footer") %>

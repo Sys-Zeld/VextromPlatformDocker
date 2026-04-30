@@ -1,0 +1,77 @@
+# Gerado automaticamente pelo entrypoint do nginx a partir de templates/.
+# A variável ${DOMAIN} é substituída pelo docker-compose via envsubst.
+
+# ── HTTP: redireciona tudo para HTTPS, exceto o desafio ACME ──────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS ─────────────────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # TLS moderno (A+ no SSL Labs)
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    # OCSP Stapling
+    ssl_stapling        on;
+    ssl_stapling_verify on;
+    resolver            1.1.1.1 8.8.8.8 valid=300s;
+    resolver_timeout    5s;
+
+    # Headers de segurança
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff"                              always;
+    add_header X-Frame-Options           "SAMEORIGIN"                           always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"      always;
+    add_header X-XSS-Protection          "1; mode=block"                        always;
+
+    # Uploads de documentos/imagens
+    client_max_body_size 50M;
+
+    # Compressão
+    gzip            on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_proxied    any;
+    gzip_vary       on;
+    gzip_types      text/plain text/css text/xml application/json
+                    application/javascript application/xml+rss
+                    image/svg+xml;
+
+    location / {
+        proxy_pass             http://app:3000;
+        proxy_http_version     1.1;
+        proxy_set_header       Upgrade           $http_upgrade;
+        proxy_set_header       Connection        "upgrade";
+        proxy_set_header       Host              $host;
+        proxy_set_header       X-Real-IP         $remote_addr;
+        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header       X-Forwarded-Proto $scheme;
+        proxy_cache_bypass     $http_upgrade;
+        # Margem acima do timeout máximo de AI (600 s)
+        proxy_read_timeout     620s;
+        proxy_send_timeout     620s;
+        proxy_connect_timeout  10s;
+        proxy_buffering        off;
+    }
+}

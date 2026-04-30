@@ -1,0 +1,512 @@
+.report-editor-layout,
+.report-section-card,
+.report-quill-title-editor .ql-editor,
+.report-quill-editor .ql-editor {
+  font-family: var(--app-font-family, "Inter", "Segoe UI", Tahoma, sans-serif);
+}
+
+.report-section-cards {
+  display: grid;
+  gap: 14px;
+}
+
+.report-section-card {
+  border: 1px solid #d5dfd8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdfb;
+  min-width: 0;
+  overflow: visible;
+}
+
+.report-quill-title-editor .ql-toolbar.ql-snow,
+.report-quill-editor .ql-toolbar.ql-snow {
+  border: 1px solid #cad6cb;
+  border-radius: 8px 8px 0 0;
+  position: relative;
+  z-index: 8;
+  overflow: visible;
+}
+
+.report-quill-title-editor .ql-container.ql-snow,
+.report-quill-editor .ql-container.ql-snow {
+  border: 1px solid #cad6cb;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.report-quill-title-editor .ql-container.ql-snow {
+  min-height: 78px;
+}
+
+.report-quill-editor .ql-container.ql-snow {
+  min-height: 280px;
+}
+
+.report-quill-editor .ql-editor {
+  min-height: 260px;
+}
+
+.report-section-images-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-image-input-card {
+  border: 1px solid #cad6cb;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f6faf6;
+}
+
+.report-section-card-footer {
+  border-top: 1px dashed #b6c5b8;
+  padding-top: 10px;
+}
+
+.report-section-footer-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #4a5f50;
+  margin-bottom: 8px;
+}
+
+.report-image-preview-slot {
+  width: 100%;
+  min-height: 110px;
+  border: 2px solid #111;
+  background: #f0f3ef;
+  display: grid;
+  place-items: center;
+  margin-bottom: 8px;
+  color: #1f2a26;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.report-image-preview {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.report-quill-title-editor .ql-editor,
+.report-quill-editor .ql-editor {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.report-quill-title-editor .ql-editor .ql-font-arial,
+.report-quill-editor .ql-editor .ql-font-arial {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.report-quill-title-editor .ql-editor .ql-font-serif,
+.report-quill-editor .ql-editor .ql-font-serif {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.report-quill-title-editor .ql-editor .ql-font-monospace,
+.report-quill-editor .ql-editor .ql-font-monospace {
+  font-family: "Courier New", "Lucida Console", monospace;
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="arial"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="arial"]::before {
+  content: "Arial";
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="serif"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="serif"]::before {
+  content: "Serif";
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="monospace"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="monospace"]::before {
+  content: "Monospace";
+  font-family: "Courier New", "Lucida Console", monospace;
+}
+
+.ql-snow .ql-formats button.ql-insertTable::before {
+  content: "Tabela";
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.ql-snow .ql-formats button.ql-insertTable {
+  width: auto;
+  min-width: 52px;
+  padding: 0 6px;
+}
+
+.ql-snow .ql-formats button.ql-insertTable::before {
+  white-space: nowrap;
+}
+
+.ql-snow .ql-formats button.ql-insertImage::before {
+  content: "Imagem";
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.report-quill-editor .ql-editor table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-quill-editor .ql-editor td,
+.report-quill-editor .ql-editor th {
+  border: 1px solid #cad6cb;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.report-editor-layout > [class*="col-"] {
+  min-width: 0;
+}
+
+.report-quill-title-editor,
+.report-quill-editor {
+  position: relative;
+  /* z-index removido: não deve criar stacking context próprio, senão o
+     toolbar (z-index 8) e o picker-options ficam confinados abaixo de
+     elementos externos como .report-tag-tools (z-index 2). */
+  overflow: visible;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.118), 0 1px 4px rgba(0, 0, 0, 0.084);
+  border-radius: 8px;
+}
+
+.report-quill-title-editor .ql-snow .ql-picker,
+.report-quill-editor .ql-snow .ql-picker {
+  position: relative;
+  overflow: visible;
+}
+
+.report-quill-title-editor .ql-snow .ql-picker-options,
+.report-quill-editor .ql-snow .ql-picker-options {
+  background: var(--surface, #ffffff) !important;
+  border: 1px solid var(--border, #cad6cb) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14) !important;
+  z-index: 9999 !important;
+  position: absolute !important;
+}
+
+.report-quill-title-editor .ql-snow .ql-picker-item,
+.report-quill-title-editor .ql-snow .ql-picker-label,
+.report-quill-editor .ql-snow .ql-picker-item,
+.report-quill-editor .ql-snow .ql-picker-label {
+  color: var(--text, #1f2a26);
+}
+
+.report-tag-tools {
+  display: block;
+  position: relative;
+  z-index: 2;
+  clear: both;
+  margin: 8px 0 10px;
+}
+
+.report-tag-tools .card-body {
+  border-top: 2px solid color-mix(in srgb, var(--border) 70%, #ffffff 30%);
+}
+
+
+.report-tag-validation {
+  margin-top: 0;
+  color: #5d695f;
+  font-size: 0.8rem;
+}
+
+.report-tag-validation.error {
+  color: #b02a37;
+  font-weight: 600;
+}
+
+.report-tag-editor-invalid .ql-container.ql-snow {
+  border-color: #d17a82 !important;
+  box-shadow: inset 0 0 0 1px rgba(176, 42, 55, 0.12);
+}
+
+
+.daily-log-quill-editor {
+  margin-top: 6px;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.daily-log-editor-card .card-body {
+  overflow: visible;
+}
+
+.daily-log-quill-editor .ql-toolbar.ql-snow,
+.daily-log-quill-editor .ql-container.ql-snow {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.daily-log-quill-editor .ql-toolbar.ql-snow {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.daily-log-quill-editor .ql-toolbar.ql-snow .ql-formats {
+  margin-right: 8px;
+}
+
+.daily-log-quill-editor .ql-editor {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+  overflow-y: visible;
+  max-height: none;
+}
+
+.daily-log-quill-editor .ql-container.ql-snow {
+  overflow: visible;
+  height: auto;
+}
+
+.daily-log-table th,
+.daily-log-table td {
+  vertical-align: middle;
+  padding-top: 0.38rem;
+  padding-bottom: 0.38rem;
+}
+
+.daily-log-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.daily-log-table th:nth-child(1),
+.daily-log-table td:nth-child(1) {
+  width: 52px;
+}
+
+.daily-log-table th:nth-child(2),
+.daily-log-table td:nth-child(2) {
+  width: 88px;
+}
+
+.daily-log-table th:nth-child(3),
+.daily-log-table td:nth-child(3) {
+  width: 180px;
+}
+
+.daily-log-table th:nth-child(4),
+.daily-log-table td:nth-child(4) {
+  width: 220px;
+}
+
+.daily-log-table th:nth-child(5),
+.daily-log-table td:nth-child(5) {
+  width: 150px;
+}
+
+.daily-log-table th:nth-child(6),
+.daily-log-table td:nth-child(6) {
+  width: 200px;
+}
+
+.daily-log-actions-cell {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.daily-log-actions-cell .d-flex {
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.daily-log-content-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.daily-log-title-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.daily-log-action-btn {
+  font-size: 0.76rem;
+  line-height: 1.1;
+  padding: 0.24rem 0.5rem;
+}
+
+.measurement-builder-wrap {
+  border: 1px solid #d5dfd8;
+  border-radius: 8px;
+  background: #ffffff;
+  max-height: 420px;
+}
+
+.measurement-builder-table th,
+.measurement-builder-table td {
+  min-width: 140px;
+  vertical-align: middle;
+}
+
+.measurement-builder-table .measurement-actions-col {
+  width: 92px;
+  min-width: 92px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.measurement-column-head {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.measurement-column-input {
+  min-width: 110px;
+  font-weight: 600;
+}
+
+@media (min-width: 1200px) {
+  .report-editor-layout {
+    --bs-gutter-x: 1.25rem;
+    --bs-gutter-y: 1.25rem;
+  }
+
+  .report-editor-layout > .col-xl-6 {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .report-editor-layout > .col-xl-6 > .card {
+    width: 100%;
+  }
+
+  .report-section-cards {
+    gap: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .report-section-images-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Theme alignment */
+.token-console {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 16px);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 92%, #fff 8%) 0%,
+      var(--surface-2) 100%
+    );
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+
+.report-section-card {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-image-input-card {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface) 30%);
+}
+
+.report-section-card-footer {
+  border-top-color: color-mix(in srgb, var(--border) 72%, var(--muted-text) 28%);
+}
+
+.report-section-footer-title {
+  color: var(--muted-text);
+}
+
+.report-image-preview-slot {
+  border-color: color-mix(in srgb, var(--text) 78%, var(--border) 22%);
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--surface) 22%);
+  color: var(--text);
+}
+
+.report-quill-title-editor .ql-toolbar.ql-snow,
+.report-quill-editor .ql-toolbar.ql-snow,
+.report-quill-title-editor .ql-container.ql-snow,
+.report-quill-editor .ql-container.ql-snow,
+.report-quill-editor .ql-editor td,
+.report-quill-editor .ql-editor th {
+  border-color: var(--border);
+}
+
+.report-inline-title-input {
+  width: 180px;
+  min-width: 140px;
+}
+
+.report-section-commandbar {
+  border-bottom: 1px dashed color-mix(in srgb, var(--border) 76%, #ffffff 24%);
+  padding-bottom: 8px;
+}
+
+.report-section-commandbar-actions .btn-link {
+  line-height: 1.2;
+}
+
+.report-section-commandbar-primary {
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 78%, #ffffff 22%);
+}
+
+@media (max-width: 768px) {
+  .report-inline-title-input {
+    width: 100%;
+  }
+
+  .report-section-commandbar-top,
+  .report-section-commandbar-actions {
+    align-items: stretch !important;
+  }
+
+  .report-section-commandbar-primary {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* Reorder sections modal */
+.reorder-section-item {
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.reorder-section-item.reorder-dragging {
+  opacity: 0.45;
+  background: #f0f4f1;
+}
+
+.reorder-section-item.reorder-drop-over {
+  background: #e8f4ea;
+  outline: 2px dashed #5b9c6b;
+  outline-offset: -2px;
+}
+
+.reorder-drag-handle {
+  font-size: 1rem;
+  cursor: grab;
+  padding: 0 4px;
+}

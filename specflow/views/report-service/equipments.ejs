@@ -1,0 +1,657 @@
+<%- include("../partials/head", { pageTitle }) %>
+<style>
+  @import url("https://cdn.jsdelivr.net/npm/gridjs/dist/theme/mermaid.min.css");
+
+  .equipments-grid-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .equipments-grid-wrap .gridjs-wrapper {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .equipments-grid-wrap .gridjs-table {
+    width: 100%;
+  }
+
+  .equipments-grid-wrap .gridjs-container {
+    min-width: max-content;
+  }
+
+  .equipments-grid-wrap .gridjs-th,
+  .equipments-grid-wrap .gridjs-td {
+    border-color: color-mix(in srgb, var(--border) 58%, transparent);
+    vertical-align: middle !important;
+    padding: 0.18rem 0.42rem !important;
+    line-height: 1.05 !important;
+    font-size: 0.78rem !important;
+  }
+
+  .equipments-grid-wrap .gridjs-th {
+    text-align: center !important;
+    font-size: 0.8rem !important;
+    font-weight: 600;
+  }
+
+  .equipments-grid-wrap .gridjs-table .gridjs-tbody > .gridjs-tr:nth-of-type(odd) > .gridjs-td {
+    background-color: color-mix(in srgb, var(--surface-2) 78%, transparent) !important;
+  }
+
+  .equipments-grid-wrap .gridjs-table .gridjs-tbody > .gridjs-tr:nth-of-type(even) > .gridjs-td {
+    background-color: color-mix(in srgb, var(--surface-2) 92%, transparent) !important;
+  }
+
+  .equipments-grid-wrap .equipments-actions .btn {
+    padding: 0.12rem 0.34rem !important;
+    font-size: 0.72rem !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+  }
+
+  .equipments-grid-wrap .form-control-sm,
+  .equipments-grid-wrap .form-select-sm {
+    min-width: 120px;
+    font-size: 0.76rem !important;
+    padding-top: 0.16rem !important;
+    padding-bottom: 0.16rem !important;
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--input-text) !important;
+  }
+
+  .equipments-grid-wrap .gridjs-search .gridjs-input {
+    max-width: 240px;
+    padding: 0.32rem 0.5rem !important;
+    font-size: 0.84rem !important;
+  }
+
+  @media (max-width: 768px) {
+    .equipments-grid-wrap .gridjs-container,
+    .equipments-grid-wrap .gridjs-head,
+    .equipments-grid-wrap .gridjs-wrapper,
+    .equipments-grid-wrap .gridjs-table {
+      min-width: 2200px !important;
+    }
+
+    .equipments-grid-wrap .gridjs-th,
+    .equipments-grid-wrap .gridjs-td {
+      white-space: nowrap;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .equipments-grid-wrap .gridjs-container,
+    .equipments-grid-wrap .gridjs-head,
+    .equipments-grid-wrap .gridjs-wrapper,
+    .equipments-grid-wrap .gridjs-table {
+      min-width: 0 !important;
+      width: 100% !important;
+    }
+
+    .equipments-grid-wrap .gridjs-td {
+      white-space: normal;
+      word-break: break-word;
+    }
+  }
+</style>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">SERVICE REPORT</span>
+        <h1 class="h4 app-card-title mb-1"><%= t("rs.equip.pageTitle") %></h1>
+        <p class="text-muted mb-0"><%= t("rs.equip.pageSubtitle") %></p>
+      </div>
+      <div class="token-hero-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/hub">Service Hub</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.orders.pageTitle") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/spare-parts">Spare-Parts</a>
+      </div>
+    </div>
+  </div>
+
+  <% if (created) { %><div class="alert alert-success mb-0"><%= t("rs.equip.savedSuccess") %></div><% } %>
+  <% if (updated) { %><div class="alert alert-success mb-0"><%= t("rs.equip.updatedSuccess") %></div><% } %>
+
+  <div class="card app-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <h2 class="h6 app-card-title mb-0"><%= t("rs.equip.listTitle") %></h2>
+          <span class="badge text-bg-secondary" id="equipment-count">Total: 0</span>
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" id="add-inline-equipment"><%= t("rs.equip.addNew") %></button>
+      </div>
+      <div class="equipments-grid-wrap">
+        <div id="equipmentsGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="equipment-inline-feedback" class="alert d-none mt-2" role="alert"></div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
+<script>
+  (function () {
+    var csrfToken = <%- JSON.stringify(csrfToken || "") %>;
+    var i18n = {
+      btnCreate:    <%- JSON.stringify(t("rs.equip.btnCreate")) %>,
+      btnSave:      <%- JSON.stringify(t("rs.equip.btnSave")) %>,
+      btnRemove:    <%- JSON.stringify(t("rs.remove")) %>,
+      selectClient: <%- JSON.stringify(t("rs.equip.selectClient")) %>,
+      noSite:       <%- JSON.stringify(t("rs.equip.noSiteForClient")) %>,
+      selectFirst:  <%- JSON.stringify(t("rs.orders.selectClientFirst")) %>,
+      colActions:   <%- JSON.stringify(t("rs.actions")) %>,
+      colCreated:   <%- JSON.stringify(t("admin.grid.updatedAt") || "Criado em") %>,
+      colUpdated:   <%- JSON.stringify(t("rs.updatedAt") || "Atualizado em") %>,
+      searchPh:     <%- JSON.stringify(t("rs.searchPlaceholder")) %>,
+      loading:      <%- JSON.stringify(t("rs.loading")) %>,
+      noRecords:    <%- JSON.stringify(t("rs.noRecords")) %>,
+      error:        <%- JSON.stringify(t("rs.error")) %>,
+      previous:     <%- JSON.stringify(t("admin.grid.paginationPrevious")) %>,
+      next:         <%- JSON.stringify(t("admin.grid.paginationNext")) %>,
+      showing:      <%- JSON.stringify(t("admin.grid.paginationShowing")) %>,
+      of:           <%- JSON.stringify(t("admin.grid.paginationOf")) %>,
+      to:           <%- JSON.stringify(t("admin.grid.paginationTo")) %>,
+      results:      <%- JSON.stringify(t("admin.grid.paginationResults")) %>
+    };
+    var customers = <%- JSON.stringify((customers || []).map(function (item) {
+      return { id: item.id, name: item.name || "-" };
+    })).replace(/</g, "\\u003c") %>;
+    var sites = <%- JSON.stringify((sites || []).map(function (item) {
+      return { id: item.id, customer_id: item.customer_id, site_name: item.site_name || "-" };
+    })).replace(/</g, "\\u003c") %>;
+    var equipments = <%- JSON.stringify((equipments || []).map(function (item) {
+      return {
+        id: item.id,
+        customer_id: item.customer_id,
+        site_id: item.site_id,
+        type: item.type || "",
+        year_of_manufacture: item.year_of_manufacture || "",
+        serial_number: item.serial_number || "",
+        power: item.power || "",
+        rated_ac_input_voltage: item.rated_ac_input_voltage || "",
+        input_frequency: item.input_frequency || "",
+        rated_dc_voltage: item.rated_dc_voltage || "",
+        rated_ac_output_voltage: item.rated_ac_output_voltage || "",
+        output_frequency: item.output_frequency || "",
+        degree_of_protection: item.degree_of_protection || "",
+        main_label: item.main_label || "",
+        dt_number: item.dt_number || "",
+        tag_number: item.tag_number || "",
+        manufacturer: item.manufacturer || "",
+        model_family: item.model_family || "",
+        notes: item.notes || "",
+        created_at: item.created_at || "",
+        updated_at: item.updated_at || "",
+        customer_name: item.customer_name || "-",
+        site_name: item.site_name || "-"
+      };
+    })).replace(/</g, "\\u003c") %>;
+    var feedbackEl = document.getElementById("equipment-inline-feedback");
+    var equipmentCountEl = document.getElementById("equipment-count");
+    var addInlineBtn = document.getElementById("add-inline-equipment");
+    var gridTarget = document.getElementById("equipmentsGrid");
+    var currentQuery = new URLSearchParams(window.location.search || "");
+    var inlineNewId = String(currentQuery.get("inline_new_id") || "");
+    var inlineNewFlag = currentQuery.get("inline_new") === "1";
+    var rowsState = equipments.map(function (item) {
+      return Object.assign({}, item, { __isNew: false, __editing: false });
+    });
+    var gridInstance = null;
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function showInlineFeedback(message, isError) {
+      if (!feedbackEl) return;
+      feedbackEl.classList.remove("d-none", "alert-success", "alert-danger");
+      feedbackEl.classList.add(isError ? "alert-danger" : "alert-success");
+      feedbackEl.textContent = String(message || "");
+    }
+
+    function refreshEquipmentCount() {
+      if (!equipmentCountEl) return;
+      equipmentCountEl.textContent = "Total: " + String(rowsState.length);
+    }
+
+    function buildCustomerOptions(currentValue) {
+      var normalizedCurrent = String(currentValue || "");
+      var base = "<option value=\"\">" + escapeHtml(i18n.selectClient) + "</option>";
+      var options = customers.map(function (item) {
+        var value = String(item.id || "");
+        var selected = value === normalizedCurrent ? " selected" : "";
+        return "<option value=\"" + escapeHtml(value) + "\"" + selected + ">" + escapeHtml(item.name || "-") + "</option>";
+      }).join("");
+      return base + options;
+    }
+
+    function buildSiteOptions(currentValue, customerId) {
+      var normalizedCurrent = String(currentValue || "");
+      var normalizedCustomerId = Number(customerId);
+      var filteredSites = Number.isInteger(normalizedCustomerId) && normalizedCustomerId > 0
+        ? sites.filter(function (item) { return Number(item.customer_id) === normalizedCustomerId; })
+        : [];
+      var baseLabel = i18n.selectFirst;
+      if (normalizedCustomerId > 0) {
+        baseLabel = filteredSites.length ? i18n.selectClient : i18n.noSite;
+      }
+      var base = "<option value=\"\">" + escapeHtml(baseLabel) + "</option>";
+      var options = filteredSites.map(function (item) {
+        var value = String(item.id || "");
+        var selected = value === normalizedCurrent ? " selected" : "";
+        return "<option value=\"" + escapeHtml(value) + "\"" + selected + ">" + escapeHtml(item.site_name || "-") + "</option>";
+      }).join("");
+      return base + options;
+    }
+
+    function buildActionsHtml(row) {
+      var idSafe = escapeHtml(row.id);
+      var primaryLabel = row.__isNew ? i18n.btnCreate : i18n.btnSave;
+      var isNewAttr = row.__isNew ? "1" : "0";
+      return ""
+        + "<div class=\"equipments-actions\" data-new-row=\"" + isNewAttr + "\">"
+        + "<button class=\"btn btn-outline-primary btn-sm\" type=\"button\" data-save-equipment=\"" + idSafe + "\">" + primaryLabel + "</button>"
+        + "<button class=\"btn btn-outline-danger btn-sm\" type=\"button\" data-remove-equipment=\"" + idSafe + "\">" + escapeHtml(i18n.btnRemove) + "</button>"
+        + "</div>";
+    }
+
+    function inputDisabledAttr(_row) {
+      return "";
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      var date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      var d = String(date.getDate()).padStart(2, "0");
+      var mo = String(date.getMonth() + 1).padStart(2, "0");
+      var yyyy = String(date.getFullYear());
+      var h = String(date.getHours()).padStart(2, "0");
+      var mi = String(date.getMinutes()).padStart(2, "0");
+      var s = String(date.getSeconds()).padStart(2, "0");
+      return d + "/" + mo + "/" + yyyy + " " + h + ":" + mi + ":" + s;
+    }
+
+    function getFieldValue(equipmentId, fieldName) {
+      var id = "eq-" + String(equipmentId) + "-" + String(fieldName);
+      var el = document.getElementById(id);
+      return el ? String(el.value || "") : "";
+    }
+
+    function findRowById(equipmentId) {
+      var idText = String(equipmentId || "");
+      return rowsState.find(function (row) { return String(row.id) === idText; }) || null;
+    }
+
+    function clearInlineNewQueryParams() {
+      if (!window.history || !window.history.replaceState) return;
+      var nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("inline_new");
+      nextUrl.searchParams.delete("inline_new_id");
+      window.history.replaceState({}, "", nextUrl.toString());
+    }
+
+    function clearGridSearchInput() {
+      if (!gridTarget) return;
+      var searchInput = gridTarget.querySelector(".gridjs-search .gridjs-input, .gridjs-search input");
+      if (!searchInput) return;
+      searchInput.value = "";
+      if (typeof Event === "function") {
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        var ev = document.createEvent("Event");
+        ev.initEvent("input", true, true);
+        searchInput.dispatchEvent(ev);
+      }
+    }
+
+    function syncRowFromInputs(row) {
+      var id = row.id;
+      row.customer_id = getFieldValue(id, "customer_id");
+      row.site_id = getFieldValue(id, "site_id");
+      row.type = getFieldValue(id, "type");
+      row.year_of_manufacture = getFieldValue(id, "year_of_manufacture");
+      row.serial_number = getFieldValue(id, "serial_number");
+      row.power = getFieldValue(id, "power");
+      row.rated_ac_input_voltage = getFieldValue(id, "rated_ac_input_voltage");
+      row.input_frequency = getFieldValue(id, "input_frequency");
+      row.rated_dc_voltage = getFieldValue(id, "rated_dc_voltage");
+      row.rated_ac_output_voltage = getFieldValue(id, "rated_ac_output_voltage");
+      row.output_frequency = getFieldValue(id, "output_frequency");
+      row.degree_of_protection = getFieldValue(id, "degree_of_protection");
+      row.main_label = getFieldValue(id, "main_label");
+      row.dt_number = getFieldValue(id, "dt_number");
+      row.tag_number = getFieldValue(id, "tag_number");
+      row.manufacturer = getFieldValue(id, "manufacturer");
+      row.model_family = getFieldValue(id, "model_family");
+      row.notes = getFieldValue(id, "notes");
+    }
+
+    function buildPayloadFromRow(row) {
+      var payload = new URLSearchParams();
+      payload.set("_csrf", csrfToken);
+      payload.set("customer_id", row.customer_id || "");
+      payload.set("site_id", row.site_id || "");
+      payload.set("type", row.type || "");
+      payload.set("year_of_manufacture", row.year_of_manufacture || "");
+      payload.set("serial_number", row.serial_number || "");
+      payload.set("power", row.power || "");
+      payload.set("rated_ac_input_voltage", row.rated_ac_input_voltage || "");
+      payload.set("input_frequency", row.input_frequency || "");
+      payload.set("rated_dc_voltage", row.rated_dc_voltage || "");
+      payload.set("rated_ac_output_voltage", row.rated_ac_output_voltage || "");
+      payload.set("output_frequency", row.output_frequency || "");
+      payload.set("degree_of_protection", row.degree_of_protection || "");
+      payload.set("main_label", row.main_label || "");
+      payload.set("dt_number", row.dt_number || "");
+      payload.set("tag_number", row.tag_number || "");
+      payload.set("manufacturer", row.manufacturer || "");
+      payload.set("model_family", row.model_family || "");
+      payload.set("notes", row.notes || "");
+      return payload;
+    }
+
+    async function saveInlineEquipment(equipmentId) {
+      var row = findRowById(equipmentId);
+      if (!row) return;
+      syncRowFromInputs(row);
+      if (!row.customer_id || Number(row.customer_id) <= 0) {
+        showInlineFeedback("Cliente e obrigatorio.", true);
+        return;
+      }
+      if (!row.site_id || Number(row.site_id) <= 0) {
+        showInlineFeedback("Site e obrigatorio.", true);
+        return;
+      }
+      var payload = buildPayloadFromRow(row);
+      var url = row.__isNew
+        ? "/admin/report-service/equipments/create-inline"
+        : ("/admin/report-service/equipments/" + encodeURIComponent(String(row.id)) + "/update-inline");
+
+      try {
+        var response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+          },
+          body: payload.toString(),
+          credentials: "same-origin"
+        });
+        var result = await response.json().catch(function () { return { ok: false, error: "Falha ao atualizar equipamento." }; });
+        if (!response.ok || !result.ok) {
+          showInlineFeedback(result.error || "Falha ao atualizar equipamento.", true);
+          return;
+        }
+        if (row.__isNew) {
+          row.id = result.id;
+          row.__isNew = false;
+          row.created_at = new Date().toISOString();
+          row.updated_at = row.created_at;
+          clearInlineNewQueryParams();
+          renderGrid();
+          showInlineFeedback("Novo equipamento criado com sucesso.", false);
+        } else {
+          row.updated_at = new Date().toISOString();
+          clearInlineNewQueryParams();
+          renderGrid();
+          showInlineFeedback("Equipamento atualizado com sucesso.", false);
+        }
+      } catch (_err) {
+        showInlineFeedback("Falha ao atualizar equipamento.", true);
+      }
+    }
+
+    async function removeInlineEquipment(equipmentId) {
+      var row = findRowById(equipmentId);
+      if (!row) return;
+
+      var confirmed = window.confirm("Deseja remover este equipamento?");
+      if (!confirmed) return;
+
+      if (row.__isNew) {
+        rowsState = rowsState.filter(function (item) { return String(item.id) !== String(equipmentId); });
+        renderGrid();
+        showInlineFeedback("Linha removida.", false);
+        return;
+      }
+
+      var payload = new URLSearchParams();
+      payload.set("_csrf", csrfToken);
+
+      try {
+        var response = await fetch("/admin/report-service/equipments/" + encodeURIComponent(String(row.id)) + "/delete-inline", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+          },
+          body: payload.toString(),
+          credentials: "same-origin"
+        });
+        var result = await response.json().catch(function () { return { ok: false, error: "Falha ao remover equipamento." }; });
+        if (!response.ok || !result.ok) {
+          showInlineFeedback(result.error || "Falha ao remover equipamento.", true);
+          return;
+        }
+
+        rowsState = rowsState.filter(function (item) { return String(item.id) !== String(equipmentId); });
+        renderGrid();
+        showInlineFeedback("Equipamento removido com sucesso.", false);
+      } catch (_err) {
+        showInlineFeedback("Falha ao remover equipamento.", true);
+      }
+    }
+
+    function buildGridData() {
+      return rowsState.map(function (row) {
+          var disabled = inputDisabledAttr(row);
+          return {
+            id: escapeHtml(row.id),
+            customer: "<select id=\"eq-" + escapeHtml(row.id) + "-customer_id\" class=\"form-select form-select-sm\"" + disabled + ">" + buildCustomerOptions(row.customer_id) + "</select>",
+            site: "<select id=\"eq-" + escapeHtml(row.id) + "-site_id\" class=\"form-select form-select-sm\"" + disabled + ">" + buildSiteOptions(row.site_id, row.customer_id) + "</select>",
+            type: "<input id=\"eq-" + escapeHtml(row.id) + "-type\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.type || "") + "\"" + disabled + " />",
+            year: "<input id=\"eq-" + escapeHtml(row.id) + "-year_of_manufacture\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.year_of_manufacture || "") + "\"" + disabled + " />",
+            serial: "<input id=\"eq-" + escapeHtml(row.id) + "-serial_number\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.serial_number || "") + "\"" + disabled + " />",
+            power: "<input id=\"eq-" + escapeHtml(row.id) + "-power\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.power || "") + "\"" + disabled + " />",
+            acInVoltage: "<input id=\"eq-" + escapeHtml(row.id) + "-rated_ac_input_voltage\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.rated_ac_input_voltage || "") + "\"" + disabled + " />",
+            inputFreq: "<input id=\"eq-" + escapeHtml(row.id) + "-input_frequency\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.input_frequency || "") + "\"" + disabled + " />",
+            dcVoltage: "<input id=\"eq-" + escapeHtml(row.id) + "-rated_dc_voltage\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.rated_dc_voltage || "") + "\"" + disabled + " />",
+            acOutVoltage: "<input id=\"eq-" + escapeHtml(row.id) + "-rated_ac_output_voltage\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.rated_ac_output_voltage || "") + "\"" + disabled + " />",
+            outputFreq: "<input id=\"eq-" + escapeHtml(row.id) + "-output_frequency\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.output_frequency || "") + "\"" + disabled + " />",
+            protection: "<input id=\"eq-" + escapeHtml(row.id) + "-degree_of_protection\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.degree_of_protection || "") + "\"" + disabled + " />",
+            mainLabel: "<input id=\"eq-" + escapeHtml(row.id) + "-main_label\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.main_label || "") + "\"" + disabled + " />",
+            dtNumber: "<input id=\"eq-" + escapeHtml(row.id) + "-dt_number\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.dt_number || "") + "\"" + disabled + " />",
+            tag: "<input id=\"eq-" + escapeHtml(row.id) + "-tag_number\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.tag_number || "") + "\"" + disabled + " />",
+            manufacturer: "<input id=\"eq-" + escapeHtml(row.id) + "-manufacturer\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.manufacturer || "") + "\"" + disabled + " />",
+            modelFamily: "<input id=\"eq-" + escapeHtml(row.id) + "-model_family\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.model_family || "") + "\"" + disabled + " />",
+            notes: "<input id=\"eq-" + escapeHtml(row.id) + "-notes\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.notes || "") + "\"" + disabled + " />",
+            createdAt: escapeHtml(formatDate(row.created_at)),
+            updatedAt: escapeHtml(formatDate(row.updated_at)),
+            actions: buildActionsHtml(row)
+          };
+        });
+    }
+
+    function renderGrid() {
+      if (!gridTarget || !window.gridjs || !window.gridjs.Grid) return;
+      if (gridInstance && typeof gridInstance.destroy === "function") {
+        try {
+          gridInstance.destroy();
+        } catch (_err) {
+          // segue com novo render
+        }
+      }
+      gridInstance = null;
+      var data = buildGridData();
+      refreshEquipmentCount();
+      if (!data.length) {
+        gridTarget.innerHTML = "<div class=\"text-center text-muted py-4\">Sem equipamentos.</div>";
+        return;
+      }
+      gridTarget.innerHTML = "";
+      gridInstance = new window.gridjs.Grid({
+          columns: [
+            { id: "id", name: "ID", width: "90px" },
+            { id: "customer", name: "Cliente", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "site", name: "Site", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "type", name: "Type", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "year", name: "Year", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "serial", name: "Serial", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "power", name: "Power", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "acInVoltage", name: "AC Input V", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "inputFreq", name: "Input Freq", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "dcVoltage", name: "DC V", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "acOutVoltage", name: "AC Output V", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "outputFreq", name: "Output Freq", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "protection", name: "Protection", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "mainLabel", name: "Main Label", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "dtNumber", name: "DT Number", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "tag", name: "Tag", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "manufacturer", name: "Manufacturer", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "modelFamily", name: "Model Family", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "notes", name: "Notes", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "createdAt", name: i18n.colCreated },
+            { id: "updatedAt", name: i18n.colUpdated },
+            { id: "actions", name: i18n.colActions, sort: false, formatter: function (cell) { return window.gridjs.html(cell); } }
+          ],
+          data: data,
+          search: true,
+          sort: true,
+          language: {
+            search: { placeholder: i18n.searchPh },
+            sort: { sortAsc: i18n.sortAsc, sortDesc: i18n.sortDesc },
+            pagination: {
+              previous: i18n.previous,
+              next: i18n.next,
+              navigate: function (page, pages) { return i18n.navigate ? i18n.navigate.replace("{page}", page).replace("{pages}", pages) : page + "/" + pages; },
+              page: function (page) { return i18n.page ? i18n.page.replace("{page}", page) : page; },
+              showing: i18n.showing,
+              of: i18n.of,
+              to: i18n.to,
+              results: i18n.results
+            },
+            loading: i18n.loading,
+            noRecordsFound: i18n.noRecords,
+            error: i18n.error
+          },
+          pagination: {
+            limit: 20,
+            page: 0,
+            summary: false
+          }
+        }).render(gridTarget);
+    }
+
+    renderGrid();
+
+    if (inlineNewFlag) {
+      showInlineFeedback("Novo equipamento criado. Edite os campos e clique em Salvar.", false);
+      if (inlineNewId) {
+        window.setTimeout(function () {
+          var targetInput = document.getElementById("eq-" + inlineNewId + "-type");
+          if (!targetInput) return;
+          targetInput.scrollIntoView({ behavior: "smooth", block: "center" });
+          targetInput.focus();
+        }, 120);
+      }
+      clearInlineNewQueryParams();
+    }
+
+    async function addInlineEquipment() {
+      var tempId = "tmp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+      clearGridSearchInput();
+      rowsState.unshift({
+        id: tempId,
+        customer_id: "",
+        site_id: "",
+        type: "Novo Equipamento",
+        year_of_manufacture: "",
+        serial_number: "",
+        power: "",
+        rated_ac_input_voltage: "",
+        input_frequency: "",
+        rated_dc_voltage: "",
+        rated_ac_output_voltage: "",
+        output_frequency: "",
+        degree_of_protection: "",
+        main_label: "",
+        dt_number: "",
+        tag_number: "",
+        manufacturer: "",
+        model_family: "",
+        notes: "",
+        created_at: "",
+        updated_at: "",
+        customer_name: "-",
+        site_name: "-",
+        __isNew: true,
+        __editing: false
+      });
+      renderGrid();
+      clearGridSearchInput();
+      showInlineFeedback("Nova linha criada. Preencha os campos e clique em Criar.", false);
+      window.setTimeout(function () {
+        var targetInput = document.getElementById("eq-" + tempId + "-type");
+        if (!targetInput) return;
+        targetInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        targetInput.focus();
+      }, 80);
+    }
+
+    if (addInlineBtn) {
+      addInlineBtn.addEventListener("click", function () {
+        addInlineEquipment();
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-save-equipment]");
+      if (btn) {
+        saveInlineEquipment(btn.getAttribute("data-save-equipment"));
+        return;
+      }
+      var removeBtn = event.target.closest("[data-remove-equipment]");
+      if (!removeBtn) return;
+      removeInlineEquipment(String(removeBtn.getAttribute("data-remove-equipment") || ""));
+    });
+
+    document.addEventListener("change", function (event) {
+      var customerSelect = event.target.closest("select[id^='eq-'][id$='-customer_id']");
+      if (!customerSelect) return;
+      var match = String(customerSelect.id || "").match(/^eq-(.+)-customer_id$/);
+      if (!match) return;
+      var equipmentId = match[1];
+      var row = findRowById(equipmentId);
+      if (!row) return;
+      row.customer_id = String(customerSelect.value || "");
+
+      var siteSelect = document.getElementById("eq-" + equipmentId + "-site_id");
+      if (!siteSelect) return;
+      var previousSiteId = String(siteSelect.value || "");
+      siteSelect.innerHTML = buildSiteOptions(previousSiteId, row.customer_id);
+      var hasPreviousOption = Array.from(siteSelect.options).some(function (option) {
+        return String(option.value || "") === previousSiteId;
+      });
+      if (!hasPreviousOption) {
+        siteSelect.value = "";
+        row.site_id = "";
+      } else {
+        row.site_id = previousSiteId;
+      }
+    });
+  })();
+</script>
+
+<%- include("../partials/footer") %>

@@ -1,0 +1,261 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css" rel="stylesheet" />
+<%
+  function formatDateShort(value) {
+    if (!value) return "-";
+    const raw = String(value).trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "-";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear());
+    return `${day}/${month}/${year}`;
+  }
+%>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">ENSAIO/MEDIÇÕES</span>
+        <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
+        <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
+      </div>
+      <div class="token-hero-actions">
+        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
+        <% if (order.opening_date) { %><span class="badge text-bg-light border">Abertura: <%= formatDateShort(order.opening_date) %></span><% } %>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+      </div>
+    </div>
+  </div>
+
+  <% if (saved) { %><div class="alert alert-success mb-0">Ensaios/Medicoes salvos com sucesso.</div><% } %>
+  <% if (editLocked) { %><div class="alert alert-warning mb-0">OS aprovada. Edicao bloqueada. Use <strong>Revalidar OS</strong> para liberar.</div><% } %>
+
+  <div class="card app-card" id="measurements-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h6 app-card-title mb-1">Ensaios/Medições</h2>
+          <div class="text-muted small">Cadastre tabelas editaveis e use a tag <code>@ensaios=ID</code> nos capitulos do relatorio.</div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="measurementCancelEditBtn">Cancelar edicao</button>
+      </div>
+
+      <form method="post" action="/admin/report-service/orders/<%= order.id %>/measurements" class="row g-2" id="measurement-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="return_to" value="measurements" />
+        <input type="hidden" name="measurement_id" id="measurementIdInput" value="" />
+        <input type="hidden" name="columns_json" id="measurementColumnsInput" value="" />
+        <input type="hidden" name="rows_json" id="measurementRowsInput" value="" />
+        <div class="col-12 col-md-8"><input class="form-control form-control-sm" name="title" id="measurementTitleInput" placeholder="Titulo da tabela. Ex: 4.1 Alta Tensao -> Terra (L1, L2, L3)" required /></div>
+        <div class="col-12 col-md-2"><input class="form-control form-control-sm" name="sort_order" id="measurementSortInput" placeholder="Ordem" /></div>
+        <div class="col-12 col-md-2 d-flex gap-1">
+          <button class="btn btn-outline-secondary btn-sm flex-fill" type="button" id="measurementAddColumnBtn">+ Coluna</button>
+          <button class="btn btn-outline-secondary btn-sm flex-fill" type="button" id="measurementAddRowBtn">+ Linha</button>
+        </div>
+        <div class="col-12">
+          <div class="table-responsive measurement-builder-wrap">
+            <table class="table table-sm app-table measurement-builder-table mb-0" id="measurementBuilderTable">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-12"><textarea class="form-control form-control-sm" name="notes" id="measurementNotesInput" rows="2" placeholder="Observacoes abaixo da tabela"></textarea></div>
+        <div class="col-12 d-flex justify-content-end">
+          <button class="btn btn-primary btn-sm" type="submit" id="measurementSubmitBtn">Salvar ensaio/medicao</button>
+        </div>
+      </form>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-sm app-table mb-0">
+          <thead><tr><th>ID</th><th>Titulo</th><th>Colunas</th><th>Linhas</th><th>Tag</th><th>Acoes</th></tr></thead>
+          <tbody>
+            <% if (!(measurements || []).length) { %><tr><td colspan="6" class="text-center text-muted py-3">Sem ensaios/medicoes.</td></tr><% } %>
+            <% (measurements || []).forEach((item) => { %>
+              <tr>
+                <td><code><%= item.id %></code></td>
+                <td><%= item.title || "-" %></td>
+                <td><%= Array.isArray(item.columns_json) ? item.columns_json.length : 0 %></td>
+                <td><%= Array.isArray(item.rows_json) ? item.rows_json.length : 0 %></td>
+                <td><code>@ensaios=<%= item.id %></code></td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <button class="btn btn-outline-primary btn-sm measurement-edit-btn" type="button" data-measurement-id="<%= item.id %>">Editar</button>
+                    <form method="post" action="/admin/report-service/orders/<%= order.id %>/measurements/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta tabela de ensaios/medicoes?');">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                      <input type="hidden" name="return_to" value="measurements" />
+                      <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.measurementTablesIndex = <%- JSON.stringify(
+    (measurements || []).map(function(item) {
+      return {
+        id: Number(item.id || 0),
+        title: item.title || "",
+        columns: Array.isArray(item.columns_json) ? item.columns_json : [],
+        rows: Array.isArray(item.rows_json) ? item.rows_json : [],
+        notes: item.notes || "",
+        sortOrder: Number(item.sort_order || 0)
+      };
+    })
+  ).replace(/</g, "\\u003c") %>;
+</script>
+<script>
+  (function () {
+    var form = document.getElementById("measurement-form");
+    var table = document.getElementById("measurementBuilderTable");
+    if (!form || !table) return;
+
+    var idInput = document.getElementById("measurementIdInput");
+    var titleInput = document.getElementById("measurementTitleInput");
+    var sortInput = document.getElementById("measurementSortInput");
+    var notesInput = document.getElementById("measurementNotesInput");
+    var columnsInput = document.getElementById("measurementColumnsInput");
+    var rowsInput = document.getElementById("measurementRowsInput");
+    var submitBtn = document.getElementById("measurementSubmitBtn");
+    var cancelBtn = document.getElementById("measurementCancelEditBtn");
+    var addColumnBtn = document.getElementById("measurementAddColumnBtn");
+    var addRowBtn = document.getElementById("measurementAddRowBtn");
+    var thead = table.querySelector("thead");
+    var tbody = table.querySelector("tbody");
+    var columns = ["Teste", "R 1 min (MOhm/GOhm)", "R 10 min (MOhm/GOhm)", "PI", "Observacoes"];
+    var rows = [["", "", "", "", ""], ["", "", "", "", ""], ["", "", "", "", ""]];
+
+    function esc(value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function normalizeRowsToColumns() {
+      rows = rows.map(function (row) {
+        var source = Array.isArray(row) ? row : [];
+        var next = [];
+        for (var i = 0; i < columns.length; i++) next.push(String(source[i] || ""));
+        return next;
+      });
+      if (!rows.length) rows.push(columns.map(function () { return ""; }));
+    }
+
+    function renderBuilder() {
+      normalizeRowsToColumns();
+      thead.innerHTML = "<tr>" + columns.map(function (column, index) {
+        return '<th><div class="measurement-column-head"><input class="form-control form-control-sm measurement-column-input" data-col-index="' + index + '" value="' + esc(column) + '" /><button class="btn btn-outline-danger btn-sm measurement-remove-column" type="button" data-col-index="' + index + '">x</button></div></th>';
+      }).join("") + '<th class="measurement-actions-col">Acoes</th></tr>';
+      tbody.innerHTML = rows.map(function (row, rowIndex) {
+        var cells = columns.map(function (_column, colIndex) {
+          return '<td><input class="form-control form-control-sm measurement-cell-input" data-row-index="' + rowIndex + '" data-col-index="' + colIndex + '" value="' + esc(row[colIndex] || "") + '" /></td>';
+        }).join("");
+        return '<tr>' + cells + '<td class="measurement-actions-col"><button class="btn btn-outline-danger btn-sm measurement-remove-row" type="button" data-row-index="' + rowIndex + '">Excluir</button></td></tr>';
+      }).join("");
+    }
+
+    function syncFromDom() {
+      table.querySelectorAll(".measurement-column-input").forEach(function (input) {
+        var index = Number(input.getAttribute("data-col-index"));
+        columns[index] = String(input.value || "").trim();
+      });
+      table.querySelectorAll(".measurement-cell-input").forEach(function (input) {
+        var rowIndex = Number(input.getAttribute("data-row-index"));
+        var colIndex = Number(input.getAttribute("data-col-index"));
+        if (!rows[rowIndex]) rows[rowIndex] = [];
+        rows[rowIndex][colIndex] = String(input.value || "").trim();
+      });
+      columns = columns.map(function (item) { return String(item || "").trim(); }).filter(Boolean);
+      normalizeRowsToColumns();
+    }
+
+    function resetForm() {
+      idInput.value = "";
+      titleInput.value = "";
+      sortInput.value = "";
+      notesInput.value = "";
+      columns = ["Teste", "R 1 min (MOhm/GOhm)", "R 10 min (MOhm/GOhm)", "PI", "Observacoes"];
+      rows = [["", "", "", "", ""], ["", "", "", "", ""], ["", "", "", "", ""]];
+      submitBtn.textContent = "Salvar ensaio/medicao";
+      cancelBtn.classList.add("d-none");
+      renderBuilder();
+    }
+
+    addColumnBtn.addEventListener("click", function () {
+      syncFromDom();
+      columns.push("Nova coluna");
+      rows = rows.map(function (row) { row.push(""); return row; });
+      renderBuilder();
+    });
+
+    addRowBtn.addEventListener("click", function () {
+      syncFromDom();
+      rows.push(columns.map(function () { return ""; }));
+      renderBuilder();
+    });
+
+    table.addEventListener("click", function (event) {
+      var removeColumn = event.target.closest(".measurement-remove-column");
+      if (removeColumn) {
+        syncFromDom();
+        var colIndex = Number(removeColumn.getAttribute("data-col-index"));
+        if (columns.length <= 1) return;
+        columns.splice(colIndex, 1);
+        rows = rows.map(function (row) {
+          row.splice(colIndex, 1);
+          return row;
+        });
+        renderBuilder();
+        return;
+      }
+      var removeRow = event.target.closest(".measurement-remove-row");
+      if (removeRow) {
+        syncFromDom();
+        var rowIndex = Number(removeRow.getAttribute("data-row-index"));
+        if (rows.length <= 1) return;
+        rows.splice(rowIndex, 1);
+        renderBuilder();
+      }
+    });
+
+    document.querySelectorAll(".measurement-edit-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = Number(btn.getAttribute("data-measurement-id") || 0);
+        var item = (window.measurementTablesIndex || []).find(function (entry) { return Number(entry.id) === id; });
+        if (!item) return;
+        idInput.value = String(item.id || "");
+        titleInput.value = item.title || "";
+        sortInput.value = item.sortOrder ? String(item.sortOrder) : "";
+        notesInput.value = item.notes || "";
+        columns = Array.isArray(item.columns) && item.columns.length ? item.columns.slice() : ["Teste", "Valor", "Observacoes"];
+        rows = Array.isArray(item.rows) && item.rows.length ? item.rows.map(function (row) { return Array.isArray(row) ? row.slice() : []; }) : [columns.map(function () { return ""; })];
+        submitBtn.textContent = "Salvar edicao";
+        cancelBtn.classList.remove("d-none");
+        renderBuilder();
+        document.getElementById("measurements-card").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    cancelBtn.addEventListener("click", resetForm);
+
+    form.addEventListener("submit", function () {
+      syncFromDom();
+      columnsInput.value = JSON.stringify(columns);
+      rowsInput.value = JSON.stringify(rows);
+    });
+
+    renderBuilder();
+  })();
+</script>
+<%- include("../partials/footer") %>

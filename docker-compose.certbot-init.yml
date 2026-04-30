@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 1 — Execute UMA VEZ antes do primeiro deploy em produção:
+#
+#   docker compose -f docker-compose.certbot-init.yml --env-file .env.prod up
+#
+# Aguarde a mensagem "Certificado emitido com sucesso!" e pressione Ctrl+C.
+# Depois suba o stack completo com docker-compose.prod.yml.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  nginx-bootstrap:
+    image: nginx:1.27-alpine
+    restart: "no"
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/bootstrap.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_www:/var/www/certbot
+
+  certbot-init:
+    image: certbot/certbot:latest
+    restart: "no"
+    depends_on:
+      - nginx-bootstrap
+    environment:
+      DOMAIN:           ${DOMAIN}
+      CERTBOT_EMAIL:    ${CERTBOT_EMAIL}
+      CERTBOT_STAGING:  ${CERTBOT_STAGING:-0}
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+      - ./docker/nginx/init-certs.sh:/scripts/init-certs.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/init-certs.sh"]
+
+volumes:
+  certbot_www:
+    name: vextrom_certbot_www
+  certbot_certs:
+    name: vextrom_certbot_certs

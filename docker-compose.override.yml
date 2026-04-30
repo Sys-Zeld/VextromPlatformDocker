@@ -1,0 +1,33 @@
+# Carregado automaticamente pelo Docker Compose em desenvolvimento.
+# Ativa: hot-reload com nodemon, portas expostas para ferramentas locais,
+# e sobrescreve as URLs de banco/redis para apontar aos serviços do compose.
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  app:
+    build:
+      target: dev
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      # Sobrescreve os hosts do .env (localhost) para os nomes de serviço do compose
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/dbspeflow
+      SPECFLOW_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/dbspeflow
+      MODULE_SPEC_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/dbmodulespec
+      REPORT_SERVICE_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/reportservice
+      CONFIG_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/configdb
+    volumes:
+      - .:/app                  # hot-reload: código atualizado em tempo real
+      - /app/node_modules       # preserva node_modules da imagem
+      - dados_volume:/app/dados
