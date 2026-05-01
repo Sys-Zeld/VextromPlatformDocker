@@ -90,7 +90,7 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     restart: "no"
-    user: root
+    user: "0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
