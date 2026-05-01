@@ -35,8 +35,11 @@ server {
     # OCSP Stapling
     ssl_stapling        on;
     ssl_stapling_verify on;
-    resolver            1.1.1.1 8.8.8.8 valid=300s;
     resolver_timeout    5s;
+
+    # DNS interno do Docker (resolve upstreams por requisição, não no boot)
+    # + DNS externos para OCSP Stapling
+    resolver 127.0.0.11 1.1.1.1 8.8.8.8 valid=10s;
 
     # Headers de segurança
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
@@ -61,7 +64,8 @@ server {
     # ── pgAdmin 4 — administração do banco de dados ───────────────────────────
     # Acessível em: https://${DOMAIN}/admdatabase/
     location /admdatabase/ {
-        proxy_pass             http://pgadmin:80/admdatabase/;
+        set $pgadmin pgadmin;
+        proxy_pass             http://$pgadmin/admdatabase/;
         proxy_http_version     1.1;
         proxy_set_header       Host              $host;
         proxy_set_header       X-Real-IP         $remote_addr;
@@ -79,7 +83,8 @@ server {
     # ── Portainer — administração de containers ────────────────────────────────
     # Acessível em: https://${DOMAIN}/serveradm/
     location /serveradm/ {
-        proxy_pass             http://portainer:9000/serveradm/;
+        set $portainer portainer;
+        proxy_pass             http://$portainer:9000/serveradm/;
         proxy_http_version     1.1;
         # WebSocket — necessário para logs e terminal do Portainer
         proxy_set_header       Upgrade           $http_upgrade;
@@ -96,7 +101,8 @@ server {
 
     # ── Aplicação principal ────────────────────────────────────────────────────
     location / {
-        proxy_pass             http://app:3000;
+        set $app app;
+        proxy_pass             http://$app:3000;
         proxy_http_version     1.1;
         proxy_set_header       Upgrade           $http_upgrade;
         proxy_set_header       Connection        "upgrade";
