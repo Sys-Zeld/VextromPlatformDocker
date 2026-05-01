@@ -74,7 +74,7 @@ services:
     image: dpage/pgadmin4:latest
     restart: "no"
     environment:
-      PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL:-admin@staging.local}
+      PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL:-admin@vextrom.com}
       PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD:-staging@pgadmin}
       PGADMIN_CONFIG_SERVER_MODE:        "True"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
@@ -96,7 +96,6 @@ services:
       - portainer_data:/data
     command: >
       --base-url /serveradm
-      --http-addr :9000
       --host unix:///var/run/docker.sock
 
   nginx:

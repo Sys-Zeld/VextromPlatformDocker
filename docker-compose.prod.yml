@@ -83,7 +83,6 @@ services:
       - portainer_data:/data
     command: >
       --base-url /serveradm
-      --http-addr :9000
       --host unix:///var/run/docker.sock
 
 volumes:
