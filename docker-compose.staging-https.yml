@@ -1,13 +1,18 @@
 # Staging com HTTPS usando certificado auto-assinado.
-# Usa a mesma imagem de produção (target: prod) e o mesmo config do nginx,
-# porém com o cert gerado localmente em vez do Let's Encrypt.
+# O certificado é gerado automaticamente pelo serviço cert-gen na primeira execução.
+# Nenhum script externo é necessário.
 #
-# Pré-requisito — gerar o certificado:
-#   sh docker/nginx/gen-self-signed-cert.sh <IP-OU-DOMINIO>
+# Pré-requisito — definir DOMAIN no .env.staging:
+#   DOMAIN=192.168.1.100
+#   APP_BASE_URL=https://192.168.1.100
 #
 # Subir:
 #   docker compose -f docker-compose.yml -f docker-compose.staging-https.yml \
 #     --env-file .env.staging -p vextrom-staging-https up -d --build
+#
+# Migrations (após subir):
+#   docker compose -f docker-compose.yml -f docker-compose.staging-https.yml \
+#     --env-file .env.staging -p vextrom-staging-https exec app npm run db:migrate
 #
 # Derrubar:
 #   docker compose -f docker-compose.yml -f docker-compose.staging-https.yml \
@@ -29,6 +34,41 @@ services:
     env_file:
       - .env.staging
 
+  # Gera o certificado auto-assinado antes do nginx subir.
+  # Encerra com sucesso após gerar; se o cert já existir, apenas pula.
+  # $$DOMAIN no script é escapado do docker-compose e vira $DOMAIN no shell,
+  # que lê o valor da variável de ambiente DOMAIN injetada pelo 'environment:'.
+  cert-gen:
+    image: alpine
+    restart: "no"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - self_signed_certs:/certs
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ -f "/certs/$$DOMAIN/fullchain.pem" ]; then
+          echo "Certificado já existe para $$DOMAIN, pulando."
+          exit 0
+        fi
+        echo "Instalando openssl..."
+        apk add --no-cache openssl > /dev/null 2>&1
+        mkdir -p "/certs/$$DOMAIN"
+        if echo "$$DOMAIN" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+          SAN="IP:$$DOMAIN"
+        else
+          SAN="DNS:$$DOMAIN"
+        fi
+        echo "Gerando certificado para $$DOMAIN (SAN: $$SAN)..."
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout "/certs/$$DOMAIN/privkey.pem" \
+          -out    "/certs/$$DOMAIN/fullchain.pem" \
+          -subj   "/C=BR/O=Vextrom Staging/CN=$$DOMAIN" \
+          -addext "subjectAltName=$$SAN"
+        echo "Certificado gerado com sucesso para $$DOMAIN"
+
   nginx:
     image: nginx:1.27-alpine
     restart: "no"
@@ -36,11 +76,15 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Deve ser o mesmo valor usado ao gerar o certificado
       DOMAIN: ${DOMAIN:-localhost}
     volumes:
       - ./docker/nginx/templates:/etc/nginx/templates:ro
-      # Monta os certs auto-assinados no mesmo caminho que o nginx espera do Let's Encrypt
-      - ./docker/nginx/certs:/etc/letsencrypt/live:ro
+      - self_signed_certs:/etc/letsencrypt/live:ro
     depends_on:
-      - app
+      cert-gen:
+        condition: service_completed_successfully
+      app:
+        condition: service_started
+
+volumes:
+  self_signed_certs:
