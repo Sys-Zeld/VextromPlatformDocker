@@ -69,6 +69,36 @@ services:
           -addext "subjectAltName=$$SAN"
         echo "Certificado gerado com sucesso para $$DOMAIN"
 
+  # pgAdmin 4 — acessível em https://IP/admdatabase/
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: "no"
+    environment:
+      PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL:-admin@staging.local}
+      PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD:-staging@pgadmin}
+      PGADMIN_CONFIG_SERVER_MODE:        "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      SCRIPT_NAME:                       /admdatabase
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Portainer — acessível em https://IP/serveradm/
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: "no"
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - portainer_data:/data
+    command: >
+      --base-url /serveradm
+      --http-addr :9000
+      --host unix:///var/run/docker.sock
+
   nginx:
     image: nginx:1.27-alpine
     restart: "no"
@@ -85,6 +115,12 @@ services:
         condition: service_completed_successfully
       app:
         condition: service_started
+      portainer:
+        condition: service_started
+      pgadmin:
+        condition: service_started
 
 volumes:
   self_signed_certs:
+  pgadmin_data:
+  portainer_data:
