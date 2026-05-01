@@ -1,0 +1,28 @@
+# Portainer CE — gerenciamento visual de containers via web.
+# Roda isolado dos outros stacks, não interfere em nada.
+#
+# Subir:
+#   docker compose -f docker-compose.portainer.yml -p portainer up -d
+#
+# Derrubar:
+#   docker compose -f docker-compose.portainer.yml -p portainer down
+#
+# Acesso: https://IP-DO-SERVIDOR:9443
+# Na primeira abertura crie o usuário admin.
+#
+# Segurança — libere a porta só para o seu IP:
+#   ufw allow from SEU-IP to any port 9443
+
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: unless-stopped
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+volumes:
+  portainer_data:
+    name: vextrom_portainer_data

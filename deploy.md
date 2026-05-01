@@ -16,8 +16,10 @@
 docker-compose.yml               → base compartilhado (dev + prod + staging)
 docker-compose.override.yml      → overrides de desenvolvimento (carregado automaticamente)
 docker-compose.staging.yml       → overrides de staging (teste no servidor, sem SSL)
+docker-compose.staging-https.yml → overrides de staging com HTTPS e cert auto-assinado
 docker-compose.prod.yml          → overrides de produção
 docker-compose.certbot-init.yml  → emissão inicial do certificado SSL (uso único)
+docker-compose.portainer.yml     → Portainer CE (gerenciamento visual de containers)
 Dockerfile                       → multi-stage: target dev | target prod
 .env                             → variáveis de desenvolvimento local
 .env.prod                        → variáveis de produção (não commitar)
@@ -349,6 +351,37 @@ docker compose \
 Todos os serviços devem aparecer com status `running (healthy)`.
 
 Acesse: https://seu-dominio.com
+
+---
+
+## Portainer — gerenciamento visual de containers
+
+Interface web para gerenciar todos os containers, logs, volumes e imagens do servidor.
+
+### Subir o Portainer
+
+```bash
+docker compose -f docker-compose.portainer.yml -p portainer up -d
+```
+
+Acesse: `https://IP-DO-SERVIDOR:9443`
+
+Na primeira abertura crie o usuário admin. O Portainer detecta automaticamente todos os containers rodando no servidor.
+
+### Segurança — restringir acesso por IP
+
+```bash
+# Libera a porta 9443 apenas para o seu IP (substitua pelo IP real)
+ufw allow from SEU-IP to any port 9443
+# Bloqueia acesso público
+ufw deny 9443
+```
+
+### Derrubar o Portainer
+
+```bash
+docker compose -f docker-compose.portainer.yml -p portainer down
+```
 
 ---
 
