@@ -156,6 +156,70 @@ docker compose \
 
 > O `-v` remove apenas os volumes do projeto `vextrom-staging`. Os volumes de produção não são afetados.
 
+### Staging com HTTPS (certificado auto-assinado)
+
+Testa o stack completo com Nginx e HTTPS antes de emitir o certificado real.
+Não requer domínio — funciona com o IP do servidor.
+
+**Passo 1 — Gerar o certificado auto-assinado:**
+
+```bash
+# Com IP
+sh docker/nginx/gen-self-signed-cert.sh 192.168.1.100
+
+# Com domínio
+sh docker/nginx/gen-self-signed-cert.sh staging.vextrom.com.br
+```
+
+O cert é salvo em `docker/nginx/certs/<dominio>/` (ignorado pelo git).
+
+**Passo 2 — Definir `DOMAIN` no `.env.staging`:**
+
+```bash
+# Adicione ou edite no .env.staging
+DOMAIN=192.168.1.100       # mesmo valor usado no passo 1
+APP_BASE_URL=https://192.168.1.100
+```
+
+**Passo 3 — Subir o stack:**
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging-https.yml \
+  --env-file .env.staging \
+  -p vextrom-staging-https \
+  up -d --build
+```
+
+**Passo 4 — Rodar migrations:**
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging-https.yml \
+  --env-file .env.staging \
+  -p vextrom-staging-https \
+  exec app npm run db:migrate
+```
+
+Acesse: `https://192.168.1.100`
+
+> O navegador vai exibir aviso de certificado não confiável — clique em **Avançar** ou **Continuar assim mesmo**. Isso é esperado com cert auto-assinado.
+
+**Derrubar:**
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.staging-https.yml \
+  --env-file .env.staging \
+  -p vextrom-staging-https \
+  down -v
+```
+
+---
+
 ### Checklist de validação no staging
 
 Antes de liberar para produção, verifique:

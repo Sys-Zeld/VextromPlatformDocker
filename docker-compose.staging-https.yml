@@ -1,0 +1,46 @@
+# Staging com HTTPS usando certificado auto-assinado.
+# Usa a mesma imagem de produção (target: prod) e o mesmo config do nginx,
+# porém com o cert gerado localmente em vez do Let's Encrypt.
+#
+# Pré-requisito — gerar o certificado:
+#   sh docker/nginx/gen-self-signed-cert.sh <IP-OU-DOMINIO>
+#
+# Subir:
+#   docker compose -f docker-compose.yml -f docker-compose.staging-https.yml \
+#     --env-file .env.staging -p vextrom-staging-https up -d --build
+#
+# Derrubar:
+#   docker compose -f docker-compose.yml -f docker-compose.staging-https.yml \
+#     --env-file .env.staging -p vextrom-staging-https down -v
+
+services:
+  postgres:
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  redis:
+    restart: "no"
+
+  app:
+    build:
+      target: prod
+    restart: "no"
+    env_file:
+      - .env.staging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: "no"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Deve ser o mesmo valor usado ao gerar o certificado
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      # Monta os certs auto-assinados no mesmo caminho que o nginx espera do Let's Encrypt
+      - ./docker/nginx/certs:/etc/letsencrypt/live:ro
+    depends_on:
+      - app
