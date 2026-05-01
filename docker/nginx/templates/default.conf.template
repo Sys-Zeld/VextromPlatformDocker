@@ -63,14 +63,19 @@ server {
 
     # ── pgAdmin 4 — administração do banco de dados ───────────────────────────
     # Acessível em: https://${DOMAIN}/admdatabase/
+    # O prefixo /admdatabase/ é removido antes de enviar ao pgAdmin;
+    # X-Script-Name informa ao pgAdmin qual é o base path para gerar URLs corretas.
     location /admdatabase/ {
         set $pgadmin pgadmin;
-        proxy_pass             http://$pgadmin/admdatabase/;
+        rewrite ^/admdatabase/(.*)$ /$1 break;
+        proxy_pass             http://$pgadmin;
         proxy_http_version     1.1;
+        proxy_redirect         off;
         proxy_set_header       Host              $host;
         proxy_set_header       X-Real-IP         $remote_addr;
         proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header       X-Forwarded-Proto $scheme;
+        proxy_set_header       X-Scheme          $scheme;
         proxy_set_header       X-Script-Name     /admdatabase;
         # WebSocket — necessário para o Query Tool e console SQL
         proxy_set_header       Upgrade           $http_upgrade;
