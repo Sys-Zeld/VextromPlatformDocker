@@ -35,11 +35,8 @@ server {
     # OCSP Stapling
     ssl_stapling        on;
     ssl_stapling_verify on;
+    resolver            1.1.1.1 8.8.8.8 valid=300s;
     resolver_timeout    5s;
-
-    # DNS interno do Docker (resolve upstreams por requisição, não no boot)
-    # + DNS externos para OCSP Stapling
-    resolver 127.0.0.11 1.1.1.1 8.8.8.8 valid=10s;
 
     # Headers de segurança
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
@@ -60,49 +57,6 @@ server {
     gzip_types      text/plain text/css text/xml application/json
                     application/javascript application/xml+rss
                     image/svg+xml;
-
-    # ── pgAdmin 4 — administração do banco de dados ───────────────────────────
-    # Acessível em: https://${DOMAIN}/admdatabase/
-    # O prefixo /admdatabase/ é removido antes de enviar ao pgAdmin;
-    # X-Script-Name informa ao pgAdmin qual é o base path para gerar URLs corretas.
-    location /admdatabase/ {
-        set $pgadmin pgadmin;
-        rewrite ^/admdatabase/(.*)$ /$1 break;
-        proxy_pass             http://$pgadmin;
-        proxy_http_version     1.1;
-        proxy_redirect         off;
-        proxy_set_header       Host              $host;
-        proxy_set_header       X-Real-IP         $remote_addr;
-        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header       X-Forwarded-Proto $scheme;
-        proxy_set_header       X-Scheme          $scheme;
-        proxy_set_header       X-Script-Name     /admdatabase;
-        # WebSocket — necessário para o Query Tool e console SQL
-        proxy_set_header       Upgrade           $http_upgrade;
-        proxy_set_header       Connection        "upgrade";
-        proxy_read_timeout     3600s;
-        proxy_send_timeout     3600s;
-        proxy_connect_timeout  10s;
-    }
-
-    # ── Portainer — administração de containers ────────────────────────────────
-    # Acessível em: https://${DOMAIN}/serveradm/
-    location /serveradm/ {
-        set $portainer portainer;
-        proxy_pass             http://$portainer:9000/serveradm/;
-        proxy_http_version     1.1;
-        # WebSocket — necessário para logs e terminal do Portainer
-        proxy_set_header       Upgrade           $http_upgrade;
-        proxy_set_header       Connection        "upgrade";
-        proxy_set_header       Host              $host;
-        proxy_set_header       X-Real-IP         $remote_addr;
-        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header       X-Forwarded-Proto $scheme;
-        # Timeout longo para operações do Portainer (logs, console, etc.)
-        proxy_read_timeout     3600s;
-        proxy_send_timeout     3600s;
-        proxy_connect_timeout  10s;
-    }
 
     # ── Aplicação principal ────────────────────────────────────────────────────
     location / {

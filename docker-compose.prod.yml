@@ -15,7 +15,6 @@ services:
     build:
       target: prod
     restart: unless-stopped
-    # Porta NÃO exposta ao host — nginx faz o proxy internamente
     env_file:
       - .env.prod
     deploy:
@@ -37,8 +36,6 @@ services:
       - certbot_certs:/etc/letsencrypt:ro
     depends_on:
       - app
-      - portainer
-      - pgadmin
 
   certbot:
     image: certbot/certbot:latest
@@ -53,18 +50,17 @@ services:
                     sleep 12h & wait $${!};
                   done"
 
-  # pgAdmin 4 — acessível em https://${DOMAIN}/admdatabase/
-  # Sem porta exposta ao host — nginx faz o proxy internamente.
-  # Conecta automaticamente ao postgres do projeto via servers.json.
+  # pgAdmin 4 — acessível em https://IP:8184
   pgadmin:
     image: dpage/pgadmin4:latest
     restart: unless-stopped
+    ports:
+      - "8184:80"
     environment:
       PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE:        "True"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      SCRIPT_NAME:                       /admdatabase
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
@@ -72,17 +68,18 @@ services:
       postgres:
         condition: service_healthy
 
-  # Portainer — acessível em https://${DOMAIN}/serveradm/
-  # Sem portas expostas ao host — nginx faz o proxy internamente
+  # Portainer — acessível em https://IP:9443
   portainer:
     image: portainer/portainer-ce:latest
     restart: unless-stopped
     user: "0"
+    ports:
+      - "9443:9443"
+      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
     command: >
-      --base-url /serveradm
       --host unix:///var/run/docker.sock
 
 volumes:

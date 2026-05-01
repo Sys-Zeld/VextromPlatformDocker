@@ -69,16 +69,17 @@ services:
           -addext "subjectAltName=$$SAN"
         echo "Certificado gerado com sucesso para $$DOMAIN"
 
-  # pgAdmin 4 — acessível em https://IP/admdatabase/
+  # pgAdmin 4 — acessível em http://IP:8184
   pgadmin:
     image: dpage/pgadmin4:latest
     restart: "no"
+    ports:
+      - "8184:80"
     environment:
       PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL:-admin@vextrom.com}
       PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD:-staging@pgadmin}
       PGADMIN_CONFIG_SERVER_MODE:        "True"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      SCRIPT_NAME:                       /admdatabase
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
@@ -86,16 +87,18 @@ services:
       postgres:
         condition: service_healthy
 
-  # Portainer — acessível em https://IP/serveradm/
+  # Portainer — acessível em https://IP:9443
   portainer:
     image: portainer/portainer-ce:latest
     restart: "no"
     user: "0"
+    ports:
+      - "9443:9443"
+      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
     command: >
-      --base-url /serveradm
       --host unix:///var/run/docker.sock
 
   nginx:
@@ -113,10 +116,6 @@ services:
       cert-gen:
         condition: service_completed_successfully
       app:
-        condition: service_started
-      portainer:
-        condition: service_started
-      pgadmin:
         condition: service_started
 
 volumes:
