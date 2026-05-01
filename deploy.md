@@ -15,13 +15,14 @@
 ```
 docker-compose.yml               → base compartilhado (dev + prod + staging)
 docker-compose.override.yml      → overrides de desenvolvimento (carregado automaticamente)
-docker-compose.staging.yml       → overrides de staging (teste no servidor, sem SSL)
-docker-compose.staging-https.yml → overrides de staging com HTTPS e cert auto-assinado
-docker-compose.prod.yml          → overrides de produção
+docker-compose.staging.yml       → staging HTTP (porta 80, sem SSL)
+docker-compose.staging-https.yml → staging HTTPS com certificado auto-assinado
+docker-compose.prod.yml          → produção (Nginx + Let's Encrypt + restart)
 docker-compose.certbot-init.yml  → emissão inicial do certificado SSL (uso único)
 docker-compose.portainer.yml     → Portainer CE (gerenciamento visual de containers)
 Dockerfile                       → multi-stage: target dev | target prod
 .env                             → variáveis de desenvolvimento local
+.env.staging                     → variáveis de staging (não commitar)
 .env.prod                        → variáveis de produção (não commitar)
 docker/nginx/templates/          → config Nginx (HTTPS + proxy)
 docker/nginx/bootstrap.conf      → config HTTP temporária para emissão do cert
@@ -71,28 +72,23 @@ As portas do PostgreSQL (5432) e Redis (6379) ficam expostas para ferramentas lo
 
 ## Staging (teste no servidor antes da produção)
 
-O ambiente de staging roda a **imagem de produção** (`target: prod`) diretamente na porta `8080`, sem Nginx nem SSL.
-Isso permite validar a build e as regras de negócio no servidor real antes de liberar o tráfego em produção.
+O ambiente de staging roda a **imagem de produção** (`target: prod`) isolada da produção via `--project-name`.
 
-Os dados ficam **completamente isolados** da produção — volumes separados via `--project-name vextrom-staging`.
+### Staging HTTP (porta 80)
 
-### 1. Configurar o .env.staging
+Teste rápido sem SSL — ideal para validar regras de negócio e migrations.
 
-```bash
-nano .env.staging
-```
-
-Ajuste apenas estes campos:
+**1. Configurar `.env.staging`:**
 
 | Variável | O que colocar |
 |---|---|
 | `APP_BASE_URL` | `http://IP-DO-SERVIDOR` |
 | `POSTGRES_PASSWORD` | Qualquer senha (só para staging) |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Chave real se quiser testar IA, senão deixe vazio |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Chave real se quiser testar IA |
 
 > SMTP fica desabilitado no `.env.staging` por padrão para não disparar e-mails reais.
 
-### 2. Subir o staging
+**2. Subir:**
 
 ```bash
 docker compose \
@@ -103,7 +99,7 @@ docker compose \
   up -d --build
 ```
 
-### 3. Rodar as migrations
+**3. Migrations:**
 
 ```bash
 docker compose \
@@ -114,26 +110,7 @@ docker compose \
   exec app npm run db:migrate
 ```
 
-### 4. Verificar status
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.staging.yml \
-  --env-file .env.staging \
-  -p vextrom-staging \
-  ps
-```
-
-Acesse: `http://IP-DO-SERVIDOR`
-
-> Certifique-se de que a porta **80** está liberada no firewall do servidor.
-> ```bash
-> # Ubuntu/Debian com ufw
-> ufw allow 80/tcp
-> ```
-
-### 5. Ver logs do staging
+**4. Logs:**
 
 ```bash
 docker compose \
@@ -144,10 +121,13 @@ docker compose \
   logs -f app
 ```
 
-### 6. Derrubar o staging após validação
+Acesse: `http://IP-DO-SERVIDOR`
+
+> Libere a porta 80 no firewall: `ufw allow 80/tcp`
+
+**5. Derrubar:**
 
 ```bash
-# Para os containers e remove os volumes de staging
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.staging.yml \
@@ -156,23 +136,21 @@ docker compose \
   down -v
 ```
 
-> O `-v` remove apenas os volumes do projeto `vextrom-staging`. Os volumes de produção não são afetados.
+---
 
-### Staging com HTTPS (certificado auto-assinado)
+### Staging HTTPS (certificado auto-assinado)
 
-Testa o stack completo com Nginx e HTTPS antes de emitir o certificado real.
-O certificado é gerado automaticamente pelo próprio compose — não requer script externo nem OpenSSL instalado localmente.
-Funciona com IP ou domínio.
+Testa o stack completo com Nginx e HTTPS.
+O certificado é gerado automaticamente — nenhum script externo ou OpenSSL local é necessário.
 
-**Passo 1 — Definir `DOMAIN` no `.env.staging`:**
+**1. Adicionar ao `.env.staging`:**
 
 ```bash
-# Adicione ou edite no .env.staging
 DOMAIN=192.168.1.100
 APP_BASE_URL=https://192.168.1.100
 ```
 
-**Passo 2 — Subir o stack:**
+**2. Subir:**
 
 ```bash
 docker compose \
@@ -183,10 +161,9 @@ docker compose \
   up -d --build
 ```
 
-Na primeira execução, o serviço `cert-gen` gera o certificado automaticamente antes do Nginx subir.
-Nas execuções seguintes, o certificado já existe e o `cert-gen` encerra imediatamente.
+Na primeira execução o serviço `cert-gen` gera o certificado automaticamente antes do Nginx subir.
 
-**Passo 3 — Rodar migrations:**
+**3. Migrations:**
 
 ```bash
 docker compose \
@@ -197,11 +174,11 @@ docker compose \
   exec app npm run db:migrate
 ```
 
-Acesse: `https://192.168.1.100`
+Acesse: `https://IP-DO-SERVIDOR`
 
-> O navegador vai exibir aviso de certificado não confiável — clique em **Avançar** ou **Continuar assim mesmo**. Isso é esperado com cert auto-assinado.
+> O navegador exibirá aviso de certificado não confiável — clique em **Avançar**. Esperado com cert auto-assinado.
 
-**Derrubar:**
+**4. Derrubar:**
 
 ```bash
 docker compose \
@@ -259,19 +236,11 @@ rsync -avz --exclude='node_modules' --exclude='.git' --exclude='dados' \
 
 ### 3. Configurar variáveis de produção
 
-Copie o template e edite com os valores reais:
-
-```bash
-cp .env.prod .env.prod.local  # opcional — mantenha o template limpo
-```
-
-Edite `.env.prod` preenchendo **todos** os campos marcados com `TROQUE_`:
-
 ```bash
 nano .env.prod
 ```
 
-Campos obrigatórios antes de continuar:
+Campos obrigatórios:
 
 | Variável | Descrição | Como gerar |
 |---|---|---|
@@ -283,11 +252,9 @@ Campos obrigatórios antes de continuar:
 | `ADMIN_PASS` | Senha do usuário admin | Senha forte manual |
 | `APP_BASE_URL` | URL pública da aplicação | `https://seu-dominio.com` |
 
-> **Atenção:** `POSTGRES_PASSWORD` deve ser idêntico no campo `POSTGRES_PASSWORD=` e embutido em todas as `DATABASE_URL` do arquivo.
+> **Atenção:** `POSTGRES_PASSWORD` deve ser idêntico no campo `POSTGRES_PASSWORD=` e em todas as `DATABASE_URL` do arquivo.
 
-### 4. Testar o certificado SSL (recomendado)
-
-Antes de usar o Let's Encrypt real, valide o fluxo com o ambiente de staging (sem consumir o rate-limit):
+### 4. Testar certificado SSL (staging Let's Encrypt)
 
 ```bash
 # No .env.prod, defina temporariamente:
@@ -298,17 +265,14 @@ CERTBOT_STAGING=1
 docker compose -f docker-compose.certbot-init.yml --env-file .env.prod up
 ```
 
-Aguarde a mensagem `Certificado emitido com sucesso!` e pressione **Ctrl+C**.
+Aguarde `Certificado emitido com sucesso!` → **Ctrl+C**.
 
 ### 5. Emitir o certificado real
 
-Mude para produção no `.env.prod`:
-
-```
+```bash
+# No .env.prod:
 CERTBOT_STAGING=0
 ```
-
-Remova os volumes de staging e emita o certificado real:
 
 ```bash
 docker volume rm vextrom_certbot_certs vextrom_certbot_www
@@ -352,35 +316,71 @@ Todos os serviços devem aparecer com status `running (healthy)`.
 
 Acesse: https://seu-dominio.com
 
----
-
-## Portainer — gerenciamento visual de containers
-
-Interface web para gerenciar todos os containers, logs, volumes e imagens do servidor.
-
-### Subir o Portainer
+### 9. Subir o Portainer
 
 ```bash
 docker compose -f docker-compose.portainer.yml -p portainer up -d
 ```
 
-Acesse: `https://IP-DO-SERVIDOR:9443`
+Acesse: `https://IP-DO-SERVIDOR:9443` — crie o usuário admin na primeira abertura.
 
-Na primeira abertura crie o usuário admin. O Portainer detecta automaticamente todos os containers rodando no servidor.
+> Restrinja o acesso ao Portainer ao seu IP antes de expô-lo:
+> ```bash
+> ufw allow from SEU-IP to any port 9443
+> ufw deny 9443
+> ```
 
-### Segurança — restringir acesso por IP
+---
+
+## Portainer — gerenciamento visual de containers
+
+O Portainer CE é a interface web para administrar todos os containers do servidor.
+Roda isolado dos outros stacks e acessa o Docker Engine diretamente via socket.
+
+### O que você pode fazer no Portainer
+
+| Ação | Onde encontrar |
+|---|---|
+| Ver status de todos os containers | Home → Containers |
+| Iniciar / parar / reiniciar um container | Containers → ações |
+| Ver logs em tempo real | Containers → nome do container → Logs |
+| Acessar o terminal do container | Containers → nome → Console |
+| Gerenciar volumes e dados | Volumes |
+| Ver e remover imagens | Images |
+| Subir um novo stack Docker Compose | Stacks → Add stack |
+| Inspecionar variáveis de ambiente | Containers → Inspect |
+
+### Comandos
 
 ```bash
-# Libera a porta 9443 apenas para o seu IP (substitua pelo IP real)
-ufw allow from SEU-IP to any port 9443
-# Bloqueia acesso público
-ufw deny 9443
+# Subir
+docker compose -f docker-compose.portainer.yml -p portainer up -d
+
+# Ver logs do próprio Portainer
+docker compose -f docker-compose.portainer.yml -p portainer logs -f
+
+# Atualizar para versão mais recente
+docker compose -f docker-compose.portainer.yml -p portainer pull
+docker compose -f docker-compose.portainer.yml -p portainer up -d
+
+# Derrubar (dados do Portainer são preservados no volume)
+docker compose -f docker-compose.portainer.yml -p portainer down
+
+# Derrubar e apagar dados (reseta usuário admin)
+docker compose -f docker-compose.portainer.yml -p portainer down -v
 ```
 
-### Derrubar o Portainer
+### Segurança
 
 ```bash
-docker compose -f docker-compose.portainer.yml -p portainer down
+# Libera porta 9443 apenas para o seu IP
+ufw allow from SEU-IP to any port 9443
+
+# Bloqueia acesso público
+ufw deny 9443
+
+# Verificar regras ativas
+ufw status numbered
 ```
 
 ---
@@ -478,7 +478,7 @@ docker compose \
   exec certbot certbot renew --force-renewal
 ```
 
-Após renovar, recarregue o Nginx para aplicar os novos certificados:
+Após renovar, recarregue o Nginx:
 
 ```bash
 docker compose \
@@ -516,6 +516,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | `dados_volume` | Documentos, backups, arquivos de usuário |
 | `vextrom_certbot_www` | Desafios ACME (webroot) |
 | `vextrom_certbot_certs` | Certificados Let's Encrypt |
+| `vextrom_portainer_data` | Configuração e dados do Portainer |
 
 ---
 
@@ -528,3 +529,4 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | postgres | 5432 | — |
 | redis | 6379 | — |
 | certbot | — | — |
+| portainer | 9443 | 9443 (restrito por IP) |

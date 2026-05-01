@@ -4,6 +4,9 @@
 # Subir:
 #   docker compose -f docker-compose.portainer.yml -p portainer up -d
 #
+# Atualizar após enviar este arquivo ao servidor:
+#   docker compose -f docker-compose.portainer.yml -p portainer up -d --force-recreate
+#
 # Derrubar:
 #   docker compose -f docker-compose.portainer.yml -p portainer down
 #
@@ -17,11 +20,14 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     restart: unless-stopped
+    user: root
     ports:
-      - "9443:9443"
+      - "8000:8000"   # tunnel para agentes Portainer (necessário para acesso local)
+      - "9443:9443"   # HTTPS
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
+    command: --host=unix:///var/run/docker.sock
 
 volumes:
   portainer_data:
