@@ -50,12 +50,12 @@ services:
                     sleep 12h & wait $${!};
                   done"
 
-  # pgAdmin 4 — acessível em https://IP:8184
+  # pgAdmin 4 — acesso local apenas via SSH tunnel: ssh -L 8184:localhost:8184 user@servidor
   pgadmin:
     image: dpage/pgadmin4:latest
     restart: unless-stopped
     ports:
-      - "8184:80"
+      - "127.0.0.1:8184:80"
     environment:
       PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD}
@@ -68,14 +68,14 @@ services:
       postgres:
         condition: service_healthy
 
-  # Portainer — acessível em https://IP:9443
+  # Portainer — acesso local apenas via SSH tunnel: ssh -L 9443:localhost:9443 user@servidor
   portainer:
     image: portainer/portainer-ce:latest
     restart: unless-stopped
     user: "0"
     ports:
-      - "9443:9443"
-      - "8000:8000"
+      - "127.0.0.1:9443:9443"
+      - "127.0.0.1:8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
