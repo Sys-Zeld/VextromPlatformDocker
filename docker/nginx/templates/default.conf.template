@@ -58,6 +58,43 @@ server {
                     application/javascript application/xml+rss
                     image/svg+xml;
 
+    # ── pgAdmin 4 — administração do banco de dados ───────────────────────────
+    # Acessível em: https://${DOMAIN}/admdatabase/
+    location /admdatabase/ {
+        proxy_pass             http://pgadmin:80/admdatabase/;
+        proxy_http_version     1.1;
+        proxy_set_header       Host              $host;
+        proxy_set_header       X-Real-IP         $remote_addr;
+        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header       X-Forwarded-Proto $scheme;
+        proxy_set_header       X-Script-Name     /admdatabase;
+        # WebSocket — necessário para o Query Tool e console SQL
+        proxy_set_header       Upgrade           $http_upgrade;
+        proxy_set_header       Connection        "upgrade";
+        proxy_read_timeout     3600s;
+        proxy_send_timeout     3600s;
+        proxy_connect_timeout  10s;
+    }
+
+    # ── Portainer — administração de containers ────────────────────────────────
+    # Acessível em: https://${DOMAIN}/serveradm/
+    location /serveradm/ {
+        proxy_pass             http://portainer:9000/serveradm/;
+        proxy_http_version     1.1;
+        # WebSocket — necessário para logs e terminal do Portainer
+        proxy_set_header       Upgrade           $http_upgrade;
+        proxy_set_header       Connection        "upgrade";
+        proxy_set_header       Host              $host;
+        proxy_set_header       X-Real-IP         $remote_addr;
+        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header       X-Forwarded-Proto $scheme;
+        # Timeout longo para operações do Portainer (logs, console, etc.)
+        proxy_read_timeout     3600s;
+        proxy_send_timeout     3600s;
+        proxy_connect_timeout  10s;
+    }
+
+    # ── Aplicação principal ────────────────────────────────────────────────────
     location / {
         proxy_pass             http://app:3000;
         proxy_http_version     1.1;

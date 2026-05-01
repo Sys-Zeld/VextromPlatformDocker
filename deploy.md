@@ -316,26 +316,80 @@ Todos os serviços devem aparecer com status `running (healthy)`.
 
 Acesse: https://seu-dominio.com
 
-### 9. Subir o Portainer
+### 9. Portainer
 
-```bash
-docker compose -f docker-compose.portainer.yml -p portainer up -d
+O Portainer já sobe junto com o stack de produção (incluído no `docker-compose.prod.yml`).
+
+Acesse: `https://app.vextrom.com.br/serveradm/`
+
+Crie o usuário admin na primeira abertura. Sem portas extras para abrir no firewall.
+
+---
+
+## pgAdmin 4 — administração do banco de dados
+
+O pgAdmin 4 roda **sem porta exposta** e é acessível via Nginx:
+
+```
+https://app.vextrom.com.br/admdatabase/
 ```
 
-Acesse: `https://IP-DO-SERVIDOR:9443` — crie o usuário admin na primeira abertura.
+Já incluído no `docker-compose.prod.yml` — sobe automaticamente com o stack de produção.
+O servidor PostgreSQL do projeto é pré-configurado via `docker/pgadmin/servers.json`.
 
-> Restrinja o acesso ao Portainer ao seu IP antes de expô-lo:
-> ```bash
-> ufw allow from SEU-IP to any port 9443
-> ufw deny 9443
-> ```
+### Primeiro acesso
+
+1. Acesse `https://app.vextrom.com.br/admdatabase/`
+2. Faça login com as credenciais `PGADMIN_EMAIL` e `PGADMIN_PASSWORD` do `.env.prod`
+3. No painel esquerdo, clique em **VextromPlatform → PostgreSQL**
+4. Digite a senha do PostgreSQL (`POSTGRES_PASSWORD`) — o pgAdmin armazena para as próximas sessões
+5. Explore os bancos: `dbspeflow`, `reportservice`, `configdb`, `dbmodulespec`
+
+### Bancos disponíveis
+
+| Banco | Uso |
+|---|---|
+| `dbspeflow` | Dados principais (equipamentos, campos, tokens) |
+| `reportservice` | Ordens de serviço |
+| `configdb` | Usuários admin, backups |
+| `dbmodulespec` | Módulo de especificação (opcional) |
+
+### Configurar senha do pgAdmin
+
+No `.env.prod`, preencha antes de subir o stack:
+
+```
+PGADMIN_EMAIL=admin@seu-dominio.com
+PGADMIN_PASSWORD=senha-forte-aqui
+```
+
+### Atualizar o pgAdmin
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  pull pgadmin
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  up -d pgadmin
+```
 
 ---
 
 ## Portainer — gerenciamento visual de containers
 
-O Portainer CE é a interface web para administrar todos os containers do servidor.
-Roda isolado dos outros stacks e acessa o Docker Engine diretamente via socket.
+O Portainer CE em produção roda **sem porta exposta** e é acessível exclusivamente via Nginx:
+
+```
+https://app.vextrom.com.br/serveradm/
+```
+
+Já está incluído no `docker-compose.prod.yml` — sobe automaticamente junto com o stack de produção.
 
 ### O que você pode fazer no Portainer
 
@@ -350,37 +404,58 @@ Roda isolado dos outros stacks e acessa o Docker Engine diretamente via socket.
 | Subir um novo stack Docker Compose | Stacks → Add stack |
 | Inspecionar variáveis de ambiente | Containers → Inspect |
 
-### Comandos
+### Arquitetura de rede em produção
 
-```bash
-# Subir
-docker compose -f docker-compose.portainer.yml -p portainer up -d
-
-# Ver logs do próprio Portainer
-docker compose -f docker-compose.portainer.yml -p portainer logs -f
-
-# Atualizar para versão mais recente
-docker compose -f docker-compose.portainer.yml -p portainer pull
-docker compose -f docker-compose.portainer.yml -p portainer up -d
-
-# Derrubar (dados do Portainer são preservados no volume)
-docker compose -f docker-compose.portainer.yml -p portainer down
-
-# Derrubar e apagar dados (reseta usuário admin)
-docker compose -f docker-compose.portainer.yml -p portainer down -v
+```
+Internet
+   │
+   ▼
+Nginx :443  ──  /serveradm/  ──►  portainer:9000  (interno, sem porta exposta)
+               /             ──►  app:3000         (interno, sem porta exposta)
 ```
 
-### Segurança
+Nenhum outro serviço tem porta exposta no host. Apenas o Nginx escuta nas portas 80 e 443.
+
+### Reiniciar só o Portainer
 
 ```bash
-# Libera porta 9443 apenas para o seu IP
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  restart portainer
+```
+
+### Atualizar o Portainer para versão mais recente
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  pull portainer
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  up -d portainer
+```
+
+### Uso standalone (staging ou sem Nginx)
+
+Para rodar o Portainer com porta exposta fora do contexto de produção:
+
+```bash
+docker compose -f docker-compose.portainer.yml -p portainer up -d
+```
+
+Acesse: `https://IP-DO-SERVIDOR:9443`
+
+```bash
+# Restringir acesso por IP
 ufw allow from SEU-IP to any port 9443
-
-# Bloqueia acesso público
 ufw deny 9443
-
-# Verificar regras ativas
-ufw status numbered
 ```
 
 ---
@@ -517,6 +592,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | `vextrom_certbot_www` | Desafios ACME (webroot) |
 | `vextrom_certbot_certs` | Certificados Let's Encrypt |
 | `vextrom_portainer_data` | Configuração e dados do Portainer |
+| `vextrom_pgadmin_data` | Configuração e sessões do pgAdmin 4 |
 
 ---
 
@@ -529,4 +605,5 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | postgres | 5432 | — |
 | redis | 6379 | — |
 | certbot | — | — |
-| portainer | 9443 | 9443 (restrito por IP) |
+| portainer | 9000 | — (somente via Nginx) |
+| pgadmin | 80 | — (somente via Nginx) |

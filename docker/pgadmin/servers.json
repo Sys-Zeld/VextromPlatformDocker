@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "VextromPlatform — PostgreSQL",
+      "Group": "VextromPlatform",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "Comment": "Servidor PostgreSQL interno do projeto. Acesse todos os bancos a partir daqui."
+    }
+  }
+}

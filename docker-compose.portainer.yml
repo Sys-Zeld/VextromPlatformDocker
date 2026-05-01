@@ -1,11 +1,12 @@
-# Portainer CE — gerenciamento visual de containers via web.
-# Roda isolado dos outros stacks, não interfere em nada.
+# Portainer CE — uso STANDALONE (sem Nginx).
+#
+# ⚠ Em PRODUÇÃO o Portainer já está incluído no docker-compose.prod.yml
+#   e é acessível via https://app.vextrom.com.br/serveradm/ sem porta exposta.
+#
+# Use este arquivo apenas para rodar o Portainer isolado (ex: staging, testes locais).
 #
 # Subir:
 #   docker compose -f docker-compose.portainer.yml -p portainer up -d
-#
-# Atualizar após enviar este arquivo ao servidor:
-#   docker compose -f docker-compose.portainer.yml -p portainer up -d --force-recreate
 #
 # Derrubar:
 #   docker compose -f docker-compose.portainer.yml -p portainer down
@@ -15,6 +16,7 @@
 #
 # Segurança — libere a porta só para o seu IP:
 #   ufw allow from SEU-IP to any port 9443
+#   ufw deny 9443
 
 services:
   portainer:
@@ -22,8 +24,8 @@ services:
     restart: unless-stopped
     user: root
     ports:
-      - "8000:8000"   # tunnel para agentes Portainer (necessário para acesso local)
-      - "9443:9443"   # HTTPS
+      - "8000:8000"
+      - "9443:9443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
