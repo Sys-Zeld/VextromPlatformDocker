@@ -38,12 +38,15 @@ server {
     resolver            1.1.1.1 8.8.8.8 valid=300s;
     resolver_timeout    5s;
 
-    # Headers de segurança
+    # Oculta versão do nginx nos headers e páginas de erro
+    server_tokens off;
+
+    # Headers de segurança (apenas os que o app não envia via helmet)
+    # X-Frame-Options e Referrer-Policy são omitidos aqui pois o helmet os envia
+    # com valores mais restritivos (DENY e no-referrer). X-XSS-Protection é
+    # omitido por ser obsoleto e problemático em navegadores modernos.
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Content-Type-Options    "nosniff"                              always;
-    add_header X-Frame-Options           "SAMEORIGIN"                           always;
-    add_header Referrer-Policy           "strict-origin-when-cross-origin"      always;
-    add_header X-XSS-Protection          "1; mode=block"                        always;
+    add_header X-Content-Type-Options    "nosniff"                                      always;
 
     # Uploads de documentos/imagens
     client_max_body_size 50M;
@@ -57,6 +60,17 @@ server {
     gzip_types      text/plain text/css text/xml application/json
                     application/javascript application/xml+rss
                     image/svg+xml;
+
+    # ── Bloqueio de arquivos sensíveis ────────────────────────────────────────
+    # Dot-files e dot-dirs (ex: .git, .env*, .ssh), exceto desafio ACME
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+
+    # Arquivos de infra/dependências identificados no projeto
+    location ~* /(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|docker-compose[^/]*\.ya?ml|Dockerfile[^/]*|init\.sql|deploy\.md) {
+        deny all;
+    }
 
     # ── Aplicação principal ────────────────────────────────────────────────────
     location / {

@@ -155,10 +155,10 @@ APP_BASE_URL=https://192.168.1.100
 ```bash
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.staging-https.yml \
-  --env-file .env.staging \
-  -p vextrom-staging-https \
-  up -d --build
+    -f docker-compose.staging-https.yml \
+      --env-file .env.staging \
+        -p vextrom-staging-https \
+          up -d --build
 ```
 
 Na primeira execução o serviço `cert-gen` gera o certificado automaticamente antes do Nginx subir.

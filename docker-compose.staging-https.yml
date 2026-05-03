@@ -102,7 +102,7 @@ services:
       --host unix:///var/run/docker.sock
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30.0-alpine
     restart: "no"
     ports:
       - "80:80"
