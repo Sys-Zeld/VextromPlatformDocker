@@ -8,7 +8,8 @@ const ALLOWED_ZIP_FOLDERS = [
   "dados/docs",
   "dados/service-report-pdfs",
   "dados/service-report-html",
-  "dados/report-img"
+  "dados/report-img",
+  "docs/report/img"  // caminho legado — remapeado para dados/report-img na extração
 ];
 
 function resolveZipFileFromArgs() {
@@ -66,7 +67,11 @@ async function extractZip(zipFile) {
       const matched = ALLOWED_ZIP_FOLDERS.find(
         (folder) => entryPath === folder || entryPath.startsWith(folder + "/")
       );
-      if (matched) foldersInZip.add(matched);
+      if (matched) {
+        // Normaliza legado para o destino real
+        const dest = matched === "docs/report/img" ? "dados/report-img" : matched;
+        foldersInZip.add(dest);
+      }
     }
 
     for (const folder of foldersInZip) {
@@ -86,7 +91,12 @@ async function extractZip(zipFile) {
 
     if (!isAllowedEntry(entryPath)) continue;
 
-    const destPath = path.join(process.cwd(), entryPath);
+    // Remapeia caminho legado docs/report/img → dados/report-img
+    const resolvedPath = entryPath.startsWith("docs/report/img")
+      ? entryPath.replace("docs/report/img", "dados/report-img")
+      : entryPath;
+
+    const destPath = path.join(process.cwd(), resolvedPath);
 
     if (entry.type === "Directory") {
       fs.mkdirSync(destPath, { recursive: true });
