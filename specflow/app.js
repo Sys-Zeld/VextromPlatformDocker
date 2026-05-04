@@ -218,7 +218,7 @@ app.use(express.urlencoded({ extended: false, limit: "25mb" }));
 app.use(express.json({ limit: "25mb" }));
 app.use(cookieParser());
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/docs/report/img", express.static(path.join(process.cwd(), "docs", "report", "img")));
+app.use("/docs/report/img", express.static(path.join(process.cwd(), "dados", "report-img")));
 ensureDocsDirectory();
 
 const supportedLangSet = new Set(SUPPORTED_LANGS);

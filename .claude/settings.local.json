@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \"require\\('sharp'\\); console.log\\('sharp OK'\\)\")"
+      "Bash(node -e \"require\\('sharp'\\); console.log\\('sharp OK'\\)\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\" -Recurse -Directory)",
+      "Bash(Select-Object FullName)",
+      "Bash(Head -30)",
+      "Bash(dir /s \"c:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\\\\src\" -Filter \"*.js\")"
     ]
   }
 }

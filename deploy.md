@@ -645,7 +645,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 |---|---|
 | `postgres_data` | Dados do PostgreSQL |
 | `redis_data` | Dados do Redis (AOF) |
-| `dados_volume` | Documentos, backups, arquivos de usuário |
+| `dados_volume` | Documentos, backups, arquivos de usuário e imagens de relatórios (`dados/report-img/`) |
 | `vextrom_certbot_www` | Desafios ACME (webroot) |
 | `vextrom_certbot_certs` | Certificados Let's Encrypt |
 

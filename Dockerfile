@@ -13,6 +13,6 @@ CMD ["npx", "nodemon", "src/app.js"]
 FROM base AS prod
 RUN npm ci --omit=dev
 COPY . .
-RUN mkdir -p /app/dados/docs
+RUN mkdir -p /app/dados/docs && mkdir -p /app/dados/report-img/logos
 EXPOSE 3000
 CMD ["node", "src/app.js"]

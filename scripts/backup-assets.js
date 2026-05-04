@@ -20,8 +20,8 @@ const ASSET_DIRS = [
   },
   {
     label: "report img (imagens e logos)",
-    srcPath: path.join(process.cwd(), "docs", "report", "img"),
-    zipFolder: "docs/report/img"
+    srcPath: path.join(process.cwd(), "dados", "report-img"),
+    zipFolder: "dados/report-img"
   }
 ];
 

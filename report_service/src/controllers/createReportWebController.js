@@ -1981,7 +1981,7 @@ function createReportWebController(deps) {
         return res.status(400).json({ ok: false, error: "Arquivo invalido. Envie PNG, JPG ou SVG." });
       }
 
-      const targetDir = path.join(process.cwd(), "docs", "report", "img", "logos");
+      const targetDir = path.join(process.cwd(), "dados", "report-img", "logos");
       await fs.promises.mkdir(targetDir, { recursive: true });
       const unique = crypto.randomBytes(6).toString("hex");
       const finalName = `logo-${brand}-${Date.now()}-${unique}${ext === ".jpeg" ? ".jpg" : ext}`;
@@ -2015,7 +2015,7 @@ function createReportWebController(deps) {
       if (!ext || !buffer.length) {
         return res.status(400).json({ ok: false, error: "Arquivo de imagem invalido." });
       }
-      const targetDir = path.join(process.cwd(), "docs", "report", "img");
+      const targetDir = path.join(process.cwd(), "dados", "report-img");
       await fs.promises.mkdir(targetDir, { recursive: true });
       const fileSafeBase = path.basename(fileNameBase, extFromName || path.extname(fileNameBase)).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
       const unique = crypto.randomBytes(6).toString("hex");
@@ -3143,7 +3143,7 @@ function createReportWebController(deps) {
       }
       const optimizedBuffer = await optimizeTagImageUploadBuffer(buffer, ext);
 
-      const targetDir = path.join(process.cwd(), "docs", "report", "img");
+      const targetDir = path.join(process.cwd(), "dados", "report-img");
       await fs.promises.mkdir(targetDir, { recursive: true });
       const fileSafeBase = path.basename(fileNameBase, extFromName || path.extname(fileNameBase)).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
       const unique = crypto.randomBytes(6).toString("hex");

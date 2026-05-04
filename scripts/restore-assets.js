@@ -8,7 +8,7 @@ const ALLOWED_ZIP_FOLDERS = [
   "dados/docs",
   "dados/service-report-pdfs",
   "dados/service-report-html",
-  "docs/report/img"
+  "dados/report-img"
 ];
 
 function resolveZipFileFromArgs() {

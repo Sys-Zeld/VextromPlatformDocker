@@ -19,8 +19,8 @@ const TARGET_DIRS = [
     dirPath: path.join(ROOT_DIR, "dados", "service-report-html")
   },
   {
-    label: "report img (docs/report/img)",
-    dirPath: path.join(ROOT_DIR, "docs", "report", "img")
+    label: "report img (dados/report-img)",
+    dirPath: path.join(ROOT_DIR, "dados", "report-img")
   }
 ];
 

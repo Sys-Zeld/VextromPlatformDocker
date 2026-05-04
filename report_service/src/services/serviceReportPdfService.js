@@ -250,7 +250,7 @@ let warnedPlaywrightMissingRuntime = false;
 
 function buildImageRouteMap() {
   return [
-    { prefix: "/docs/report/img/", dir: path.join(process.cwd(), "docs", "report", "img") },
+    { prefix: "/docs/report/img/", dir: path.join(process.cwd(), "dados", "report-img") },
     { prefix: "/public/", dir: path.resolve(__dirname, "..", "..", "..", "specflow", "public") }
   ];
 }
