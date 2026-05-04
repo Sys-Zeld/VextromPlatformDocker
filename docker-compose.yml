@@ -19,6 +19,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - default
+      - vextrom_net
 
   redis:
     image: redis:7-alpine
@@ -42,6 +45,11 @@ services:
         condition: service_healthy
     volumes:
       - dados_volume:/app/dados
+
+networks:
+  vextrom_net:
+    external: true
+    name: vextrom_net
 
 volumes:
   postgres_data:

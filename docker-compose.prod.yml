@@ -50,44 +50,9 @@ services:
                     sleep 12h & wait $${!};
                   done"
 
-  # pgAdmin 4 — acesso local apenas via SSH tunnel: ssh -L 8184:localhost:8184 user@servidor
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8184:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL:             ${PGADMIN_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD:          ${PGADMIN_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE:        "True"
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # Portainer — acesso local apenas via SSH tunnel: ssh -L 9443:localhost:9443 user@servidor
-  portainer:
-    image: portainer/portainer-ce:latest
-    restart: unless-stopped
-    user: "0"
-    ports:
-      - "127.0.0.1:9443:9443"
-      - "127.0.0.1:8000:8000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - portainer_data:/data
-    command: >
-      --host unix:///var/run/docker.sock
 
 volumes:
   certbot_www:
     name: vextrom_certbot_www
   certbot_certs:
     name: vextrom_certbot_certs
-  portainer_data:
-    name: vextrom_portainer_data
-  pgadmin_data:
-    name: vextrom_pgadmin_data

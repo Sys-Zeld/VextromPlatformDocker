@@ -1,0 +1,56 @@
+# Stack de administração — independente da stack da aplicação.
+#
+# Pré-requisito (apenas uma vez no servidor):
+#   docker network create vextrom_net
+#
+# Subir:
+#   docker compose -f docker-compose.admin.yml --env-file .env.prod -p vextrom_admin up -d
+#
+# Derrubar:
+#   docker compose -f docker-compose.admin.yml -p vextrom_admin down
+#
+# Acessos (via SSH tunnel: ssh -L PORTA:localhost:PORTA user@servidor):
+#   pgAdmin   → http://localhost:8184
+#   Portainer → https://localhost:9443
+
+services:
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8184:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL:                   ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD:                ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE:              "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - vextrom_net
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: unless-stopped
+    user: "0"
+    ports:
+      - "127.0.0.1:9443:9443"
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - portainer_data:/data
+    command: --host unix:///var/run/docker.sock
+    networks:
+      - vextrom_net
+
+networks:
+  vextrom_net:
+    external: true
+    name: vextrom_net
+
+volumes:
+  pgadmin_data:
+    name: vextrom_pgadmin_data
+  portainer_data:
+    name: vextrom_portainer_data

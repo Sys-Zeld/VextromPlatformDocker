@@ -18,8 +18,9 @@ docker-compose.override.yml      → overrides de desenvolvimento (carregado aut
 docker-compose.staging.yml       → staging HTTP (porta 80, sem SSL)
 docker-compose.staging-https.yml → staging HTTPS com certificado auto-assinado
 docker-compose.prod.yml          → produção (Nginx + Let's Encrypt + restart)
+docker-compose.admin.yml         → stack de administração independente (Portainer + pgAdmin)
 docker-compose.certbot-init.yml  → emissão inicial do certificado SSL (uso único)
-docker-compose.portainer.yml     → Portainer CE (gerenciamento visual de containers)
+docker-compose.portainer.yml     → Portainer CE standalone (staging/testes locais)
 Dockerfile                       → multi-stage: target dev | target prod
 .env                             → variáveis de desenvolvimento local
 .env.staging                     → variáveis de staging (não commitar)
@@ -219,6 +220,14 @@ usermod -aG docker $USER
 newgrp docker
 ```
 
+**Criar a rede compartilhada entre stacks (apenas uma vez):**
+
+```bash
+docker network create vextrom_net
+```
+
+> Esta rede permite que o pgAdmin da stack de administração alcance o PostgreSQL da stack de produção.
+
 ### 2. Enviar o código
 
 ```bash
@@ -316,30 +325,93 @@ Todos os serviços devem aparecer com status `running (healthy)`.
 
 Acesse: https://seu-dominio.com
 
-### 9. Portainer
+### 9. Subir a stack de administração
 
-O Portainer já sobe junto com o stack de produção (incluído no `docker-compose.prod.yml`).
+Portainer e pgAdmin rodam em **stack separada** da aplicação. Isso garante que as ferramentas de administração continuem no ar durante redeploys da aplicação.
 
-Acesse: `https://app.vextrom.com.br/serveradm/`
+```bash
+docker compose \
+  -f docker-compose.admin.yml \
+  --env-file .env.prod \
+  -p vextrom_admin \
+  up -d
+```
 
-Crie o usuário admin na primeira abertura. Sem portas extras para abrir no firewall.
+Acesso sempre via **SSH tunnel** (sem porta exposta no firewall):
+
+| Ferramenta | Tunnel | URL local |
+|---|---|---|
+| Portainer | `ssh -L 9443:localhost:9443 user@servidor` | `https://localhost:9443` |
+| pgAdmin | `ssh -L 8184:localhost:8184 user@servidor` | `http://localhost:8184` |
+
+Crie o usuário admin do Portainer na primeira abertura.
+
+---
+
+## Stack de administração (Portainer + pgAdmin)
+
+A stack de administração é **independente da stack da aplicação** — gerenciada pelo arquivo `docker-compose.admin.yml` com projeto `vextrom_admin`.
+
+### Subir
+
+```bash
+docker compose \
+  -f docker-compose.admin.yml \
+  --env-file .env.prod \
+  -p vextrom_admin \
+  up -d
+```
+
+### Derrubar
+
+```bash
+docker compose \
+  -f docker-compose.admin.yml \
+  -p vextrom_admin \
+  down
+```
+
+### Atualizar Portainer ou pgAdmin
+
+```bash
+docker compose \
+  -f docker-compose.admin.yml \
+  --env-file .env.prod \
+  -p vextrom_admin \
+  pull
+
+docker compose \
+  -f docker-compose.admin.yml \
+  --env-file .env.prod \
+  -p vextrom_admin \
+  up -d
+```
+
+### Resetar o Portainer (recriar senha admin)
+
+```bash
+docker compose -f docker-compose.admin.yml -p vextrom_admin stop portainer
+docker volume rm vextrom_portainer_data
+docker compose -f docker-compose.admin.yml --env-file .env.prod -p vextrom_admin up -d portainer
+```
 
 ---
 
 ## pgAdmin 4 — administração do banco de dados
 
-O pgAdmin 4 roda **sem porta exposta** e é acessível via Nginx:
+O pgAdmin 4 roda na stack de administração, acessível **somente via SSH tunnel**:
 
-```
-https://app.vextrom.com.br/admdatabase/
+```bash
+ssh -L 8184:localhost:8184 user@servidor
 ```
 
-Já incluído no `docker-compose.prod.yml` — sobe automaticamente com o stack de produção.
+Acesse: `http://localhost:8184`
+
 O servidor PostgreSQL do projeto é pré-configurado via `docker/pgadmin/servers.json`.
 
 ### Primeiro acesso
 
-1. Acesse `https://app.vextrom.com.br/admdatabase/`
+1. Abra `http://localhost:8184`
 2. Faça login com as credenciais `PGADMIN_EMAIL` e `PGADMIN_PASSWORD` do `.env.prod`
 3. No painel esquerdo, clique em **VextromPlatform → PostgreSQL**
 4. Digite a senha do PostgreSQL (`POSTGRES_PASSWORD`) — o pgAdmin armazena para as próximas sessões
@@ -354,42 +426,26 @@ O servidor PostgreSQL do projeto é pré-configurado via `docker/pgadmin/servers
 | `configdb` | Usuários admin, backups |
 | `dbmodulespec` | Módulo de especificação (opcional) |
 
-### Configurar senha do pgAdmin
+### Configurar credenciais do pgAdmin
 
-No `.env.prod`, preencha antes de subir o stack:
+No `.env.prod`, preencha antes de subir a stack de admin:
 
 ```
 PGADMIN_EMAIL=admin@seu-dominio.com
 PGADMIN_PASSWORD=senha-forte-aqui
 ```
 
-### Atualizar o pgAdmin
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  pull pgadmin
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  up -d pgadmin
-```
-
 ---
 
 ## Portainer — gerenciamento visual de containers
 
-O Portainer CE em produção roda **sem porta exposta** e é acessível exclusivamente via Nginx:
+O Portainer CE roda na stack de administração, acessível **somente via SSH tunnel**:
 
-```
-https://app.vextrom.com.br/serveradm/
+```bash
+ssh -L 9443:localhost:9443 user@servidor
 ```
 
-Já está incluído no `docker-compose.prod.yml` — sobe automaticamente junto com o stack de produção.
+Acesse: `https://localhost:9443`
 
 ### O que você pode fazer no Portainer
 
@@ -410,53 +466,52 @@ Já está incluído no `docker-compose.prod.yml` — sobe automaticamente junto 
 Internet
    │
    ▼
-Nginx :443  ──  /serveradm/  ──►  portainer:9000  (interno, sem porta exposta)
-               /             ──►  app:3000         (interno, sem porta exposta)
+Nginx :443  ──►  app:3000  (somente via Nginx, sem porta exposta)
+
+SSH Tunnel
+   │
+   ▼
+localhost:9443  ──►  portainer:9443  (somente local)
+localhost:8184  ──►  pgadmin:80      (somente local)
 ```
 
-Nenhum outro serviço tem porta exposta no host. Apenas o Nginx escuta nas portas 80 e 443.
+Apenas o Nginx escuta nas portas 80 e 443 no host. Portainer e pgAdmin não têm portas acessíveis externamente.
 
-### Reiniciar só o Portainer
+---
+
+## Cockpit — gerenciamento do servidor
+
+O Cockpit é instalado **diretamente no host** (AlmaLinux) e roda somente em localhost.
+
+### Instalação (AlmaLinux)
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  restart portainer
+dnf install -y cockpit
+systemctl enable --now cockpit.socket
 ```
 
-### Atualizar o Portainer para versão mais recente
+**Restringir para somente localhost** (sem acesso externo):
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  pull portainer
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  up -d portainer
+mkdir -p /etc/systemd/system/cockpit.socket.d
+cat > /etc/systemd/system/cockpit.socket.d/listen.conf << 'EOF'
+[Socket]
+ListenStream=
+ListenStream=127.0.0.1:9090
+EOF
+systemctl daemon-reload
+systemctl restart cockpit.socket
 ```
 
-### Uso standalone (staging ou sem Nginx)
+> Não é necessário abrir nenhuma porta no `firewalld`.
 
-Para rodar o Portainer com porta exposta fora do contexto de produção:
+### Acesso
 
 ```bash
-docker compose -f docker-compose.portainer.yml -p portainer up -d
+ssh -L 9090:localhost:9090 user@servidor
 ```
 
-Acesse: `https://IP-DO-SERVIDOR:9443`
-
-```bash
-# Restringir acesso por IP
-ufw allow from SEU-IP to any port 9443
-ufw deny 9443
-```
+Acesse: `http://localhost:9090` — logue com o usuário root do servidor.
 
 ---
 
@@ -584,6 +639,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 
 ## Volumes persistentes
 
+### Stack da aplicação (`docker-compose.prod.yml`)
+
 | Volume | Conteúdo |
 |---|---|
 | `postgres_data` | Dados do PostgreSQL |
@@ -591,12 +648,19 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | `dados_volume` | Documentos, backups, arquivos de usuário |
 | `vextrom_certbot_www` | Desafios ACME (webroot) |
 | `vextrom_certbot_certs` | Certificados Let's Encrypt |
+
+### Stack de administração (`docker-compose.admin.yml`)
+
+| Volume | Conteúdo |
+|---|---|
 | `vextrom_portainer_data` | Configuração e dados do Portainer |
 | `vextrom_pgadmin_data` | Configuração e sessões do pgAdmin 4 |
 
 ---
 
 ## Serviços e portas
+
+### Stack da aplicação
 
 | Serviço | Porta interna | Porta exposta (prod) |
 |---|---|---|
@@ -605,5 +669,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 | postgres | 5432 | — |
 | redis | 6379 | — |
 | certbot | — | — |
-| portainer | 9000 | — (somente via Nginx) |
-| pgadmin | 80 | — (somente via Nginx) |
+
+### Stack de administração
+
+| Serviço | Porta interna | Porta exposta (prod) |
+|---|---|---|
+| portainer | 9443 | 127.0.0.1:9443 (somente SSH tunnel) |
+| pgadmin | 80 | 127.0.0.1:8184 (somente SSH tunnel) |
+
+### Host (AlmaLinux)
+
+| Serviço | Porta |
+|---|---|
+| Cockpit | 127.0.0.1:9090 (somente SSH tunnel) |
