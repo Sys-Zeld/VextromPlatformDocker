@@ -1,6 +1,17 @@
 # Gerado automaticamente pelo entrypoint do nginx a partir de templates/.
 # A variável ${DOMAIN} é substituída pelo docker-compose via envsubst.
 
+# ── Rate limiting — zonas por IP ──────────────────────────────────────────────
+limit_req_zone $binary_remote_addr zone=req_limit:10m   rate=10r/s;
+limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=api_limit:10m   rate=20r/s;
+limit_req_zone $binary_remote_addr zone=ai_limit:10m    rate=1r/s;
+limit_req_status  429;
+limit_conn_status 429;
+
+# ── Conexões simultâneas por IP ───────────────────────────────────────────────
+limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
+
 # ── HTTP: redireciona tudo para HTTPS, exceto o desafio ACME ──────────────────
 server {
     listen 80;
@@ -31,6 +42,7 @@ server {
     ssl_session_cache         shared:SSL:10m;
     ssl_session_timeout       1d;
     ssl_session_tickets       off;
+    ssl_dhparam               /etc/nginx/dhparam.pem;
 
     # OCSP Stapling
     ssl_stapling        on;
@@ -41,17 +53,25 @@ server {
     # Oculta versão do nginx nos headers e páginas de erro
     server_tokens off;
 
-    # Headers de segurança (apenas os que o app não envia via helmet)
-    # X-Frame-Options e Referrer-Policy são omitidos aqui pois o helmet os envia
-    # com valores mais restritivos (DENY e no-referrer). X-XSS-Protection é
-    # omitido por ser obsoleto e problemático em navegadores modernos.
+    # ── Headers de segurança ───────────────────────────────────────────────────
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header Permissions-Policy        "camera=(), microphone=(), geolocation=()"     always;
 
-    # Uploads de documentos/imagens
-    client_max_body_size 200M;
+    # ── Timeouts de request (fecha conexões lentas/incompletas) ───────────────
+    # client_body_timeout e send_timeout são sobrescritos por location onde necessário
+    client_header_timeout 12s;
+    keepalive_timeout     15s;
 
-    # Compressão
+    # ── Limites de buffer (proteção contra overflow e header gigante) ──────────
+    client_max_body_size        200M;
+    client_body_buffer_size      16k;
+    client_header_buffer_size     1k;
+    large_client_header_buffers 4 8k;
+    proxy_buffer_size             4k;
+    proxy_buffers               8 16k;
+
+    # ── Compressão ────────────────────────────────────────────────────────────
     gzip            on;
     gzip_comp_level 5;
     gzip_min_length 1024;
@@ -61,32 +81,134 @@ server {
                     application/javascript application/xml+rss
                     image/svg+xml;
 
+    # ── Bloquear métodos HTTP perigosos ───────────────────────────────────────
+    if ($request_method !~ ^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$) {
+        return 405;
+    }
+
+    # ── Bloquear User-Agent vazio ou scanners conhecidos ──────────────────────
+    if ($http_user_agent = "") {
+        return 403;
+    }
+    if ($http_user_agent ~* (sqlmap|nikto|nmap|masscan|zgrab|nuclei|dirbuster|gobuster|wfuzz|hydra|metasploit)) {
+        return 403;
+    }
+
+    # ── Respostas de erro customizadas ────────────────────────────────────────
+    error_page 429 @rate_limited;
+    location @rate_limited {
+        default_type application/json;
+        add_header Retry-After 60 always;
+        return 429 '{"error":"Muitas requisicoes. Aguarde e tente novamente."}';
+    }
+
     # ── Bloqueio de arquivos sensíveis ────────────────────────────────────────
-    # Dot-files e dot-dirs (ex: .git, .env*, .ssh), exceto desafio ACME
+    # Dot-files e dot-dirs (ex: .git, .ssh), exceto desafio ACME
     location ~ /\.(?!well-known) {
         deny all;
     }
 
-    # Arquivos de infra/dependências identificados no projeto
+    # Arquivos .env em qualquer variação (com ou sem ponto, com sufixo)
+    location ~* (^|/)\.?env(\.|$) {
+        deny all;
+    }
+
+    # Arquivos de infra/dependências
     location ~* /(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|docker-compose[^/]*\.ya?ml|Dockerfile[^/]*|init\.sql|deploy\.md) {
         deny all;
     }
 
-    # ── Aplicação principal ────────────────────────────────────────────────────
+    # ── Login (5 req/min, 5 conexões por IP) ──────────────────────────────────
+    location = /admin/login {
+        limit_req  zone=login_limit burst=5 nodelay;
+        limit_conn conn_limit 5;
+
+        client_body_timeout 12s;
+        send_timeout        10s;
+
+        proxy_pass            http://app:3000;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_cache_bypass    $http_upgrade;
+        proxy_read_timeout    30s;
+        proxy_send_timeout    30s;
+        proxy_connect_timeout 10s;
+        proxy_buffering       off;
+    }
+
+    # ── Rotas de IA (1 req/s, 3 conexões por IP, timeout 620s) ───────────────
+    location ~* /(ai/generate|ai/translate|revise-text|generate-conclusion|translate/start) {
+        limit_req  zone=ai_limit burst=3 nodelay;
+        limit_conn conn_limit 3;
+
+        client_body_timeout 60s;
+        send_timeout        620s;
+
+        proxy_pass            http://app:3000;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_cache_bypass    $http_upgrade;
+        proxy_read_timeout    620s;
+        proxy_send_timeout    620s;
+        proxy_connect_timeout 10s;
+        proxy_buffering       off;
+    }
+
+    # ── API (20 req/s, 30 conexões por IP) ────────────────────────────────────
+    location ~* ^/api/ {
+        limit_req  zone=api_limit burst=30 nodelay;
+        limit_conn conn_limit 30;
+
+        client_body_timeout 30s;
+        send_timeout        60s;
+
+        proxy_pass            http://app:3000;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_cache_bypass    $http_upgrade;
+        proxy_read_timeout    60s;
+        proxy_send_timeout    60s;
+        proxy_connect_timeout 10s;
+        proxy_buffering       off;
+    }
+
+    # ── Aplicação geral (10 req/s, 20 conexões por IP) ────────────────────────
+    # client_body_timeout alto para suportar uploads de até 200M
+    # send_timeout alto para suportar respostas longas de IA em qualquer rota
     location / {
-        proxy_pass             http://app:3000;
-        proxy_http_version     1.1;
-        proxy_set_header       Upgrade           $http_upgrade;
-        proxy_set_header       Connection        "upgrade";
-        proxy_set_header       Host              $host;
-        proxy_set_header       X-Real-IP         $remote_addr;
-        proxy_set_header       X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header       X-Forwarded-Proto $scheme;
-        proxy_cache_bypass     $http_upgrade;
-        # Margem acima do timeout máximo de AI (600 s)
-        proxy_read_timeout     620s;
-        proxy_send_timeout     620s;
-        proxy_connect_timeout  10s;
-        proxy_buffering        off;
+        limit_req  zone=req_limit burst=20 nodelay;
+        limit_conn conn_limit 20;
+
+        client_body_timeout 300s;
+        send_timeout        620s;
+
+        proxy_pass            http://app:3000;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_cache_bypass    $http_upgrade;
+        proxy_read_timeout    620s;
+        proxy_send_timeout    620s;
+        proxy_connect_timeout 10s;
+        proxy_buffering       off;
     }
 }
