@@ -103,17 +103,17 @@ server {
     # ── Bloqueio de arquivos sensíveis ────────────────────────────────────────
     # Dot-files e dot-dirs (ex: .git, .ssh), exceto desafio ACME
     location ~ /\.(?!well-known) {
-        deny all;
+        return 404;
     }
 
     # Arquivos .env em qualquer variação (com ou sem ponto, com sufixo)
     location ~* (^|/)\.?env(\.|$) {
-        deny all;
+        return 404;
     }
 
     # Arquivos de infra/dependências
     location ~* /(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|docker-compose[^/]*\.ya?ml|Dockerfile[^/]*|init\.sql|deploy\.md) {
-        deny all;
+        return 404;
     }
 
     # ── Login (5 req/min, 5 conexões por IP) ──────────────────────────────────
