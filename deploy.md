@@ -571,6 +571,41 @@ docker compose \
 
 Os backups ficam salvos no volume `dados_volume` em `/app/dados/`.
 
+### Backup e restore de assets (via UI)
+
+A UI de manutenção suporta upload de até **200 MB** (limite do Nginx).
+
+Acesse: `https://seu-dominio.com/admin/maintenance/system` → **Backup e restore de Assets**
+
+O ZIP inclui:
+- `dados/docs` — documentos anexados aos equipamentos
+- `dados/service-report-pdfs` — PDFs de ordens de serviço
+- `dados/service-report-html` — HTMLs de ordens de serviço
+- `dados/report-img` — imagens e logos dos relatórios
+
+### Restore de assets acima de 200 MB (via SCP)
+
+Para arquivos maiores que 200 MB, envie diretamente ao servidor via SCP e restaure pela linha de comando, bypassing o Nginx.
+
+**1. Enviar o ZIP da máquina local para o servidor:**
+
+```bash
+scp assets-backup-ARQUIVO.zip user@servidor:/opt/vextrom/dados/backups/
+```
+
+**2. Restaurar:**
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app node scripts/restore-assets.js \
+  --file=/app/dados/backups/assets-backup-ARQUIVO.zip
+```
+
+> O script aceita backups antigos (com `docs/report/img/`) e remapeia automaticamente para `dados/report-img/`.
+
 ### Acessar o banco via psql
 
 ```bash

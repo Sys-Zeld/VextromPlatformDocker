@@ -29,6 +29,12 @@ services:
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
     networks:
       - vextrom_net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -43,6 +49,12 @@ services:
     command: --host unix:///var/run/docker.sock
     networks:
       - vextrom_net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
 
 networks:
   vextrom_net:
