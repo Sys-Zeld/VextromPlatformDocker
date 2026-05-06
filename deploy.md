@@ -628,6 +628,78 @@ docker compose \
 
 ---
 
+## Backup e restore completo (volumes Docker)
+
+Esta é a forma mais simples de fazer backup total do sistema — banco de dados, arquivos e configuração — em um único comando.
+
+### Backup completo (para tudo + copia volumes)
+
+```bash
+cd /opt/vextrom
+
+# Para todos os stacks
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod down
+docker compose -f docker-compose.admin.yml -p vextrom_admin down
+
+# Cria o diretório de destino
+mkdir -p /root/backups
+
+# Copia todos os volumes
+tar czf /root/backups/docker-volumes-$(date +%Y%m%d_%H%M%S).tar.gz \
+  /var/lib/docker/volumes/
+
+# Copia o .env.prod
+cp .env.prod /root/backups/.env.prod.bak
+
+# Sobe tudo novamente
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose -f docker-compose.admin.yml --env-file .env.prod -p vextrom_admin up -d
+```
+
+> O app fica fora durante o backup. Em VPS pequena costuma ser menos de 1 minuto.
+> Com os containers **parados**, os arquivos do PostgreSQL são consistentes — sem risco de corrupção.
+
+### Restore completo
+
+```bash
+cd /opt/vextrom
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod down
+docker compose -f docker-compose.admin.yml -p vextrom_admin down
+
+# Restaura todos os volumes
+tar xzf /root/backups/docker-volumes-YYYYMMDD_HHMMSS.tar.gz -C /
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose -f docker-compose.admin.yml --env-file .env.prod -p vextrom_admin up -d
+```
+
+### Verificar volumes existentes
+
+```bash
+docker volume ls
+```
+
+### Cron — backup automático diário às 3h
+
+```bash
+crontab -e
+```
+
+Adicione:
+
+```
+0 3 * * * cd /opt/vextrom && docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod down && docker compose -f docker-compose.admin.yml -p vextrom_admin down && tar czf /root/backups/docker-volumes-$(date +\%Y\%m\%d_\%H\%M\%S).tar.gz /var/lib/docker/volumes/ && cp .env.prod /root/backups/.env.prod.bak && docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d && docker compose -f docker-compose.admin.yml --env-file .env.prod -p vextrom_admin up -d >> /var/log/backup-docker.log 2>&1
+```
+
+### Copiar backup para máquina local
+
+```bash
+scp user@servidor:/root/backups/docker-volumes-*.tar.gz .
+```
+
+---
+
 ## Renovação do certificado SSL
 
 O serviço `certbot` verifica e renova automaticamente a cada 12 horas.
