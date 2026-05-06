@@ -3528,6 +3528,120 @@ ${bodyHtml}
       const report = await repo.getReportById(reportId);
       if (!report) return res.status(404).send("Relatorio nao encontrado.");
       return res.redirect(307, `/admin/report-service/orders/${report.service_order_id}/generate-pdf`);
+    },
+
+    async uploadOrderAttachment(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS nao encontrada." });
+
+      let fileNameRaw = "arquivo";
+      try {
+        fileNameRaw = decodeURIComponent(String(req.headers["x-file-name"] || "arquivo"));
+      } catch (_err) {
+        fileNameRaw = String(req.headers["x-file-name"] || "arquivo");
+      }
+      fileNameRaw = sanitizeInput(fileNameRaw);
+      const originalName = path.basename(fileNameRaw).replace(/[^a-zA-Z0-9._\- ]/g, "").slice(0, 200) || "arquivo";
+
+      let labelRaw = "";
+      try {
+        labelRaw = decodeURIComponent(String(req.headers["x-label"] || ""));
+      } catch (_err) {
+        labelRaw = String(req.headers["x-label"] || "");
+      }
+      const label = sanitizeInput(labelRaw).slice(0, 200);
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) {
+        return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      }
+      if (buffer.length > 50 * 1024 * 1024) {
+        return res.status(413).json({ ok: false, error: "Arquivo muito grande. Limite: 50 MB." });
+      }
+
+      const ext = path.extname(originalName).toLowerCase();
+      const baseSafe = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "arquivo";
+      const unique = crypto.randomBytes(6).toString("hex");
+      const storedName = `${Date.now()}-${baseSafe}-${unique}${ext}`;
+
+      const targetDir = path.join(process.cwd(), "dados", "order-attachments", String(orderId));
+      await fs.promises.mkdir(targetDir, { recursive: true });
+      await fs.promises.writeFile(path.join(targetDir, storedName), buffer);
+
+      const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim();
+      const uploadedBy = sanitizeInput(String(res.locals.adminUsername || res.locals.adminEmail || ""));
+
+      const created = await repo.createOrderAttachment({
+        serviceOrderId: orderId,
+        originalName,
+        storedName,
+        label,
+        fileSize: buffer.length,
+        mimeType,
+        uploadedBy
+      });
+
+      return res.status(201).json({ ok: true, data: { id: created.id, originalName, storedName, label, fileSize: buffer.length } });
+    },
+
+    async listOrderAttachments(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS nao encontrada." });
+      const attachments = await repo.listOrderAttachments(orderId);
+      return res.json({ ok: true, data: attachments });
+    },
+
+    async deleteOrderAttachment(req, res) {
+      const orderId = Number(req.params.id);
+      const attachmentId = Number(req.params.attachmentId);
+      if (!Number.isInteger(attachmentId) || attachmentId <= 0) {
+        return res.status(400).json({ ok: false, error: "ID invalido." });
+      }
+
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS nao encontrada." });
+
+      const attachment = await repo.getOrderAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.service_order_id) !== orderId) {
+        return res.status(404).json({ ok: false, error: "Anexo nao encontrado." });
+      }
+
+      await repo.deleteOrderAttachment(attachmentId);
+
+      const filePath = path.join(process.cwd(), "dados", "order-attachments", String(orderId), attachment.stored_name);
+      try { await fs.promises.unlink(filePath); } catch (_err) { /* arquivo ja removido */ }
+
+      return res.json({ ok: true });
+    },
+
+    async downloadOrderAttachment(req, res) {
+      const orderId = Number(req.params.id);
+      const attachmentId = Number(req.params.attachmentId);
+      if (!Number.isInteger(attachmentId) || attachmentId <= 0) {
+        return res.status(400).send("ID invalido.");
+      }
+
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).send("OS nao encontrada.");
+
+      const attachment = await repo.getOrderAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.service_order_id) !== orderId) {
+        return res.status(404).send("Anexo nao encontrado.");
+      }
+
+      const filePath = path.join(process.cwd(), "dados", "order-attachments", String(orderId), attachment.stored_name);
+      try {
+        await fs.promises.access(filePath);
+      } catch (_err) {
+        return res.status(404).send("Arquivo nao encontrado no servidor.");
+      }
+
+      const safeName = attachment.original_name.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+      if (attachment.mime_type) res.setHeader("Content-Type", attachment.mime_type);
+      return res.sendFile(filePath);
     }
   };
 }

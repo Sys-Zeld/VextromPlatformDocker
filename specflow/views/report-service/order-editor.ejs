@@ -101,6 +101,7 @@
             <button class="btn btn-success btn-sm" type="submit">Validar OS</button>
           </form>
         <% } %>
+        <button class="btn btn-outline-primary btn-sm" type="button" onclick="document.getElementById('os-attachments-panel').scrollIntoView({behavior:'smooth'})">Arquivos da OS</button>
       </div>
     </div>
   </div>
@@ -936,5 +937,197 @@
       contentInput.value = plainText ? quill.root.innerHTML : "";
     });
   })();
+</script>
+
+<!-- ── Painel de Arquivos da OS ─────────────────────────────────────────── -->
+<div class="card app-card mt-3" id="os-attachments-panel">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-3">Arquivos da OS</h2>
+    <p class="text-muted small mb-3">Firmware, manuais, backups de parametros e outros arquivos vinculados a esta OS. Qualquer extensao. Limite: 50 MB por arquivo.</p>
+
+    <div id="attach-feedback" class="alert d-none py-2 mb-3"></div>
+
+    <form id="attach-upload-form" class="row g-2 mb-4" onsubmit="attachUpload(event)">
+      <div class="col-12 col-md-5">
+        <input type="file" class="form-control form-control-sm" id="attach-file-input" required />
+      </div>
+      <div class="col-12 col-md-5">
+        <input type="text" class="form-control form-control-sm" id="attach-label-input" placeholder="Label (ex: Manual do equipamento)" maxlength="200" />
+      </div>
+      <div class="col-12 col-md-2 d-flex align-items-center">
+        <button class="btn btn-primary btn-sm w-100" type="submit" id="attach-submit-btn">Enviar</button>
+      </div>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-sm app-table mb-0" id="attach-table">
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Nome do arquivo</th>
+            <th>Tamanho</th>
+            <th>Data</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody id="attach-tbody">
+          <tr id="attach-empty-row"><td colspan="5" class="text-center text-muted py-3">Nenhum arquivo anexado.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var orderId = <%= order.id %>;
+  var csrfToken = "<%= csrfToken %>";
+  var baseUrl = "/admin/report-service/orders/" + orderId + "/attachments";
+
+  function formatBytes(bytes) {
+    if (!bytes) return "0 B";
+    var b = Number(bytes);
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / (1024 * 1024)).toFixed(2) + " MB";
+  }
+
+  function formatDate(iso) {
+    if (!iso) return "-";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    var dd = String(d.getDate()).padStart(2, "0");
+    var mm = String(d.getMonth() + 1).padStart(2, "0");
+    var yyyy = d.getFullYear();
+    var hh = String(d.getHours()).padStart(2, "0");
+    var min = String(d.getMinutes()).padStart(2, "0");
+    return dd + "/" + mm + "/" + yyyy + " " + hh + ":" + min;
+  }
+
+  function showFeedback(msg, type) {
+    var el = document.getElementById("attach-feedback");
+    if (!el) return;
+    el.className = "alert py-2 mb-3 alert-" + (type || "info");
+    el.textContent = msg;
+    el.classList.remove("d-none");
+    setTimeout(function () { el.classList.add("d-none"); }, 5000);
+  }
+
+  function renderRows(items) {
+    var tbody = document.getElementById("attach-tbody");
+    var emptyRow = document.getElementById("attach-empty-row");
+    if (!tbody) return;
+    var existing = tbody.querySelectorAll("tr[data-attach-id]");
+    existing.forEach(function (r) { r.remove(); });
+    if (!items || !items.length) {
+      if (emptyRow) emptyRow.style.display = "";
+      return;
+    }
+    if (emptyRow) emptyRow.style.display = "none";
+    items.forEach(function (item) {
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-attach-id", item.id);
+      var labelCell = document.createElement("td");
+      labelCell.textContent = item.label || "-";
+      var nameCell = document.createElement("td");
+      nameCell.textContent = item.original_name || item.originalName || "-";
+      var sizeCell = document.createElement("td");
+      sizeCell.textContent = formatBytes(item.file_size || item.fileSize);
+      var dateCell = document.createElement("td");
+      dateCell.textContent = formatDate(item.created_at || item.createdAt);
+      var actCell = document.createElement("td");
+      var dlLink = document.createElement("a");
+      dlLink.href = baseUrl + "/" + item.id + "/download";
+      dlLink.className = "btn btn-outline-secondary btn-sm me-1";
+      dlLink.textContent = "Baixar";
+      dlLink.setAttribute("download", "");
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn-outline-danger btn-sm";
+      delBtn.textContent = "Excluir";
+      delBtn.onclick = function () { attachDelete(item.id); };
+      actCell.appendChild(dlLink);
+      actCell.appendChild(delBtn);
+      tr.appendChild(labelCell);
+      tr.appendChild(nameCell);
+      tr.appendChild(sizeCell);
+      tr.appendChild(dateCell);
+      tr.appendChild(actCell);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function loadAttachments() {
+    fetch(baseUrl, { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (payload) {
+        if (payload && payload.ok) renderRows(payload.data || []);
+      })
+      .catch(function () { /* silencioso */ });
+  }
+
+  window.attachUpload = function (e) {
+    e.preventDefault();
+    var fileInput = document.getElementById("attach-file-input");
+    var labelInput = document.getElementById("attach-label-input");
+    var submitBtn = document.getElementById("attach-submit-btn");
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+    var file = fileInput.files[0];
+    if (file.size > 50 * 1024 * 1024) {
+      showFeedback("Arquivo muito grande. Limite: 50 MB.", "danger");
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Enviando...";
+    fetch(baseUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-CSRF-Token": csrfToken,
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-Label": encodeURIComponent((labelInput && labelInput.value) ? labelInput.value.trim() : "")
+      },
+      body: file
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (payload) {
+        if (payload && payload.ok) {
+          showFeedback("Arquivo enviado com sucesso.", "success");
+          fileInput.value = "";
+          if (labelInput) labelInput.value = "";
+          loadAttachments();
+        } else {
+          showFeedback((payload && payload.error) ? payload.error : "Falha ao enviar arquivo.", "danger");
+        }
+      })
+      .catch(function () { showFeedback("Erro ao enviar arquivo.", "danger"); })
+      .finally(function () { submitBtn.disabled = false; submitBtn.textContent = "Enviar"; });
+  };
+
+  window.attachDelete = function (attachId) {
+    if (!confirm("Excluir este arquivo? Acao irreversivel.")) return;
+    fetch(baseUrl + "/" + attachId + "/delete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken
+      }
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (payload) {
+        if (payload && payload.ok) {
+          showFeedback("Arquivo excluido.", "success");
+          loadAttachments();
+        } else {
+          showFeedback((payload && payload.error) ? payload.error : "Falha ao excluir.", "danger");
+        }
+      })
+      .catch(function () { showFeedback("Erro ao excluir arquivo.", "danger"); });
+  };
+
+  loadAttachments();
+})();
 </script>
 <%- include("../partials/footer") %>

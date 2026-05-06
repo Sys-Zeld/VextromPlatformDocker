@@ -94,6 +94,17 @@ function createReportServiceWebRouter(deps) {
   );
   router.post("/orders/:id/images/:imageId/label", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateImageLabel));
   router.post("/orders/:id/images/:imageId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteImage));
+  router.get("/orders/:id/attachments", deps.requireAdminAuth, asyncHandler(controller.listOrderAttachments));
+  router.post(
+    "/orders/:id/attachments",
+    express.raw({ type: "*/*", limit: "50mb" }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.uploadOrderAttachment)
+  );
+  router.post("/orders/:id/attachments/:attachmentId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteOrderAttachment));
+  router.get("/orders/:id/attachments/:attachmentId/download", deps.requireAdminAuth, asyncHandler(controller.downloadOrderAttachment));
+
   router.get("/orders/:id/preview", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.previewPage));
   router.get("/orders/:id/preview-html", deps.requireAdminAuth, asyncHandler(controller.previewHtmlPage));
   router.get("/orders/:id/preview-html/template/:templateKey", deps.requireAdminAuth, asyncHandler(controller.previewHtmlByTemplatePage));

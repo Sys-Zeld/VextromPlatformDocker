@@ -9,6 +9,7 @@ const ALLOWED_ZIP_FOLDERS = [
   "dados/service-report-pdfs",
   "dados/service-report-html",
   "dados/report-img",
+  "dados/order-attachments",
   "docs/report/img"  // caminho legado — remapeado para dados/report-img na extração
 ];
 

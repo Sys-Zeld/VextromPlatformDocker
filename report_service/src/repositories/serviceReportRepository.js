@@ -2270,6 +2270,56 @@ async function replaceSectionImages(serviceReportId, sectionKey, items = []) {
   return created;
 }
 
+async function listOrderAttachments(serviceOrderId) {
+  const result = await db.query(
+    `
+      SELECT id, service_order_id, original_name, stored_name, label, file_size, mime_type, uploaded_by, created_at
+      FROM service_report_order_attachments
+      WHERE service_order_id = $1
+      ORDER BY created_at ASC, id ASC
+    `,
+    [serviceOrderId]
+  );
+  return result.rows;
+}
+
+async function createOrderAttachment(payload) {
+  const result = await db.query(
+    `
+      INSERT INTO service_report_order_attachments
+        (service_order_id, original_name, stored_name, label, file_size, mime_type, uploaded_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `,
+    [
+      payload.serviceOrderId,
+      payload.originalName,
+      payload.storedName,
+      payload.label || "",
+      payload.fileSize || 0,
+      payload.mimeType || "",
+      payload.uploadedBy || ""
+    ]
+  );
+  return result.rows[0];
+}
+
+async function getOrderAttachmentById(id) {
+  const result = await db.query(
+    `SELECT * FROM service_report_order_attachments WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteOrderAttachment(id) {
+  const result = await db.query(
+    `DELETE FROM service_report_order_attachments WHERE id = $1 RETURNING stored_name, service_order_id`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   toInt,
   getAppSetting,
@@ -2381,6 +2431,10 @@ module.exports = {
   getSignRequestByToken,
   listSignRequestsByReportId,
   updateSignRequest,
-  deleteSignRequest
+  deleteSignRequest,
+  listOrderAttachments,
+  createOrderAttachment,
+  getOrderAttachmentById,
+  deleteOrderAttachment
 };
 

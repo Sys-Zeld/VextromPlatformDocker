@@ -506,6 +506,21 @@ async function migrateServiceReport() {
     );
   `);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_order_attachments (
+      id BIGSERIAL PRIMARY KEY,
+      service_order_id BIGINT NOT NULL REFERENCES service_report_orders(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      file_size BIGINT NOT NULL DEFAULT 0,
+      mime_type TEXT NOT NULL DEFAULT '',
+      uploaded_by TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_order_attachments_order_id ON service_report_order_attachments (service_order_id);`);
+
   await seedServiceReportEquipment();
   await seedServiceReportSample();
 }
