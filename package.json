@@ -10,7 +10,7 @@
   "moduleStatuses": {
     "specflow": "active",
     "module_spec": "in_development",
-    "report_service": "in_development"
+    "report_service": "active"
   },
   "main": "src/app.js",
   "scripts": {
