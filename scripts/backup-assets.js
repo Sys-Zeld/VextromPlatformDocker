@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
+const objectStorage = require("../specflow/services/objectStorage");
 
 const ASSET_DIRS = [
   {
@@ -51,16 +52,44 @@ function countFiles(dirPath) {
   return count;
 }
 
+async function resolvePresentDirs() {
+  const presentDirs = [];
+  for (const dir of ASSET_DIRS) {
+    // eslint-disable-next-line no-await-in-loop
+    const objectKeys = await objectStorage.listObjects(dir.zipFolder);
+    if (fs.existsSync(dir.srcPath) || objectKeys.length) {
+      presentDirs.push({ ...dir, objectKeys });
+    }
+  }
+  return presentDirs;
+}
+
+async function appendAssetDir(archive, dir) {
+  const fileCount = Math.max(countFiles(dir.srcPath), dir.objectKeys.length);
+  // eslint-disable-next-line no-console
+  console.log(`Adicionando: ${dir.label} (${fileCount} arquivo(s)) -> ${dir.zipFolder}/`);
+
+  if (!objectStorage.isS3Enabled()) {
+    archive.directory(dir.srcPath, dir.zipFolder);
+    return;
+  }
+
+  for (const key of dir.objectKeys) {
+    // eslint-disable-next-line no-await-in-loop
+    archive.append(await objectStorage.getObjectStream(key), { name: objectStorage.normalizeKey(key) });
+  }
+}
+
 async function run() {
   const outputFile = buildOutputPath();
 
-  const presentDirs = ASSET_DIRS.filter((dir) => fs.existsSync(dir.srcPath));
+  const presentDirs = await resolvePresentDirs();
   const missingDirs = ASSET_DIRS.filter((dir) => !fs.existsSync(dir.srcPath));
 
   if (missingDirs.length) {
     missingDirs.forEach((dir) => {
       // eslint-disable-next-line no-console
-      console.warn(`Aviso: pasta nao encontrada (sera ignorada): ${dir.srcPath}`);
+      console.warn(`Aviso: pasta nao encontrada (sera ignorada se tambem nao existir no S3): ${dir.srcPath}`);
     });
   }
 
@@ -76,15 +105,20 @@ async function run() {
     archive.on("error", reject);
     archive.pipe(output);
 
-    for (const dir of presentDirs) {
-      const fileCount = countFiles(dir.srcPath);
-      // eslint-disable-next-line no-console
-      console.log(`Adicionando: ${dir.label} (${fileCount} arquivo(s)) → ${dir.zipFolder}/`);
-      archive.directory(dir.srcPath, dir.zipFolder);
-    }
-
-    archive.finalize();
+    (async () => {
+      for (const dir of presentDirs) {
+        // eslint-disable-next-line no-await-in-loop
+        await appendAssetDir(archive, dir);
+      }
+      archive.finalize();
+    })().catch(reject);
   });
+
+  await objectStorage.uploadLocalFile(
+    objectStorage.normalizeKey(path.relative(process.cwd(), outputFile)),
+    outputFile,
+    { contentType: "application/zip" }
+  );
 
   const stat = fs.statSync(outputFile);
   const sizeMb = (stat.size / (1024 * 1024)).toFixed(2);

@@ -125,6 +125,18 @@
               <input type="text" class="form-control form-control-sm" name="serial_number" placeholder="Numero de serie" id="instrSerial" />
             </div>
             <div class="col-12 col-sm-6">
+              <select class="form-select form-select-sm" name="responsible_technician_id" id="instrResponsibleTech">
+                <option value="">Resp. por Instrumento</option>
+                <% technicians.forEach((tech) => { %>
+                  <option value="<%= tech.id %>"><%= tech.name %><% if (tech.role) { %> - <%= tech.role %><% } %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label class="form-label small mb-0 text-muted">Data ultima calibracao</label>
+              <input type="date" class="form-control form-control-sm" name="last_calibration_date" id="instrLastCalDate" />
+            </div>
+            <div class="col-12 col-sm-6">
               <label class="form-label small mb-0 text-muted">Validade calibracao</label>
               <input type="date" class="form-control form-control-sm" name="calibration_due_date" id="instrCalDate" />
             </div>
@@ -140,11 +152,11 @@
           <div class="table-responsive">
             <table class="table table-sm app-table mb-0">
               <thead>
-                <tr><th>Nome</th><th>Modelo</th><th>Serie</th><th>Val. Calibracao</th><th>Acoes</th></tr>
+                <tr><th>Nome</th><th>Modelo</th><th>Serie</th><th>Responsavel</th><th>Ult. Calibracao</th><th>Val. Calibracao</th><th>Acoes</th></tr>
               </thead>
               <tbody>
                 <% if (!instruments.length) { %>
-                  <tr><td colspan="5" class="text-center text-muted py-3">Nenhum instrumento cadastrado.</td></tr>
+                  <tr><td colspan="7" class="text-center text-muted py-3">Nenhum instrumento cadastrado.</td></tr>
                 <% } %>
                 <% instruments.forEach((instr) => { %>
                   <tr>
@@ -154,12 +166,16 @@
                     </td>
                     <td><%= instr.model || "-" %></td>
                     <td><%= instr.serial_number || "-" %></td>
+                    <td><%= instr.responsible_technician_name || "-" %></td>
+                    <td><%= formatDateOnly(instr.last_calibration_date) %></td>
                     <td><%= formatDateOnly(instr.calibration_due_date) %></td>
                     <td>
                       <div class="d-flex gap-1">
                         <button class="btn btn-outline-primary btn-sm" type="button" data-instr-edit
                           data-id="<%= instr.id %>" data-name="<%= instr.name %>"
                           data-model="<%= instr.model || '' %>" data-serial="<%= instr.serial_number || '' %>"
+                          data-responsible-tech-id="<%= instr.responsible_technician_id || '' %>"
+                          data-last-cal-date="<%= instr.last_calibration_date ? String(instr.last_calibration_date).slice(0,10) : '' %>"
                           data-cal-date="<%= instr.calibration_due_date ? String(instr.calibration_due_date).slice(0,10) : '' %>"
                           data-notes="<%= instr.notes || '' %>">Editar</button>
                         <form method="post" action="/admin/report-service/assets/instruments/<%= instr.id %>/delete" class="m-0" onsubmit="return confirm('Excluir instrumento?');">
@@ -230,6 +246,8 @@
       document.getElementById("instrName").value = d.name || "";
       document.getElementById("instrModel").value = d.model || "";
       document.getElementById("instrSerial").value = d.serial || "";
+      document.getElementById("instrResponsibleTech").value = d.responsibleTechId || "";
+      document.getElementById("instrLastCalDate").value = d.lastCalDate || "";
       document.getElementById("instrCalDate").value = d.calDate || "";
       document.getElementById("instrNotes").value = d.notes || "";
       instrForm.action = "/admin/report-service/assets/instruments/" + d.id + "/update";

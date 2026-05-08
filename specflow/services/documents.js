@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const db = require("../db");
 const env = require("../config/env");
+const objectStorage = require("./objectStorage");
 
 const DOCS_DIR = path.resolve(env.storage.docsDir);
 const MAX_DOCS_PER_EQUIPMENT = 10;
@@ -27,7 +28,8 @@ function ensureDocsDirectory() {
 
 async function writeDocumentFile(diskPath, buffer) {
   try {
-    await fs.promises.writeFile(diskPath, buffer);
+    const key = objectStorage.normalizeKey(path.relative(process.cwd(), diskPath));
+    await objectStorage.putObject(key, buffer, { contentType: "application/pdf" });
   } catch (err) {
     if (err.code === "EACCES") {
       const permissionError = new Error(`No write permission for file: ${diskPath}`);
@@ -75,6 +77,10 @@ function createStoredName(token, originalName) {
   const base = sanitizeFileName(originalName).slice(0, 50);
   const stamp = Date.now();
   return `${token}_${base}_${stamp}.pdf`;
+}
+
+function getDocumentStorageKey(storedName) {
+  return objectStorage.normalizeKey(path.join("dados", "docs", path.basename(String(storedName || ""))));
 }
 
 async function listEquipmentDocuments(equipmentId) {
@@ -185,6 +191,7 @@ module.exports = {
   MAX_DOC_SIZE_BYTES,
   buildDocumentDownloadPath,
   ensureDocsDirectory,
+  getDocumentStorageKey,
   getEquipmentDocumentById,
   listEquipmentDocuments,
   saveEquipmentDocument,

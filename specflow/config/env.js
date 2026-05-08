@@ -124,6 +124,16 @@ module.exports = {
     url: process.env.REDIS_URL || "redis://localhost:6379"
   },
   storage: {
-    docsDir: process.env.DOCS_DIR || path.join(process.cwd(), "dados", "docs")
+    driver: String(process.env.STORAGE_DRIVER || "local").trim().toLowerCase(),
+    docsDir: process.env.DOCS_DIR || path.join(process.cwd(), "dados", "docs"),
+    s3: {
+      endpoint: process.env.S3_ENDPOINT || process.env.STORAGE_S3_ENDPOINT || "",
+      region: process.env.S3_REGION || process.env.STORAGE_S3_REGION || "us-east-1",
+      bucket: process.env.S3_BUCKET || process.env.STORAGE_S3_BUCKET || "",
+      accessKeyId: process.env.S3_ACCESS_KEY_ID || process.env.MINIO_ROOT_USER || "",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || process.env.MINIO_ROOT_PASSWORD || "",
+      forcePathStyle: parseBooleanFlag(process.env.S3_FORCE_PATH_STYLE || process.env.STORAGE_S3_FORCE_PATH_STYLE, true),
+      keyPrefix: String(process.env.S3_KEY_PREFIX || process.env.STORAGE_S3_KEY_PREFIX || "").replace(/^\/+|\/+$/g, "")
+    }
   }
 };

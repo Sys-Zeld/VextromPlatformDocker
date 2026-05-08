@@ -3,6 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
 const env = require("../specflow/config/env");
+const objectStorage = require("../specflow/services/objectStorage");
 const { resolvePostgresCommand, buildNotFoundHint } = require("./utils/postgres-cli");
 const DEFAULT_RESTORE_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_SQL_SCAN_BYTES = 8 * 1024 * 1024;
@@ -265,13 +266,13 @@ function isSqlBackupFile(fileName, targetModule) {
   return prefixes.some((prefix) => normalized.startsWith(prefix));
 }
 
-function findLatestBackup(targetModule) {
+async function findLatestBackup(targetModule) {
   const backupDir = path.join(process.cwd(), "dados", "backups");
-  if (!fs.existsSync(backupDir)) {
+  if (!fs.existsSync(backupDir) && !objectStorage.isS3Enabled()) {
     throw new Error(`Diretorio de backups nao encontrado: ${backupDir}`);
   }
 
-  const files = fs
+  const localFiles = fs.existsSync(backupDir) ? fs
     .readdirSync(backupDir)
     .filter((file) => isSqlBackupFile(file, targetModule))
     .map((file) => {
@@ -292,7 +293,28 @@ function findLatestBackup(targetModule) {
         nameDateMs
       };
     })
-    .filter((entry) => entry.isFile);
+    .filter((entry) => entry.isFile) : [];
+
+  let remoteFiles = [];
+  if (objectStorage.isS3Enabled()) {
+    const keys = await objectStorage.listObjects("dados/backups");
+    remoteFiles = keys
+      .map((key) => path.basename(key))
+      .filter((file) => isSqlBackupFile(file, targetModule))
+      .map((file) => ({
+        fullPath: path.join(backupDir, file),
+        mtimeMs: 0,
+        name: file,
+        isFile: true,
+        nameDateMs: (() => {
+          const match = file.match(/-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.sql$/i);
+          return match ? Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${match[7]}Z`) : null;
+        })()
+      }));
+  }
+
+  const files = [...localFiles, ...remoteFiles]
+    .filter((file, index, all) => all.findIndex((item) => item.name === file.name) === index);
 
   if (!files.length) {
     throw new Error(`Nenhum backup .sql encontrado para o modulo ${targetModule} em: ${backupDir}`);
@@ -308,7 +330,7 @@ function findLatestBackup(targetModule) {
     return b.name.localeCompare(a.name);
   });
 
-  return files[0].fullPath;
+  return objectStorage.ensureLocalFile(path.join("dados", "backups", files[0].name));
 }
 
 function resolveRestoreTimeoutMs() {
@@ -421,7 +443,7 @@ async function run() {
     });
   } else {
     targetModule = moduleFromFlag || "specflow";
-    backupFile = findLatestBackup(targetModule);
+    backupFile = await findLatestBackup(targetModule);
   }
 
   const databaseUrl = MODULE_CONFIG[targetModule] && MODULE_CONFIG[targetModule].dbUrl;

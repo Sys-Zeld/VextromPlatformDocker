@@ -1,8 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const unzipper = require("unzipper");
+const objectStorage = require("../specflow/services/objectStorage");
 
 const ASSETS_BACKUP_PREFIX = "assets-backup-";
+const ASSETS_BACKUP_DATE_REGEX = /-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.zip$/i;
 
 const ALLOWED_ZIP_FOLDERS = [
   "dados/docs",
@@ -25,25 +27,58 @@ function resolveZipFileFromArgs() {
   return null;
 }
 
-function findLatestAssetsBackup() {
+async function findLatestAssetsBackup() {
   const backupDir = path.join(process.cwd(), "dados", "backups");
-  if (!fs.existsSync(backupDir)) {
+  if (!fs.existsSync(backupDir) && !objectStorage.isS3Enabled()) {
     throw new Error(`Diretorio de backups nao encontrado: ${backupDir}`);
   }
 
-  const files = fs.readdirSync(backupDir)
-    .filter((f) => f.startsWith(ASSETS_BACKUP_PREFIX) && f.endsWith(".zip"))
-    .map((f) => {
-      const fullPath = path.join(backupDir, f);
-      return { fullPath, mtime: fs.statSync(fullPath).mtimeMs, name: f };
+  const localFiles = fs.existsSync(backupDir)
+    ? fs.readdirSync(backupDir)
+      .filter((f) => f.startsWith(ASSETS_BACKUP_PREFIX) && f.endsWith(".zip"))
+      .map((f) => {
+        const fullPath = path.join(backupDir, f);
+        return { fullPath, mtime: fs.statSync(fullPath).mtimeMs, name: f, nameDateMs: parseNameDateMs(f) };
+      })
+    : [];
+
+  let remoteFiles = [];
+  if (objectStorage.isS3Enabled()) {
+    const remoteKeys = await objectStorage.listObjects("dados/backups");
+    remoteFiles = remoteKeys
+      .map((key) => path.basename(key))
+      .filter((f) => f.startsWith(ASSETS_BACKUP_PREFIX) && f.endsWith(".zip"))
+      .map((f) => {
+        const fullPath = path.join(backupDir, f);
+        return { fullPath, mtime: 0, name: f, remote: true, nameDateMs: parseNameDateMs(f) };
+      });
+  }
+
+  const files = [...localFiles, ...remoteFiles]
+    .filter((file, index, all) => all.findIndex((item) => item.name === file.name) === index)
+    .map((file) => {
+      if (file.remote && !fs.existsSync(file.fullPath)) return file;
+      return {
+        fullPath: file.fullPath,
+        mtime: fs.existsSync(file.fullPath) ? fs.statSync(file.fullPath).mtimeMs : file.mtime,
+        name: file.name,
+        nameDateMs: file.nameDateMs
+      };
     })
-    .sort((a, b) => b.mtime - a.mtime);
+    .sort((a, b) => (b.nameDateMs || b.mtime || 0) - (a.nameDateMs || a.mtime || 0));
 
   if (!files.length) {
     throw new Error(`Nenhum arquivo assets-backup-*.zip encontrado em: ${backupDir}`);
   }
 
-  return files[0].fullPath;
+  return objectStorage.ensureLocalFile(path.join("dados", "backups", files[0].name));
+}
+
+function parseNameDateMs(fileName) {
+  const match = String(fileName || "").match(ASSETS_BACKUP_DATE_REGEX);
+  if (!match) return 0;
+  const parsed = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${match[7]}Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function shouldSkipClean() {
@@ -77,6 +112,13 @@ async function extractZip(zipFile) {
 
     for (const folder of foldersInZip) {
       const destPath = path.join(process.cwd(), folder);
+      if (objectStorage.isS3Enabled()) {
+        const keys = await objectStorage.listObjects(folder);
+        for (const key of keys) {
+          // eslint-disable-next-line no-await-in-loop
+          await objectStorage.deleteObject(key);
+        }
+      }
       if (fs.existsSync(destPath)) {
         fs.rmSync(destPath, { recursive: true, force: true });
         // eslint-disable-next-line no-console
@@ -113,6 +155,11 @@ async function extractZip(zipFile) {
         .on("error", reject);
     });
 
+    await objectStorage.uploadLocalFile(
+      objectStorage.normalizeKey(path.relative(process.cwd(), destPath)),
+      destPath
+    );
+
     extractedCount += 1;
   }
 
@@ -121,7 +168,7 @@ async function extractZip(zipFile) {
 
 async function run() {
   const manualFile = resolveZipFileFromArgs();
-  const zipFile = manualFile || findLatestAssetsBackup();
+  const zipFile = manualFile || await findLatestAssetsBackup();
 
   // eslint-disable-next-line no-console
   console.log(`Restaurando assets de: ${path.basename(zipFile)}`);

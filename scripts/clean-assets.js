@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const env = require("../specflow/config/env");
+const objectStorage = require("../specflow/services/objectStorage");
 
 const ROOT_DIR = process.cwd();
 const KEEP_BASENAMES = new Set([".gitkeep", ".keep"]);
@@ -8,19 +9,28 @@ const KEEP_BASENAMES = new Set([".gitkeep", ".keep"]);
 const TARGET_DIRS = [
   {
     label: "docs (specflow)",
-    dirPath: path.resolve(env.storage.docsDir)
+    dirPath: path.resolve(env.storage.docsDir),
+    storagePrefix: "dados/docs"
   },
   {
     label: "service-report-pdfs",
-    dirPath: path.join(ROOT_DIR, "dados", "service-report-pdfs")
+    dirPath: path.join(ROOT_DIR, "dados", "service-report-pdfs"),
+    storagePrefix: "dados/service-report-pdfs"
   },
   {
     label: "service-report-html",
-    dirPath: path.join(ROOT_DIR, "dados", "service-report-html")
+    dirPath: path.join(ROOT_DIR, "dados", "service-report-html"),
+    storagePrefix: "dados/service-report-html"
   },
   {
     label: "report img (dados/report-img)",
-    dirPath: path.join(ROOT_DIR, "dados", "report-img")
+    dirPath: path.join(ROOT_DIR, "dados", "report-img"),
+    storagePrefix: "dados/report-img"
+  },
+  {
+    label: "order attachments (dados/order-attachments)",
+    dirPath: path.join(ROOT_DIR, "dados", "order-attachments"),
+    storagePrefix: "dados/order-attachments"
   }
 ];
 
@@ -48,25 +58,37 @@ function cleanDirectoryContents(dirPath) {
   return removedCount;
 }
 
-function run() {
+async function cleanStoragePrefix(prefix) {
+  if (!objectStorage.isS3Enabled()) return 0;
+  const keys = await objectStorage.listObjects(prefix);
+  let removed = 0;
+  for (const key of keys) {
+    // eslint-disable-next-line no-await-in-loop
+    await objectStorage.deleteObject(key);
+    removed += 1;
+  }
+  return removed;
+}
+
+async function run() {
   let totalRemoved = 0;
 
   for (const target of TARGET_DIRS) {
     const removed = cleanDirectoryContents(target.dirPath);
-    totalRemoved += removed;
+    // eslint-disable-next-line no-await-in-loop
+    const storageRemoved = await cleanStoragePrefix(target.storagePrefix);
+    totalRemoved += removed + storageRemoved;
     // eslint-disable-next-line no-console
-    console.log(`Limpo: ${target.label} -> ${target.dirPath} (${removed} item(ns) removido(s))`);
+    console.log(`Limpo: ${target.label} -> ${target.dirPath} (${removed} local, ${storageRemoved} S3)`);
   }
 
   // eslint-disable-next-line no-console
   console.log(`\nLimpeza de assets concluida. Total removido: ${totalRemoved} item(ns).`);
 }
 
-try {
-  run();
-} catch (err) {
+run().catch((err) => {
   // eslint-disable-next-line no-console
   console.error("Falha na limpeza de assets:", err.message);
   process.exit(1);
-}
+});
 

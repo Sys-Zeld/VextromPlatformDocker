@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
@@ -21,6 +20,7 @@ const {
 } = require("../services/reportTemplateService");
 const { sanitizeReportSectionHtml } = require("../services/quillContentService");
 const { withServiceOrderDisplay } = require("../utils/serviceOrderDisplay");
+const objectStorage = require("../../../specflow/services/objectStorage");
 const {
   SECTION_DEFINITIONS,
   QUILL_SECTION_TOOLBAR,
@@ -1981,11 +1981,13 @@ function createReportWebController(deps) {
         return res.status(400).json({ ok: false, error: "Arquivo invalido. Envie PNG, JPG ou SVG." });
       }
 
-      const targetDir = path.join(process.cwd(), "dados", "report-img", "logos");
-      await fs.promises.mkdir(targetDir, { recursive: true });
       const unique = crypto.randomBytes(6).toString("hex");
       const finalName = `logo-${brand}-${Date.now()}-${unique}${ext === ".jpeg" ? ".jpg" : ext}`;
-      await fs.promises.writeFile(path.join(targetDir, finalName), buffer);
+      await objectStorage.putObject(
+        path.join("dados", "report-img", "logos", finalName),
+        buffer,
+        { contentType: mime || "application/octet-stream" }
+      );
 
       return res.status(201).json({ ok: true, data: { filePath: `/docs/report/img/logos/${finalName}` } });
     },
@@ -2015,12 +2017,14 @@ function createReportWebController(deps) {
       if (!ext || !buffer.length) {
         return res.status(400).json({ ok: false, error: "Arquivo de imagem invalido." });
       }
-      const targetDir = path.join(process.cwd(), "dados", "report-img");
-      await fs.promises.mkdir(targetDir, { recursive: true });
       const fileSafeBase = path.basename(fileNameBase, extFromName || path.extname(fileNameBase)).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
       const unique = crypto.randomBytes(6).toString("hex");
       const finalName = `config-${Date.now()}-${fileSafeBase}-${unique}${ext === ".jpeg" ? ".jpg" : ext}`;
-      await fs.promises.writeFile(path.join(targetDir, finalName), buffer);
+      await objectStorage.putObject(
+        path.join("dados", "report-img", finalName),
+        buffer,
+        { contentType: mime || "application/octet-stream" }
+      );
       return res.status(201).json({ ok: true, data: { filePath: finalName } });
     },
 
@@ -2981,6 +2985,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
+        lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
         notes: sanitizeInput(req.body.notes)
       });
@@ -2993,6 +2999,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
+        lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
         notes: sanitizeInput(req.body.notes)
       });
@@ -3107,6 +3115,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
+        lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
         notes: sanitizeInput(req.body.notes)
       });
@@ -3143,13 +3153,14 @@ function createReportWebController(deps) {
       }
       const optimizedBuffer = await optimizeTagImageUploadBuffer(buffer, ext);
 
-      const targetDir = path.join(process.cwd(), "dados", "report-img");
-      await fs.promises.mkdir(targetDir, { recursive: true });
       const fileSafeBase = path.basename(fileNameBase, extFromName || path.extname(fileNameBase)).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
       const unique = crypto.randomBytes(6).toString("hex");
       const finalName = `${Date.now()}-${fileSafeBase}-${unique}${ext === ".jpeg" ? ".jpg" : ext}`;
-      const absolutePath = path.join(targetDir, finalName);
-      await fs.promises.writeFile(absolutePath, optimizedBuffer);
+      await objectStorage.putObject(
+        path.join("dados", "report-img", finalName),
+        optimizedBuffer,
+        { contentType: mime || "application/octet-stream" }
+      );
 
       let captionRaw = "";
       try {
@@ -3498,9 +3509,17 @@ ${bodyHtml}
       const requestedTemplateKey = sanitizeInput(req.body.template_key || req.query.template_key);
       const { reportConfig, templateKey } = await resolveRenderConfig(requestedTemplateKey, null);
       const htmlSource = await renderReportPreviewHtml(payload, { reportConfig, templateKey });
-      await fs.promises.writeFile(service.resolveReportHtmlPath(report.id), htmlSource, "utf8");
+      await objectStorage.putObject(
+        objectStorage.normalizeKey(path.relative(process.cwd(), service.resolveReportHtmlPath(report.id))),
+        Buffer.from(htmlSource, "utf8"),
+        { contentType: "text/html; charset=utf-8" }
+      );
       const pdfBuffer = await buildPdfFromPreviewRoute(req, orderId, templateKey, payload);
-      await fs.promises.writeFile(outputPath, pdfBuffer);
+      await objectStorage.putObject(
+        objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)),
+        pdfBuffer,
+        { contentType: "application/pdf" }
+      );
       await service.updateReport(report.id, {
         pdfPath: outputPath,
         status: "issued",
@@ -3565,9 +3584,11 @@ ${bodyHtml}
       const unique = crypto.randomBytes(6).toString("hex");
       const storedName = `${Date.now()}-${baseSafe}-${unique}${ext}`;
 
-      const targetDir = path.join(process.cwd(), "dados", "order-attachments", String(orderId));
-      await fs.promises.mkdir(targetDir, { recursive: true });
-      await fs.promises.writeFile(path.join(targetDir, storedName), buffer);
+      await objectStorage.putObject(
+        path.join("dados", "order-attachments", String(orderId), storedName),
+        buffer,
+        { contentType: String(req.headers["content-type"] || "application/octet-stream").split(";")[0].trim() }
+      );
 
       const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim();
       const uploadedBy = sanitizeInput(String(res.locals.adminUsername || res.locals.adminEmail || ""));
@@ -3610,8 +3631,7 @@ ${bodyHtml}
 
       await repo.deleteOrderAttachment(attachmentId);
 
-      const filePath = path.join(process.cwd(), "dados", "order-attachments", String(orderId), attachment.stored_name);
-      try { await fs.promises.unlink(filePath); } catch (_err) { /* arquivo ja removido */ }
+      await objectStorage.deleteObject(path.join("dados", "order-attachments", String(orderId), attachment.stored_name));
 
       return res.json({ ok: true });
     },
@@ -3631,17 +3651,13 @@ ${bodyHtml}
         return res.status(404).send("Anexo nao encontrado.");
       }
 
-      const filePath = path.join(process.cwd(), "dados", "order-attachments", String(orderId), attachment.stored_name);
-      try {
-        await fs.promises.access(filePath);
-      } catch (_err) {
+      const storageKey = path.join("dados", "order-attachments", String(orderId), attachment.stored_name);
+      if (!await objectStorage.existsObject(storageKey)) {
         return res.status(404).send("Arquivo nao encontrado no servidor.");
       }
 
       const safeName = attachment.original_name.replace(/[^a-zA-Z0-9._\- ]/g, "_");
-      res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
-      if (attachment.mime_type) res.setHeader("Content-Type", attachment.mime_type);
-      return res.sendFile(filePath);
+      return objectStorage.sendObjectDownload(res, storageKey, safeName, attachment.mime_type || "application/octet-stream");
     }
   };
 }

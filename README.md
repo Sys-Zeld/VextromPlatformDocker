@@ -308,6 +308,10 @@ Observacoes:
 ### Storage
 
 - `DOCS_DIR`
+- `STORAGE_DRIVER`: `local` ou `s3`
+- `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`
+- Em Docker, `STORAGE_DRIVER=s3` usa o servico MinIO interno (`http://minio:9000`) e mantem cache local em `dados/`.
+- Buckets devem permanecer privados; downloads passam pela aplicacao para validar permissao.
 
 ## UI, temas e preferencias
 

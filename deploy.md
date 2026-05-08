@@ -209,6 +209,179 @@ Antes de liberar para produção, verifique:
 
 ## Produção
 
+### Deploy em producao preservando dados locais
+
+Use este roteiro quando voce ja tem dados locais em `/app/dados` e precisa subir uma instalacao de producao sem perder documentos, imagens, PDFs, anexos e bancos.
+
+Resposta curta: **backup de assets + restore vai funcionar para os arquivos de `/dados`**, desde que voce tambem restaure os bancos correspondentes. Os arquivos em `/dados` guardam os binarios; as tabelas do PostgreSQL guardam os cadastros, vinculos e referencias para esses arquivos. Para uma migracao completa, faca **backup dos bancos e backup dos assets**.
+
+Nunca use `docker compose down -v` em producao, porque isso remove os volumes persistentes (`postgres_data`, `dados_volume`, `minio_data`, certificados etc.).
+
+### A. Gerar backups no ambiente local
+
+Com o ambiente local rodando:
+
+```bash
+docker compose exec app npm run db:backup:all
+docker compose exec app npm run assets:backup
+```
+
+Isso gera arquivos em `/app/dados/backups` dentro do container:
+
+```bash
+docker compose exec app ls -lh /app/dados/backups
+```
+
+Copie os backups do container local para uma pasta da sua maquina:
+
+```bash
+mkdir -p ./deploy-backups
+docker compose cp app:/app/dados/backups ./deploy-backups
+```
+
+Voce deve ter, no minimo:
+
+- `specflow-backup-*.sql`
+- `config-backup-*.sql`
+- `module-spec-backup-*.sql`
+- `report-service-backup-*.sql`
+- `assets-backup-*.zip`
+
+### B. Enviar backups para o servidor
+
+No servidor, crie a pasta temporaria:
+
+```bash
+mkdir -p /tmp/vextrom-backups
+```
+
+No seu computador local:
+
+```bash
+scp ./deploy-backups/backups/* user@servidor:/tmp/vextrom-backups/
+```
+
+### C. Subir a stack vazia em producao
+
+No servidor, dentro de `/opt/vextrom`:
+
+```bash
+docker network create vextrom_net || true
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  up -d --build
+```
+
+Espere o app iniciar:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  ps
+```
+
+### D. Copiar os backups para dentro do volume `dados_volume`
+
+Como producao usa volume Docker nomeado (`dados_volume:/app/dados`), copie os arquivos para dentro do container:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app mkdir -p /app/dados/backups
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  cp /tmp/vextrom-backups/. app:/app/dados/backups/
+```
+
+Confira dentro do container:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app ls -lh /app/dados/backups
+```
+
+### E. Restaurar bancos
+
+Rode um restore por modulo. Estes comandos limpam o schema `public` do banco alvo antes de restaurar, entao use apenas em uma instalacao nova ou quando voce realmente quer substituir os dados do servidor pelos backups locais.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:specflow
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:module-spec
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:report-service
+```
+
+### F. Restaurar assets
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app npm run assets:restore
+```
+
+O restore de assets extrai:
+
+- `dados/docs`
+- `dados/service-report-pdfs`
+- `dados/service-report-html`
+- `dados/report-img`
+- `dados/order-attachments`
+
+Se `STORAGE_DRIVER=s3`, o restore tambem envia esses arquivos para o MinIO/S3 configurado.
+
+### G. Rodar migrations da versao atual
+
+Depois do restore, rode migrations para garantir que o banco restaurado receba colunas novas, como os campos recentes de instrumentos.
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app npm run db:migrate
+```
+
+### H. Reiniciar e validar
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  restart app
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  logs -f app
+```
+
+Checklist minimo:
+
+- Login admin
+- Equipamentos com documentos antigos
+- Report Service com OS antigas
+- Imagens do relatorio abrindo
+- PDFs/HTMLs antigos acessiveis
+- Anexos de OS acessiveis
+- Tela `Equipe/Instrumentos OS` abrindo e salvando
+
 ### 1. Preparar o servidor
 
 ```bash
@@ -569,7 +742,27 @@ docker compose \
   exec app npm run db:backup:all
 ```
 
-Os backups ficam salvos no volume `dados_volume` em `/app/dados/`.
+Os backups ficam salvos no volume `dados_volume` em `/app/dados/` e, quando `STORAGE_DRIVER=s3`, tambem sao enviados para o bucket MinIO/S3 configurado.
+
+### MinIO / storage S3 privado
+
+O Compose cria um MinIO interno na rede Docker e um bucket privado definido por `S3_BUCKET`.
+
+Variaveis principais em `.env.prod`:
+
+```env
+STORAGE_DRIVER=s3
+S3_ENDPOINT=http://minio:9000
+S3_REGION=us-east-1
+S3_BUCKET=vextrom-assets
+S3_ACCESS_KEY_ID=vextrom
+S3_SECRET_ACCESS_KEY=TROQUE_SENHA_MINIO_FORTE_AQUI
+S3_FORCE_PATH_STYLE=true
+MINIO_ROOT_USER=vextrom
+MINIO_ROOT_PASSWORD=TROQUE_SENHA_MINIO_FORTE_AQUI
+```
+
+O bucket nao fica publico. Uploads, downloads, imagens de relatorio e backups passam pela aplicacao, que valida permissao e usa o MinIO/S3 como storage remoto com cache local em `dados/`.
 
 ### Backup e restore de assets (via UI)
 
@@ -582,6 +775,7 @@ O ZIP inclui:
 - `dados/service-report-pdfs` — PDFs de ordens de serviço
 - `dados/service-report-html` — HTMLs de ordens de serviço
 - `dados/report-img` — imagens e logos dos relatórios
+- `dados/order-attachments` — anexos de ordens de serviço
 
 ### Restore de assets acima de 200 MB (via SCP)
 
@@ -590,10 +784,29 @@ Para arquivos maiores que 200 MB, envie diretamente ao servidor via SCP e restau
 **1. Enviar o ZIP da máquina local para o servidor:**
 
 ```bash
-scp assets-backup-ARQUIVO.zip user@servidor:/opt/vextrom/dados/backups/
+ssh user@servidor "mkdir -p /tmp/vextrom-backups"
+scp assets-backup-ARQUIVO.zip user@servidor:/tmp/vextrom-backups/
 ```
 
-**2. Restaurar:**
+**2. Copiar o ZIP para dentro do volume Docker `dados_volume`:**
+
+No servidor, dentro de `/opt/vextrom`:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  exec app mkdir -p /app/dados/backups
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  --env-file .env.prod \
+  cp /tmp/vextrom-backups/assets-backup-ARQUIVO.zip app:/app/dados/backups/assets-backup-ARQUIVO.zip
+```
+
+**3. Restaurar:**
 
 ```bash
 docker compose \
@@ -752,6 +965,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 |---|---|
 | `postgres_data` | Dados do PostgreSQL |
 | `redis_data` | Dados do Redis (AOF) |
+| `minio_data` | Objetos do MinIO/S3 privado |
 | `dados_volume` | Documentos, backups, arquivos de usuário e imagens de relatórios (`dados/report-img/`) |
 | `vextrom_certbot_www` | Desafios ACME (webroot) |
 | `vextrom_certbot_certs` | Certificados Let's Encrypt |

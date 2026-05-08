@@ -1,10 +1,11 @@
-const fs = require("fs");
+const path = require("path");
 const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
-const { generatePdfToFile, buildPdfBufferFromHtml } = require("../services/serviceReportPdfService");
+const { buildPdfBufferFromHtml } = require("../services/serviceReportPdfService");
 const { getReportConfigSettings } = require("../services/reportConfigSettings");
 const { buildPreviewModel } = require("../services/reportPreviewService");
 const { renderReportPreviewHtml, normalizeReportTemplateKey } = require("../services/reportTemplateService");
+const objectStorage = require("../../../specflow/services/objectStorage");
 
 function ok(res, data, statusCode = 200) {
   return res.status(statusCode).json({ data });
@@ -290,8 +291,17 @@ function createReportApiController(deps) {
       const reportConfig = await getReportConfigSettings();
       const templateKey = normalizeReportTemplateKey(req.body && req.body.template_key ? req.body.template_key : reportConfig.templateKey);
       const htmlSource = await renderReportPreviewHtml(aggregate, { reportConfig, templateKey });
-      await fs.promises.writeFile(service.resolveReportHtmlPath(reportId), htmlSource, "utf8");
-      await generatePdfToFile(aggregate, outputPath, htmlSource);
+      await objectStorage.putObject(
+        objectStorage.normalizeKey(path.relative(process.cwd(), service.resolveReportHtmlPath(reportId))),
+        Buffer.from(htmlSource, "utf8"),
+        { contentType: "text/html; charset=utf-8" }
+      );
+      const pdfBuffer = await buildPdfBufferFromHtml(htmlSource, aggregate);
+      await objectStorage.putObject(
+        objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)),
+        pdfBuffer,
+        { contentType: "application/pdf" }
+      );
       await service.updateReport(reportId, { pdfPath: outputPath, status: "issued", issueDate: new Date().toISOString().slice(0, 10) });
       return ok(res, {
         reportId,

@@ -123,11 +123,13 @@ const {
   MAX_DOCS_PER_EQUIPMENT,
   MAX_DOC_SIZE_BYTES,
   ensureDocsDirectory,
+  getDocumentStorageKey,
   getEquipmentDocumentById,
   listEquipmentDocuments,
   saveEquipmentDocument,
   deleteEquipmentDocumentById
 } = require("./services/documents");
+const objectStorage = require("./services/objectStorage");
 const {
   createApiKey,
   listApiKeys,
@@ -218,7 +220,22 @@ app.use(express.urlencoded({ extended: false, limit: "25mb" }));
 app.use(express.json({ limit: "25mb" }));
 app.use(cookieParser());
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/docs/report/img", express.static(path.join(process.cwd(), "dados", "report-img")));
+app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
+  const rel = objectStorage.normalizeKey(req.params[0] || "");
+  if (!rel) return sendStandardError(req, res, 404);
+  const key = objectStorage.normalizeKey(path.join("dados", "report-img", rel));
+  if (!await objectStorage.existsObject(key)) return sendStandardError(req, res, 404);
+  const ext = path.extname(rel).toLowerCase();
+  const contentTypes = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif"
+  };
+  return objectStorage.sendObjectDownload(res, key, "", contentTypes[ext] || "application/octet-stream");
+})()).catch(next));
 ensureDocsDirectory();
 
 const supportedLangSet = new Set(SUPPORTED_LANGS);
@@ -807,6 +824,13 @@ function extractAssetsZipPathFromOutput(output) {
   return "";
 }
 
+function parseAssetsBackupNameDateMs(fileName) {
+  const match = String(fileName || "").match(/-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.zip$/i);
+  if (!match) return 0;
+  const parsed = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${match[7]}Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 async function pathExists(filePath) {
   try {
     await fs.promises.access(filePath, fs.constants.F_OK);
@@ -818,19 +842,29 @@ async function pathExists(filePath) {
 
 async function findLatestAssetsZipInBackupDir() {
   const backupDir = getBackupDirectoryPath();
-  if (!await pathExists(backupDir)) return "";
-  const entries = await fs.promises.readdir(backupDir, { withFileTypes: true });
-  const files = await Promise.all(entries
-    .filter((entry) => entry && entry.isFile && entry.isFile())
-    .map(async (entry) => {
-      const fullPath = path.join(backupDir, entry.name);
-      const stat = await fs.promises.stat(fullPath);
-      return { name: entry.name, mtime: stat.mtimeMs };
-    }));
+  const files = [];
+  if (await pathExists(backupDir)) {
+    const entries = await fs.promises.readdir(backupDir, { withFileTypes: true });
+    files.push(...await Promise.all(entries
+      .filter((entry) => entry && entry.isFile && entry.isFile())
+      .map(async (entry) => {
+        const fullPath = path.join(backupDir, entry.name);
+        const stat = await fs.promises.stat(fullPath);
+        return { name: entry.name, mtime: stat.mtimeMs, nameDateMs: parseAssetsBackupNameDateMs(entry.name) };
+      })));
+  }
+  if (objectStorage.isS3Enabled()) {
+    const remoteKeys = await objectStorage.listObjects("dados/backups");
+    remoteKeys
+      .map((key) => path.basename(key))
+      .filter((name) => /^assets-(?:backup|import)-.*\.zip$/i.test(name))
+      .forEach((name) => files.push({ name, mtime: 0, nameDateMs: parseAssetsBackupNameDateMs(name) }));
+  }
   const sorted = files
     .filter((f) => /^assets-(?:backup|import)-.*\.zip$/i.test(f.name))
-    .map((f) => ({ name: f.name, mtime: f.mtime }))
-    .sort((a, b) => b.mtime - a.mtime);
+    .filter((f, index, all) => all.findIndex((item) => item.name === f.name) === index)
+    .map((f) => ({ name: f.name, mtime: f.mtime, nameDateMs: f.nameDateMs || 0 }))
+    .sort((a, b) => (b.nameDateMs || b.mtime || 0) - (a.nameDateMs || a.mtime || 0));
   return sorted.length ? sorted[0].name : "";
 }
 
@@ -2514,14 +2548,12 @@ app.post("/admin/maintenance/system/command", csrfProtection, requireAdminAuth, 
       if (!selectedBackup) {
         execution = { ok: false, code: -1, output: "Backup nao encontrado no catalogo." };
         label = "npm run db:restore-database -- <arquivo.sql>";
-      } else if (!selectedBackup.existsOnDisk) {
-        execution = { ok: false, code: -1, output: `Arquivo nao encontrado no disco: ${selectedBackup.filePath}` };
-        label = `npm run db:restore-database -- "${selectedBackup.filePath}"`;
       } else {
-        const restoreCommand = buildRestoreScriptArgs(selectedBackup.filePath);
+        const localBackupPath = await objectStorage.ensureLocalFile(selectedBackup.storageKey || objectStorage.normalizeKey(path.relative(process.cwd(), selectedBackup.filePath)));
+        const restoreCommand = buildRestoreScriptArgs(localBackupPath);
         label = restoreCommand.moduleName
-          ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${selectedBackup.filePath}"`
-          : `npm run db:restore-database -- "${selectedBackup.filePath}"`;
+          ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${localBackupPath}"`
+          : `npm run db:restore-database -- "${localBackupPath}"`;
         execution = await runNodeScripts([{ script: "scripts/restore-database.js", args: restoreCommand.args }]);
       }
     }
@@ -2553,10 +2585,11 @@ app.post("/admin/maintenance/system/command", csrfProtection, requireAdminAuth, 
       execution = { ok: false, code: -1, output: "Nenhum backup disponivel para restore." };
       label = "npm run db:restore-database -- <arquivo.sql>";
     } else {
-      const restoreCommand = buildRestoreScriptArgs(latest.filePath);
+      const localBackupPath = await objectStorage.ensureLocalFile(latest.storageKey || objectStorage.normalizeKey(path.relative(process.cwd(), latest.filePath)));
+      const restoreCommand = buildRestoreScriptArgs(localBackupPath);
       label = restoreCommand.moduleName
-        ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${latest.filePath}"`
-        : `npm run db:restore-database -- "${latest.filePath}"`;
+        ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${localBackupPath}"`
+        : `npm run db:restore-database -- "${localBackupPath}"`;
       execution = await runNodeScripts([{ script: "scripts/restore-database.js", args: restoreCommand.args }]);
     }
   } else if (action === "assets_backup") {
@@ -2574,7 +2607,7 @@ app.post("/admin/maintenance/system/command", csrfProtection, requireAdminAuth, 
     if (!latestZip) {
       execution = { ok: false, code: -1, output: "Nenhum arquivo assets-backup-*.zip encontrado em dados/backups." };
     } else {
-      const zipPath = path.join(getBackupDirectoryPath(), latestZip);
+      const zipPath = await objectStorage.ensureLocalFile(path.join("dados", "backups", latestZip));
       execution = await runNodeScripts([{ script: "scripts/restore-assets.js", args: [`--file=${zipPath}`] }]);
       label = `npm run assets:restore -- --file="${latestZip}"`;
     }
@@ -3255,14 +3288,12 @@ app.post("/admin/maintenance/command", csrfProtection, requireAdminAuth, require
       if (!selectedBackup) {
         execution = { ok: false, code: -1, output: "Backup nao encontrado no catalogo." };
         label = "npm run db:restore-database -- <arquivo.sql>";
-      } else if (!selectedBackup.existsOnDisk) {
-        execution = { ok: false, code: -1, output: `Arquivo nao encontrado no disco: ${selectedBackup.filePath}` };
-        label = `npm run db:restore-database -- "${selectedBackup.filePath}"`;
       } else {
-        const restoreCommand = buildRestoreScriptArgs(selectedBackup.filePath);
+        const localBackupPath = await objectStorage.ensureLocalFile(selectedBackup.storageKey || objectStorage.normalizeKey(path.relative(process.cwd(), selectedBackup.filePath)));
+        const restoreCommand = buildRestoreScriptArgs(localBackupPath);
         label = restoreCommand.moduleName
-          ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${selectedBackup.filePath}"`
-          : `npm run db:restore-database -- "${selectedBackup.filePath}"`;
+          ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${localBackupPath}"`
+          : `npm run db:restore-database -- "${localBackupPath}"`;
         execution = await runNodeScripts([{ script: "scripts/restore-database.js", args: restoreCommand.args }]);
       }
     }
@@ -3294,10 +3325,11 @@ app.post("/admin/maintenance/command", csrfProtection, requireAdminAuth, require
       execution = { ok: false, code: -1, output: "Nenhum backup disponivel para restore." };
       label = "npm run db:restore-database -- <arquivo.sql>";
     } else {
-      const restoreCommand = buildRestoreScriptArgs(latest.filePath);
+      const localBackupPath = await objectStorage.ensureLocalFile(latest.storageKey || objectStorage.normalizeKey(path.relative(process.cwd(), latest.filePath)));
+      const restoreCommand = buildRestoreScriptArgs(localBackupPath);
       label = restoreCommand.moduleName
-        ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${latest.filePath}"`
-        : `npm run db:restore-database -- "${latest.filePath}"`;
+        ? `npm run db:restore-database -- --module=${restoreCommand.moduleName} "${localBackupPath}"`
+        : `npm run db:restore-database -- "${localBackupPath}"`;
       execution = await runNodeScripts([{ script: "scripts/restore-database.js", args: restoreCommand.args }]);
     }
   } else if (action === "token_set_sent") {
@@ -3340,6 +3372,11 @@ app.post(
       const outputPath = buildImportedBackupFilePath(imported.fileName);
       await fs.promises.mkdir(getBackupDirectoryPath(), { recursive: true });
       await fs.promises.writeFile(outputPath, imported.buffer);
+      await objectStorage.uploadLocalFile(
+        objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)),
+        outputPath,
+        { contentType: "application/sql" }
+      );
       await syncBackupsFromDirectory(getBackupDirectoryPath());
       return res.status(200).json({
         ok: true,
@@ -3370,11 +3407,12 @@ app.get("/admin/backups/:id/download", requireAdminAuth, requireMaintenanceAdmin
     return sendStandardError(req, res, 404);
   }
 
-  if (!await pathExists(backup.filePath)) {
+  const storageKey = backup.storageKey || objectStorage.normalizeKey(path.relative(process.cwd(), backup.filePath));
+  if (!await objectStorage.existsObject(storageKey)) {
     return sendStandardError(req, res, 404);
   }
 
-  return res.download(backup.filePath, backup.fileName || path.basename(backup.filePath));
+  return objectStorage.sendObjectDownload(res, storageKey, backup.fileName || path.basename(backup.filePath), "application/sql");
 }));
 
 app.get("/admin/assets-backup/download", requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
@@ -3383,10 +3421,11 @@ app.get("/admin/assets-backup/download", requireAdminAuth, requireMaintenanceAdm
     return sendStandardError(req, res, 400);
   }
   const filePath = path.join(getBackupDirectoryPath(), fileName);
-  if (!await pathExists(filePath)) {
+  const storageKey = objectStorage.normalizeKey(path.relative(process.cwd(), filePath));
+  if (!await objectStorage.existsObject(storageKey)) {
     return sendStandardError(req, res, 404);
   }
-  return res.download(filePath, fileName);
+  return objectStorage.sendObjectDownload(res, storageKey, fileName, "application/zip");
 }));
 
 app.post(
@@ -3400,6 +3439,11 @@ app.post(
       const outputPath = buildImportedAssetsZipFilePath(imported.fileName);
       await fs.promises.mkdir(getBackupDirectoryPath(), { recursive: true });
       await fs.promises.writeFile(outputPath, imported.buffer);
+      await objectStorage.uploadLocalFile(
+        objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)),
+        outputPath,
+        { contentType: "application/zip" }
+      );
       const restoreExecution = await runNodeScripts([
         { script: "scripts/restore-assets.js", args: [`--file=${outputPath}`] }
       ]);
@@ -4727,12 +4771,12 @@ app.get("/form/:token/documents/:id/download", asyncHandler(async (req, res) => 
   }
 
   const safeStoredName = path.basename(String(document.storedName || ""));
-  const absolutePath = path.join(path.resolve(env.storage.docsDir), safeStoredName);
-  if (!await pathExists(absolutePath)) {
+  const storageKey = getDocumentStorageKey(safeStoredName);
+  if (!await objectStorage.existsObject(storageKey)) {
     return sendStandardError(req, res, 404);
   }
 
-  return res.download(absolutePath, document.originalName || safeStoredName);
+  return objectStorage.sendObjectDownload(res, storageKey, document.originalName || safeStoredName, document.mimeType || "application/pdf");
 }));
 
 app.post("/form/:token/documents/:id/delete", csrfProtection, asyncHandler(async (req, res) => {
@@ -4758,14 +4802,7 @@ app.post("/form/:token/documents/:id/delete", csrfProtection, asyncHandler(async
   }
 
   const safeStoredName = path.basename(String(document.storedName || ""));
-  const absolutePath = path.join(path.resolve(env.storage.docsDir), safeStoredName);
-  if (await pathExists(absolutePath)) {
-    try {
-      await fs.promises.unlink(absolutePath);
-    } catch (_err) {
-      // Keep DB deletion as source of truth; file cleanup is best-effort.
-    }
-  }
+  await objectStorage.deleteObject(getDocumentStorageKey(safeStoredName));
 
   return res.status(200).json({ ok: true, id });
 }));
@@ -4782,12 +4819,12 @@ app.get("/admin/documents/:id/download", requireAdminAuth, asyncHandler(async (r
   }
 
   const safeStoredName = path.basename(String(document.storedName || ""));
-  const absolutePath = path.join(path.resolve(env.storage.docsDir), safeStoredName);
-  if (!await pathExists(absolutePath)) {
+  const storageKey = getDocumentStorageKey(safeStoredName);
+  if (!await objectStorage.existsObject(storageKey)) {
     return sendStandardError(req, res, 404);
   }
 
-  return res.download(absolutePath, document.originalName || safeStoredName);
+  return objectStorage.sendObjectDownload(res, storageKey, document.originalName || safeStoredName, document.mimeType || "application/pdf");
 }));
 
 app.get("/form/:token/review", csrfProtection, asyncHandler(async (req, res) => {

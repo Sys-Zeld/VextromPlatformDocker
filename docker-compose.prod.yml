@@ -29,6 +29,15 @@ services:
         reservations:
           memory: 64M
 
+  minio:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
   app:
     build:
       target: prod

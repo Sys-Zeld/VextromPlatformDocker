@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 const env = require("../specflow/config/env");
 const db = require("../configdb/db");
 const { upsertBackupFileRecord } = require("../specflow/services/backups");
+const objectStorage = require("../specflow/services/objectStorage");
 const { resolvePostgresCommand, buildNotFoundHint } = require("./utils/postgres-cli");
 
 const MODULE_CONFIG = {
@@ -89,6 +90,11 @@ async function run() {
     }
     const outputFile = buildBackupPath(config.filePrefix);
     await runPgDump(config.dbUrl, outputFile);
+    await objectStorage.uploadLocalFile(
+      objectStorage.normalizeKey(path.relative(process.cwd(), outputFile)),
+      outputFile,
+      { contentType: "application/sql" }
+    );
     try {
       const backupRow = await upsertBackupFileRecord(outputFile, { backupTimestamp: new Date() });
       // eslint-disable-next-line no-console

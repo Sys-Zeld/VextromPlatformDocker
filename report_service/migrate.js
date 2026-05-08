@@ -446,11 +446,48 @@ async function migrateServiceReport() {
       name TEXT NOT NULL,
       model TEXT NOT NULL DEFAULT '',
       serial_number TEXT NOT NULL DEFAULT '',
+      responsible_technician_id BIGINT REFERENCES service_report_global_technicians(id) ON DELETE SET NULL,
+      last_calibration_date DATE,
       calibration_due_date DATE,
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS responsible_technician_id BIGINT;`);
+  await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS last_calibration_date DATE;`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_global_instruments_resp_tech ON service_report_global_instruments (responsible_technician_id);`);
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'sr_global_instruments_resp_tech_fkey'
+      ) THEN
+        ALTER TABLE service_report_global_instruments
+          ADD CONSTRAINT sr_global_instruments_resp_tech_fkey
+          FOREIGN KEY (responsible_technician_id)
+          REFERENCES service_report_global_technicians(id)
+          ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+
+  await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS responsible_technician_id BIGINT;`);
+  await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS last_calibration_date DATE;`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_instruments_resp_tech ON service_report_instruments (responsible_technician_id);`);
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'sr_instruments_resp_tech_fkey'
+      ) THEN
+        ALTER TABLE service_report_instruments
+          ADD CONSTRAINT sr_instruments_resp_tech_fkey
+          FOREIGN KEY (responsible_technician_id)
+          REFERENCES service_report_global_technicians(id)
+          ON DELETE SET NULL;
+      END IF;
+    END $$;
   `);
 
   await db.query(`

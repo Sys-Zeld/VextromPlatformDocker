@@ -1890,16 +1890,29 @@ async function deleteGlobalTechnician(id) {
 
 async function listGlobalInstruments() {
   const result = await db.query(
-    `SELECT * FROM service_report_global_instruments ORDER BY name ASC, id ASC`
+    `SELECT i.*, t.name AS responsible_technician_name
+     FROM service_report_global_instruments i
+     LEFT JOIN service_report_global_technicians t ON t.id = i.responsible_technician_id
+     ORDER BY i.name ASC, i.id ASC`
   );
   return result.rows;
 }
 
 async function createGlobalInstrument(payload) {
   const result = await db.query(
-    `INSERT INTO service_report_global_instruments (name, model, serial_number, calibration_due_date, notes, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) RETURNING *`,
-    [payload.name, payload.model || "", payload.serialNumber || "", payload.calibrationDueDate || null, payload.notes || ""]
+    `INSERT INTO service_report_global_instruments (
+       name, model, serial_number, responsible_technician_id, last_calibration_date, calibration_due_date, notes, created_at, updated_at
+     )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING *`,
+    [
+      payload.name,
+      payload.model || "",
+      payload.serialNumber || "",
+      toInt(payload.responsibleTechnicianId),
+      payload.lastCalibrationDate || null,
+      payload.calibrationDueDate || null,
+      payload.notes || ""
+    ]
   );
   return result.rows[0];
 }
@@ -1907,9 +1920,18 @@ async function createGlobalInstrument(payload) {
 async function updateGlobalInstrument(id, payload) {
   const result = await db.query(
     `UPDATE service_report_global_instruments
-     SET name=$2, model=$3, serial_number=$4, calibration_due_date=$5, notes=$6, updated_at=NOW()
+     SET name=$2, model=$3, serial_number=$4, responsible_technician_id=$5, last_calibration_date=$6, calibration_due_date=$7, notes=$8, updated_at=NOW()
      WHERE id=$1 RETURNING *`,
-    [id, payload.name, payload.model || "", payload.serialNumber || "", payload.calibrationDueDate || null, payload.notes || ""]
+    [
+      id,
+      payload.name,
+      payload.model || "",
+      payload.serialNumber || "",
+      toInt(payload.responsibleTechnicianId),
+      payload.lastCalibrationDate || null,
+      payload.calibrationDueDate || null,
+      payload.notes || ""
+    ]
   );
   return result.rows[0] || null;
 }
@@ -1982,8 +2004,10 @@ async function listOrderTechnicianLinks(orderIds = []) {
 
 async function listInstrumentsByOrder(orderId) {
   const result = await db.query(
-    `SELECT i.* FROM service_report_global_instruments i
+    `SELECT i.*, t.name AS responsible_technician_name
+     FROM service_report_global_instruments i
      JOIN service_report_order_instruments oi ON oi.instrument_id = i.id
+     LEFT JOIN service_report_global_technicians t ON t.id = i.responsible_technician_id
      WHERE oi.order_id = $1 ORDER BY i.name ASC`,
     [orderId]
   );
@@ -2008,10 +2032,11 @@ async function unlinkInstrumentFromOrder(orderId, instrumentId) {
 async function listInstruments(serviceReportId) {
   const result = await db.query(
     `
-      SELECT *
-      FROM service_report_instruments
-      WHERE service_report_id = $1
-      ORDER BY id ASC
+      SELECT i.*, t.name AS responsible_technician_name
+      FROM service_report_instruments i
+      LEFT JOIN service_report_global_technicians t ON t.id = i.responsible_technician_id
+      WHERE i.service_report_id = $1
+      ORDER BY i.id ASC
     `,
     [serviceReportId]
   );
@@ -2026,12 +2051,14 @@ async function createInstrument(payload) {
         name,
         model,
         serial_number,
+        responsible_technician_id,
+        last_calibration_date,
         calibration_due_date,
         notes,
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -2039,6 +2066,8 @@ async function createInstrument(payload) {
       payload.name,
       payload.model || "",
       payload.serialNumber || "",
+      toInt(payload.responsibleTechnicianId),
+      payload.lastCalibrationDate || null,
       payload.calibrationDueDate,
       payload.notes || ""
     ]
@@ -2118,14 +2147,17 @@ async function updateInstrument(id, serviceReportId, payload) {
   const result = await db.query(
     `
       UPDATE service_report_instruments
-      SET name = $3, model = $4, serial_number = $5, calibration_due_date = $6, notes = $7, updated_at = NOW()
+      SET name = $3, model = $4, serial_number = $5, responsible_technician_id = $6, last_calibration_date = $7, calibration_due_date = $8, notes = $9, updated_at = NOW()
       WHERE id = $1 AND service_report_id = $2
       RETURNING *
     `,
     [
       id, serviceReportId,
       payload.name, payload.model || "", payload.serialNumber || "",
-      payload.calibrationDueDate || null, payload.notes || ""
+      toInt(payload.responsibleTechnicianId),
+      payload.lastCalibrationDate || null,
+      payload.calibrationDueDate || null,
+      payload.notes || ""
     ]
   );
   return result.rows[0] || null;

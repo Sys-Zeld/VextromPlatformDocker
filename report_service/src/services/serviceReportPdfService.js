@@ -4,6 +4,7 @@ const { formatServiceOrderDisplay } = require("../utils/serviceOrderDisplay");
 const env = require("../../../specflow/config/env");
 const path = require("path");
 const os = require("os");
+const objectStorage = require("../../../specflow/services/objectStorage");
 
 function getPlaywrightOrNull() {
   try {
@@ -261,15 +262,12 @@ async function resolveImageFromPath(urlPath) {
     if (urlPath.startsWith(route.prefix)) {
       const rel = decodeURIComponent(urlPath.slice(route.prefix.length));
       const filePath = path.join(route.dir, rel);
-      try {
-        await fs.promises.access(filePath, fs.constants.F_OK);
-      } catch (_err) {
-        return null;
-      }
+      const key = objectStorage.normalizeKey(path.relative(process.cwd(), filePath));
+      if (!await objectStorage.existsObject(key)) return null;
       const ext = path.extname(filePath).replace(".", "").toLowerCase();
       const mime = IMG_MIME[ext];
       if (!mime) return null;
-      const raw = await fs.promises.readFile(filePath);
+      const raw = await objectStorage.getObjectBuffer(key);
       if (ext === "svg") return { body: raw, mime };
       const compressExt = ext === "png" ? "png" : "jpeg";
       const { buffer, mime: outMime } = await compressImageBuffer(raw, compressExt);
@@ -587,7 +585,9 @@ async function generatePdfToFile(payload, outputPath, htmlSource = "") {
   const buffer = htmlSource
     ? await buildPdfBufferFromHtml(htmlSource, payload)
     : await buildPdfBuffer(payload);
-  await fs.promises.writeFile(outputPath, buffer);
+  await objectStorage.putObject(objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)), buffer, {
+    contentType: "application/pdf"
+  });
   return outputPath;
 }
 

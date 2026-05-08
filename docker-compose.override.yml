@@ -11,6 +11,11 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
   app:
     build:
       target: dev
@@ -27,6 +32,13 @@ services:
       MODULE_SPEC_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/dbmodulespec
       REPORT_SERVICE_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/reportservice
       CONFIG_DATABASE_URL: postgres://postgres:zeldchip@postgres:5432/configdb
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: vextrom-assets
+      S3_ACCESS_KEY_ID: vextrom
+      S3_SECRET_ACCESS_KEY: vextrom-minio-change-me
+      S3_FORCE_PATH_STYLE: "true"
     volumes:
       - .:/app                  # hot-reload: código atualizado em tempo real
       - /app/node_modules       # preserva node_modules da imagem

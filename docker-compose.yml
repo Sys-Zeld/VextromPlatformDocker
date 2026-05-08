@@ -34,6 +34,29 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vextrom}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-vextrom-minio-change-me}
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vextrom}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-vextrom-minio-change-me}
+      S3_BUCKET: ${S3_BUCKET:-vextrom-assets}
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-vextrom} ${MINIO_ROOT_PASSWORD:-vextrom-minio-change-me}; do sleep 2; done;
+                  mc mb --ignore-existing local/${S3_BUCKET:-vextrom-assets};
+                  mc anonymous set none local/${S3_BUCKET:-vextrom-assets};"
+
   app:
     build:
       context: .
@@ -43,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     volumes:
       - dados_volume:/app/dados
 
@@ -54,4 +79,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   dados_volume:

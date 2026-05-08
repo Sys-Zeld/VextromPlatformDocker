@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const db = require("../../configdb/db");
+const objectStorage = require("./objectStorage");
 
 const BACKUP_FILE_NAME_REGEX = /-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.sql$/i;
 let backupCatalogEnsured = false;
@@ -64,18 +65,21 @@ async function queryBackupCatalog(sql, params = []) {
   }
 }
 
-function normalizeBackupRow(row) {
+async function normalizeBackupRow(row) {
   const filePath = String(row.file_path || "");
+  const storageKey = filePath ? objectStorage.normalizeKey(path.relative(process.cwd(), filePath)) : "";
+  const existsOnDisk = filePath ? fs.existsSync(filePath) : false;
   return {
     id: Number(row.id),
     fileName: row.file_name || path.basename(filePath),
     filePath,
+    storageKey,
     folderPath: row.folder_path || path.dirname(filePath),
     sizeBytes: Number(row.size_bytes || 0),
     backupTimestamp: row.backup_timestamp || row.created_at || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
-    existsOnDisk: filePath ? fs.existsSync(filePath) : false
+    existsOnDisk: existsOnDisk || (storageKey ? await objectStorage.existsObject(storageKey) : false)
   };
 }
 
@@ -160,7 +164,7 @@ async function listBackupFiles() {
       ORDER BY backup_timestamp DESC, id DESC
     `
   );
-  return result.rows.map(normalizeBackupRow);
+  return Promise.all(result.rows.map(normalizeBackupRow));
 }
 
 async function getBackupFileById(id) {
@@ -210,6 +214,9 @@ async function deleteBackupFileById(id, options = {}) {
       diskStatus = "deleted";
     } else {
       diskStatus = "missing";
+    }
+    if (existing.storageKey) {
+      await objectStorage.deleteObject(existing.storageKey);
     }
   }
 
