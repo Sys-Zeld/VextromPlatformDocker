@@ -58,6 +58,11 @@
           <button class="btn btn-outline-secondary btn-sm flex-fill" type="button" id="measurementAddColumnBtn">+ Coluna</button>
           <button class="btn btn-outline-secondary btn-sm flex-fill" type="button" id="measurementAddRowBtn">+ Linha</button>
         </div>
+        <div class="col-12 d-flex align-items-center gap-2">
+          <button class="btn btn-outline-secondary btn-sm" type="button" id="measurementImportParBtn">Importar .par</button>
+          <input type="file" accept=".par" id="measurementParFileInput" class="d-none" />
+          <span class="text-muted small" id="measurementParFileName"></span>
+        </div>
         <div class="col-12">
           <div class="table-responsive measurement-builder-wrap">
             <table class="table table-sm app-table measurement-builder-table mb-0" id="measurementBuilderTable">
@@ -248,6 +253,51 @@
     });
 
     cancelBtn.addEventListener("click", resetForm);
+
+    var importParBtn = document.getElementById("measurementImportParBtn");
+    var parFileInput = document.getElementById("measurementParFileInput");
+    var parFileNameLabel = document.getElementById("measurementParFileName");
+
+    importParBtn.addEventListener("click", function () {
+      parFileInput.value = "";
+      parFileInput.click();
+    });
+
+    parFileInput.addEventListener("change", function () {
+      var file = parFileInput.files[0];
+      if (!file) return;
+      var baseName = file.name.replace(/\.par$/i, "");
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var lines = (e.target.result || "").split(/\r?\n/);
+        var parsedRows = [];
+        lines.forEach(function (line) {
+          var fields = line.split(",");
+          if (fields.length < 5) return;
+          var rawName = String(fields[1] || "").trim();
+          var refMatch = rawName.match(/\(P(\d+)\)/);
+          var ref = refMatch ? "P" + refMatch[1] : "";
+          var cleanName = rawName.replace(/\s*\([^)]*\)\s*/g, "").trim();
+          var value = String(fields[4] || "").trim();
+          if (!cleanName) return;
+          parsedRows.push([cleanName, ref, value]);
+        });
+        if (!parsedRows.length) {
+          alert("Nenhuma linha valida encontrada no arquivo .par.");
+          return;
+        }
+        columns = ["Parâmetro", "Ref.", "Valor"];
+        rows = parsedRows;
+        titleInput.value = baseName;
+        parFileNameLabel.textContent = file.name;
+        idInput.value = "";
+        submitBtn.textContent = "Salvar ensaio/medicao";
+        cancelBtn.classList.add("d-none");
+        renderBuilder();
+        document.getElementById("measurements-card").scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      reader.readAsText(file, "utf-8");
+    });
 
     form.addEventListener("submit", function () {
       syncFromDom();

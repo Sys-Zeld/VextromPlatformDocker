@@ -392,30 +392,37 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
     .filter(Boolean);
   const safeColumns = columns.length ? columns : ["Teste", "Valor", "Observacoes"];
   const rows = normalizeMeasurementList(table.rows_json);
+
+  const borderColor = "#b0c4d4";
+  const thStyle = `border:1px solid ${borderColor};background:#1e3a5f;color:#ffffff;padding:6px 9px;text-align:left;font-weight:600;font-size:11px;letter-spacing:0.04em;`;
+  const tdBase = `border:1px solid ${borderColor};padding:5px 9px;height:22px;vertical-align:top;font-size:12px;`;
+  const tdAlt = `${tdBase}background:#eef3f8;`;
+
   const bodyRows = rows.length
-    ? rows.map((row) => {
+    ? rows.map((row, rowIndex) => {
       const source = Array.isArray(row) ? row : [];
-      const cells = safeColumns.map((_, index) => `<td style="border:1px solid #a9a9a9;padding:5px 7px;height:23px;vertical-align:top;">${escapeHtml(source[index] || "")}</td>`).join("");
+      const tdStyle = rowIndex % 2 === 0 ? tdBase : tdAlt;
+      const cells = safeColumns.map((_, index) => `<td style="${tdStyle}">${escapeHtml(source[index] || "")}</td>`).join("");
       return `<tr>${cells}</tr>`;
     }).join("")
-    : `<tr><td colspan="${safeColumns.length}" style="border:1px solid #a9a9a9;padding:6px 7px;color:#6b7280;">Sem medicoes cadastradas.</td></tr>`;
+    : `<tr><td colspan="${safeColumns.length}" style="${tdBase}color:#6b7280;">Sem medicoes cadastradas.</td></tr>`;
 
   const title = String(table.title || "").trim();
   const notes = String(table.notes || "").trim();
   const titleHtml = title
-    ? `<div style="font-weight:700;font-style:italic;margin:0 0 4px 0;">${escapeHtml(title)}</div>`
+    ? `<div style="font-weight:700;font-size:12px;color:#1e3a5f;margin:0 0 5px 0;letter-spacing:0.01em;">${escapeHtml(title)}</div>`
     : "";
   const notesHtml = notes
-    ? `<div style="font-size:12px;line-height:1.35;margin-top:6px;white-space:pre-wrap;"><strong>Observacoes:</strong> ${escapeHtml(notes)}</div>`
+    ? `<div style="font-size:11px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
     : "";
 
   return `
-    <div class="report-inline-measurements-wrap" style="margin:8px 0 12px 0;break-inside:avoid;">
+    <div class="report-inline-measurements-wrap" style="margin:8px 0 14px 0;break-inside:avoid;">
       ${titleHtml}
-      <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.2;">
+      <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
         <thead>
           <tr>
-            ${safeColumns.map((column) => `<th style="border:1px solid #a9a9a9;background:#d9d9d9;color:#111;padding:5px 7px;text-align:left;font-weight:400;">${escapeHtml(column)}</th>`).join("")}
+            ${safeColumns.map((column) => `<th style="${thStyle}">${escapeHtml(column)}</th>`).join("")}
           </tr>
         </thead>
         <tbody>${bodyRows}</tbody>
