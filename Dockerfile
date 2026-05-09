@@ -1,7 +1,7 @@
 FROM ghcr.io/puppeteer/puppeteer:24.43.0 AS base
 USER root
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client \
+  && apt-get install -y --no-install-recommends postgresql-client-16 \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
