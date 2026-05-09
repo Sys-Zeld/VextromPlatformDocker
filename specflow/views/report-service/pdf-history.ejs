@@ -1,0 +1,320 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css" rel="stylesheet" />
+<%
+  function fmtDateTime(value) {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "-";
+    const dd = String(d.getDate()).padStart(2,"0");
+    const mo = String(d.getMonth()+1).padStart(2,"0");
+    const yy = String(d.getFullYear());
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mi = String(d.getMinutes()).padStart(2,"0");
+    return `${dd}/${mo}/${yy} ${hh}:${mi}`;
+  }
+
+  const signerTypeLabel = {
+    vextrom_technician:   "Técnico Vextrom",
+    customer_responsible: "Responsável Cliente",
+    project_manager:      "Gerente de Projeto",
+    technical_director:   "Diretor Técnico"
+  };
+
+  const signerTypeBadge = {
+    vextrom_technician:   "secondary",
+    customer_responsible: "success",
+    project_manager:      "primary",
+    technical_director:   "warning"
+  };
+
+  function abbreviateUserAgent(ua) {
+    if (!ua) return "-";
+    const s = String(ua);
+    // Extrai navegador e SO de forma legível
+    let browser = "Outro";
+    let os = "";
+    if (/Edg\//.test(s))           browser = "Edge";
+    else if (/OPR\/|Opera/.test(s)) browser = "Opera";
+    else if (/Chrome\//.test(s))    browser = "Chrome";
+    else if (/Firefox\//.test(s))   browser = "Firefox";
+    else if (/Safari\//.test(s))    browser = "Safari";
+    else if (/MSIE|Trident/.test(s)) browser = "IE";
+
+    const mVersion = s.match(new RegExp(browser === "Edge" ? "Edg/([\\d.]+)" : browser + "/([\\d.]+)"));
+    const version = mVersion ? mVersion[1].split(".")[0] : "";
+
+    if (/Windows NT 10/.test(s))     os = "Windows 10/11";
+    else if (/Windows NT 6\.1/.test(s)) os = "Windows 7";
+    else if (/Windows/.test(s))      os = "Windows";
+    else if (/Mac OS X/.test(s))     os = "macOS";
+    else if (/Android/.test(s))      os = "Android";
+    else if (/iPhone|iPad/.test(s))  os = "iOS";
+    else if (/Linux/.test(s))        os = "Linux";
+
+    return [browser + (version ? " " + version : ""), os].filter(Boolean).join(" / ");
+  }
+
+  // Revisão atual do relatório
+  const currentRevision = report.revision || "";
+
+  // Separa assinaturas: revisão atual vs histórico
+  const sigsCurrentRevision = (signatures || []).filter(function(s) {
+    return (s.revision || "") === currentRevision;
+  });
+
+  // Agrupa todas as assinaturas por revisão para o histórico
+  const revisionOrder = [];
+  const sigsByRevision = {};
+  (signatures || []).forEach(function(s) {
+    const rev = s.revision || "(sem revisão)";
+    if (!sigsByRevision[rev]) {
+      revisionOrder.push(rev);
+      sigsByRevision[rev] = [];
+    }
+    sigsByRevision[rev].push(s);
+  });
+%>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">RELATÓRIOS ASSINADOS</span>
+        <h1 class="h4 app-card-title mb-1"><%= order.service_order_code || "-" %></h1>
+        <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
+      </div>
+      <div class="token-hero-actions">
+        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatório</a>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Revisão do Relatório ── %>
+  <div class="card app-card">
+    <div class="card-body">
+      <h2 class="h6 app-card-title mb-3">Revisão do Relatório</h2>
+      <div class="row g-3">
+        <div class="col-12 col-md-3">
+          <div class="small text-muted mb-1">Número do Relatório</div>
+          <div class="fw-semibold"><%= report.report_number || "-" %></div>
+        </div>
+        <div class="col-12 col-md-2">
+          <div class="small text-muted mb-1">Revisão</div>
+          <div class="fw-semibold"><%= currentRevision || "-" %></div>
+        </div>
+        <div class="col-12 col-md-2">
+          <div class="small text-muted mb-1">Status do Relatório</div>
+          <div class="fw-semibold"><%= report.status || "-" %></div>
+        </div>
+        <div class="col-12 col-md-2">
+          <div class="small text-muted mb-1">Data de Emissão</div>
+          <div class="fw-semibold">
+            <% if (report.issue_date) { %>
+              <%= new Date(report.issue_date).toLocaleDateString("pt-BR") %>
+            <% } else { %>-<% } %>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="small text-muted mb-1">Última Modificação</div>
+          <div class="fw-semibold"><%= fmtDateTime(report.last_modified_at) %></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Assinaturas da revisão atual ── %>
+  <div class="card app-card">
+    <div class="card-body">
+      <h2 class="h6 app-card-title mb-2">Assinaturas — Revisão <%= currentRevision || "-" %></h2>
+      <p class="text-muted small mb-3">Somente assinaturas coletadas enquanto o relatório estava na revisão atual.</p>
+      <% if (sigsCurrentRevision.length === 0) { %>
+        <div class="alert alert-secondary mb-0">Nenhuma assinatura registrada para a revisão <strong><%= currentRevision || "-" %></strong>.</div>
+      <% } else { %>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Signatário</th>
+                <th>Função</th>
+                <th>Empresa</th>
+                <th>Tipo</th>
+                <th>Data/Hora da Assinatura</th>
+                <th>IP</th>
+                <th>Navegador / SO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% sigsCurrentRevision.forEach(function(sig) { %>
+                <tr>
+                  <td class="fw-semibold"><%= sig.signer_name || "-" %></td>
+                  <td><%= sig.signer_role || "-" %></td>
+                  <td><%= sig.signer_company || "-" %></td>
+                  <td>
+                    <span class="badge text-bg-<%= signerTypeBadge[sig.signer_type] || 'secondary' %>">
+                      <%= signerTypeLabel[sig.signer_type] || sig.signer_type || "-" %>
+                    </span>
+                  </td>
+                  <td class="text-nowrap"><%= fmtDateTime(sig.signed_at) %></td>
+                  <td class="font-monospace small text-muted"><%= sig.ip_address || "-" %></td>
+                  <td class="small" title="<%= sig.user_agent || '' %>"><%= abbreviateUserAgent(sig.user_agent) %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <%# ── Histórico de Assinaturas por Revisão ── %>
+  <% if (revisionOrder.length > 1 || (revisionOrder.length === 1 && revisionOrder[0] !== currentRevision)) { %>
+  <div class="card app-card">
+    <div class="card-body">
+      <h2 class="h6 app-card-title mb-3">Histórico de Assinaturas</h2>
+      <% revisionOrder.forEach(function(rev) { %>
+        <% if (rev === currentRevision) return; %>
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge text-bg-light border text-dark fs-6 px-3 py-2">Revisão <%= rev %></span>
+            <span class="text-muted small"><%= sigsByRevision[rev].length %> assinatura(s)</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Signatário</th>
+                  <th>Função</th>
+                  <th>Empresa</th>
+                  <th>Tipo</th>
+                  <th>Data/Hora</th>
+                  <th>IP</th>
+                  <th>Navegador / SO</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% sigsByRevision[rev].forEach(function(sig) { %>
+                  <tr>
+                    <td class="fw-semibold"><%= sig.signer_name || "-" %></td>
+                    <td><%= sig.signer_role || "-" %></td>
+                    <td><%= sig.signer_company || "-" %></td>
+                    <td>
+                      <span class="badge text-bg-<%= signerTypeBadge[sig.signer_type] || 'secondary' %>">
+                        <%= signerTypeLabel[sig.signer_type] || sig.signer_type || "-" %>
+                      </span>
+                    </td>
+                    <td class="text-nowrap"><%= fmtDateTime(sig.signed_at) %></td>
+                    <td class="font-monospace small text-muted"><%= sig.ip_address || "-" %></td>
+                    <td class="small" title="<%= sig.user_agent || '' %>"><%= abbreviateUserAgent(sig.user_agent) %></td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+  <% } %>
+
+  <%# ── PDFs Gerados (Relatórios Assinados) ── %>
+  <div class="card app-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h6 app-card-title mb-1">Relatórios Assinados</h2>
+          <p class="text-muted small mb-0">PDFs gerados automaticamente após assinatura do cliente e manualmente.</p>
+        </div>
+      </div>
+
+      <% if (!pdfHistory || pdfHistory.length === 0) { %>
+        <div class="alert alert-secondary mb-0">Nenhum PDF gerado ainda. Os PDFs são gerados automaticamente quando o cliente assina o relatório.</div>
+      <% } else { %>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Data/Hora</th>
+                <th>Revisão</th>
+                <th>Relatório</th>
+                <th>Arquivo</th>
+                <th>Origem</th>
+                <th class="text-end">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% pdfHistory.forEach(function(entry) { %>
+                <tr data-entry-id="<%= entry.id %>">
+                  <td class="text-nowrap"><%= fmtDateTime(entry.created_at) %></td>
+                  <td>
+                    <span class="badge <%= (entry.revision || '') === currentRevision ? 'text-bg-primary' : 'text-bg-light border text-dark' %>">
+                      Rev. <%= entry.revision || "-" %>
+                    </span>
+                  </td>
+                  <td><%= entry.report_number || "-" %></td>
+                  <td class="font-monospace small text-muted"><%= entry.file_name || "-" %></td>
+                  <td>
+                    <% if (entry.generated_by === "auto") { %>
+                      <span class="badge text-bg-info">Automático</span>
+                    <% } else { %>
+                      <span class="badge text-bg-secondary">Manual</span>
+                    <% } %>
+                  </td>
+                  <td class="text-end">
+                    <a
+                      href="/admin/report-service/orders/<%= order.id %>/pdf-history/<%= entry.id %>/download"
+                      class="btn btn-outline-primary btn-sm"
+                      target="_blank"
+                      rel="noopener"
+                    >Download</a>
+                    <button
+                      class="btn btn-outline-danger btn-sm ms-1"
+                      type="button"
+                      onclick="deletePdfEntry(this, <%= entry.id %>)"
+                    >Excluir</button>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</section>
+
+<%- include("../partials/footer") %>
+<script>
+(function() {
+  const csrfToken = <%- JSON.stringify(csrfToken) %>;
+  const orderId = <%= order.id %>;
+
+  window.deletePdfEntry = async function(btn, entryId) {
+    if (!confirm("Excluir este PDF do histórico? O arquivo será removido permanentemente.")) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/admin/report-service/orders/${orderId}/pdf-history/${entryId}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `_csrf=${encodeURIComponent(csrfToken)}`
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const row = btn.closest("tr");
+        if (row) row.remove();
+        const historyTbody = document.querySelector("[data-pdf-history-tbody]");
+        if (historyTbody && historyTbody.querySelectorAll("tr").length === 0) {
+          location.reload();
+        }
+      } else {
+        alert(data.error || "Erro ao excluir.");
+        btn.disabled = false;
+      }
+    } catch (err) {
+      alert("Erro ao excluir: " + err.message);
+      btn.disabled = false;
+    }
+  };
+})();
+</script>

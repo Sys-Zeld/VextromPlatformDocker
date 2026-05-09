@@ -1,11 +1,11 @@
 {
   "name": "VextromPlatform",
-  "version": "1.2.0",
+  "version": "1.2.5",
   "description": "System VextromPlatform",
   "moduleVersions": {
     "specflow": "beta",
     "module_spec": "0.0.1",
-    "report_service": "0.0.2"
+    "report_service": "0.0.5"
   },
   "moduleStatuses": {
     "specflow": "active",
@@ -95,6 +95,7 @@
     "pdfkit": "^0.15.0",
     "pg": "^8.19.0",
     "playwright": "^1.54.2",
+    "puppeteer": "^24.43.0",
     "qrcode": "^1.5.4",
     "sanitize-html": "^2.14.0",
     "sharp": "^0.34.5",

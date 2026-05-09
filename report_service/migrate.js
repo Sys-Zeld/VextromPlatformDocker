@@ -558,6 +558,26 @@ async function migrateServiceReport() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_order_attachments_order_id ON service_report_order_attachments (service_order_id);`);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_pdf_history (
+      id BIGSERIAL PRIMARY KEY,
+      service_order_id BIGINT NOT NULL REFERENCES service_report_orders(id) ON DELETE CASCADE,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      order_code TEXT NOT NULL DEFAULT '',
+      report_number TEXT NOT NULL DEFAULT '',
+      revision TEXT NOT NULL DEFAULT '',
+      object_key TEXT NOT NULL DEFAULT '',
+      file_name TEXT NOT NULL DEFAULT '',
+      generated_by TEXT NOT NULL DEFAULT 'auto',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`ALTER TABLE service_report_pdf_history ADD COLUMN IF NOT EXISTS revision TEXT NOT NULL DEFAULT '';`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_pdf_history_order_id ON service_report_pdf_history (service_order_id);`);
+  await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS revision TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';`);
+
   await seedServiceReportEquipment();
   await seedServiceReportSample();
 }

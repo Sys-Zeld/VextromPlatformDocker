@@ -1,12 +1,47 @@
+const path = require("path");
 const nodemailer = require("nodemailer");
 const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
-const { renderReportPreviewHtml } = require("../services/reportTemplateService");
+const { renderReportPreviewHtml, normalizeReportTemplateKey } = require("../services/reportTemplateService");
 const { getReportConfigSettings } = require("../services/reportConfigSettings");
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
 const { buildPdfBufferFromHtml } = require("../services/serviceReportPdfService");
+const objectStorage = require("../../../specflow/services/objectStorage");
 const crypto = require("crypto");
 const env = require("../../../specflow/config/env");
+
+async function generateAndSavePdfForReport(reportId) {
+  const payload = await service.buildReportAggregate(reportId);
+  if (!payload || !payload.report || !payload.order) return;
+
+  const reportConfig = await getReportConfigSettings();
+  const templateKey = normalizeReportTemplateKey(reportConfig.templateKey);
+  const htmlSource = await renderReportPreviewHtml(payload, { reportConfig, templateKey });
+  const pdfBuffer = await buildPdfBufferFromHtml(htmlSource, payload);
+
+  const orderCode = String(payload.order.service_order_code || `order-${payload.order.id}`)
+    .replace(/[^a-zA-Z0-9._-]/g, "-");
+  const reportNumber = String(payload.report.report_number || `report-${reportId}`)
+    .replace(/[^a-zA-Z0-9._-]/g, "-");
+  const timestamp = Date.now();
+  const fileName = `${timestamp}_${reportNumber}.pdf`;
+  const objectKey = objectStorage.normalizeKey(
+    path.posix.join("dados", "service-report-pdfs", orderCode, fileName)
+  );
+
+  await objectStorage.putObject(objectKey, pdfBuffer, { contentType: "application/pdf" });
+
+  await repo.createPdfHistoryEntry({
+    serviceOrderId: payload.order.id,
+    serviceReportId: reportId,
+    orderCode: payload.order.service_order_code || "",
+    reportNumber: payload.report.report_number || "",
+    revision: payload.report.revision || "",
+    objectKey,
+    fileName,
+    generatedBy: "auto"
+  });
+}
 
 function createReportPublicController(deps) {
   const sanitizeInput = deps.sanitizeInput;
@@ -139,7 +174,7 @@ function createReportPublicController(deps) {
       gap: 8px;
       align-items: stretch;
     }
-    .report-print-btn, .report-pdf-btn {
+    .report-print-btn {
       padding: 10px 20px;
       border: none;
       border-radius: 8px;
@@ -152,12 +187,10 @@ function createReportPublicController(deps) {
       justify-content: center;
       gap: 6px;
       white-space: nowrap;
+      background: #4f7d33;
+      color: #fff;
     }
-    .report-print-btn { background: #4f7d33; color: #fff; }
     .report-print-btn:hover { background: #3d6228; }
-    .report-pdf-btn { background: #1a56a0; color: #fff; }
-    .report-pdf-btn:hover:not(:disabled) { background: #134080; }
-    .report-pdf-btn:disabled { background: #6a96cc; cursor: wait; }
     #rpt-print-modal {
       display: none;
       position: fixed;
@@ -294,6 +327,47 @@ ${autoPrint ? `
       const reportNumber = String(signRequest.report_number || "relatorio").replace(/[^a-zA-Z0-9._-]/g, "_");
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${reportNumber}.pdf"`);
+      return res.send(buffer);
+    },
+
+    async clientSignedSavedPdf(req, res) {
+      const token = sanitizeInput(String(req.params.token || "")).trim();
+      if (!token) return res.status(404).send("Link invalido.");
+
+      const signRequest = await repo.getSignRequestByToken(token);
+      if (!signRequest) return res.status(404).send("Link nao encontrado.");
+
+      const status = String(signRequest.status || "").toLowerCase();
+      if (status !== "signed") {
+        return res.status(403).send("Relatorio nao disponivel.");
+      }
+
+      const reportNumber = String(signRequest.report_number || "relatorio").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const fileName = `${reportNumber}.pdf`;
+
+      // Busca o PDF já gerado e salvo automaticamente após a assinatura
+      try {
+        const entry = await repo.getLatestPdfHistoryByReportId(signRequest.service_report_id);
+        if (entry && await objectStorage.existsObject(entry.object_key)) {
+          const pdfBuf = await objectStorage.getObjectBuffer(entry.object_key);
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+          return res.send(pdfBuf);
+        }
+      } catch (_histErr) {
+        // eslint-disable-next-line no-console
+        console.error("[report-service] Erro ao buscar PDF salvo no historico:", _histErr.message);
+      }
+
+      // Fallback: gera via Puppeteer se o PDF salvo não existir (relatórios antigos)
+      const report = await repo.getReportById(signRequest.service_report_id);
+      if (!report) return res.status(404).send("Relatorio nao encontrado.");
+      const payload = await service.buildReportAggregate(report.id);
+      const reportConfig = await getReportConfigSettings();
+      const htmlSource = await renderReportPreviewHtml(payload, { reportConfig });
+      const buffer = await buildPdfBufferFromHtml(htmlSource, payload);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       return res.send(buffer);
     },
 
@@ -500,12 +574,21 @@ ${autoPrint ? `
         ipAddress
       });
 
+      const userAgent = String(req.headers["user-agent"] || "").slice(0, 500);
+
       await service.createSignature(signRequest.service_report_id, {
         signerType: "customer_responsible",
         signerName,
         signerRole,
         signerCompany,
-        signatureData
+        signatureData,
+        ipAddress,
+        userAgent
+      });
+
+      generateAndSavePdfForReport(signRequest.service_report_id).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[report-service] Erro ao gerar PDF automatico apos assinatura:", err.message);
       });
 
       clearEmailProofCookie(res);

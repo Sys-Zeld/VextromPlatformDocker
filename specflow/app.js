@@ -71,6 +71,13 @@ const {
   listSystemFontOptions
 } = require("./services/systemAppearance");
 const {
+  COMMON_TIMEZONES,
+  getSystemTimezone,
+  setSystemTimezone,
+  formatDatetimeInTimezone,
+  getTimezoneOffsetLabel
+} = require("./services/systemSettings");
+const {
   getReportServiceEmailSettings,
   saveReportServiceSmtpSettings,
   saveReportServiceEmailDefaultRecipients,
@@ -943,6 +950,9 @@ async function renderSystemMaintenancePage(req, res, options = {}) {
   const backups = isSystemAdmin ? (options.backups || await loadBackupsForMaintenancePage()) : [];
   const currentSystemFont = options.currentSystemFont || await getUserSystemFontKey(req.adminUsername || "");
   const systemFontOptions = listSystemFontOptions();
+  const systemTimezone = await getSystemTimezone();
+  const systemDatetimeNow = formatDatetimeInTimezone(new Date(), systemTimezone);
+  const timezoneOffsetLabel = getTimezoneOffsetLabel(systemTimezone);
   return res.status(options.statusCode || 200).render("admin-maintenance-system", {
     pageTitle: "Manutencao do sistema",
     canManageSystem: isSystemAdmin,
@@ -952,10 +962,15 @@ async function renderSystemMaintenancePage(req, res, options = {}) {
     userCreateResult: options.userCreateResult || null,
     userUpdateResult: options.userUpdateResult || null,
     userDeleteResult: options.userDeleteResult || null,
+    datetimeResult: options.datetimeResult || null,
     users,
     backups,
     currentSystemFont,
     systemFontOptions,
+    systemTimezone,
+    systemDatetimeNow,
+    timezoneOffsetLabel,
+    timezoneOptions: COMMON_TIMEZONES,
     envAdminUser: env.admin.user,
     maintenanceCards: [
       {
@@ -2459,6 +2474,23 @@ app.post("/admin/maintenance/system/font", csrfProtection, requireAdminAuth, asy
     statusCode,
     systemFontResult
   });
+}));
+
+app.post("/admin/maintenance/system/datetime", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
+  if (String(req.adminRole || "").toLowerCase() !== "admin") {
+    return res.status(403).send("Acesso negado.");
+  }
+  const timezone = sanitizeInput(String(req.body.timezone || "")).trim();
+  let datetimeResult;
+  let statusCode = 200;
+  try {
+    await setSystemTimezone(timezone);
+    datetimeResult = { ok: true, message: `Timezone do sistema atualizado para: ${timezone}.` };
+  } catch (err) {
+    statusCode = 422;
+    datetimeResult = { ok: false, message: sanitizeInput(err?.message || "") || "Falha ao salvar timezone." };
+  }
+  await renderSystemMaintenancePage(req, res, { statusCode, datetimeResult });
 }));
 
 app.post("/admin/maintenance/system/password", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {

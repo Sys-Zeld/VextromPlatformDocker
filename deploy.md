@@ -764,6 +764,32 @@ MINIO_ROOT_PASSWORD=TROQUE_SENHA_MINIO_FORTE_AQUI
 
 O bucket nao fica publico. Uploads, downloads, imagens de relatorio e backups passam pela aplicacao, que valida permissao e usa o MinIO/S3 como storage remoto com cache local em `dados/`.
 
+### PDF do Report Service com Puppeteer
+
+Em producao, o target `prod` usa a imagem oficial `ghcr.io/puppeteer/puppeteer` para renderizar o PDF a partir do mesmo HTML do preview.
+
+Variaveis recomendadas em `.env.prod`:
+
+```env
+REPORT_PDF_RENDERER=puppeteer
+REPORT_PDF_CONCURRENCY=2
+REPORT_PDF_BROWSER_ARGS=
+```
+
+O `docker-compose.prod.yml` adiciona `SYS_ADMIN` ao container `app`, necessario para o Chrome da imagem oficial rodar com sandbox. Se o servidor bloquear essa capacidade, use temporariamente:
+
+```env
+REPORT_PDF_BROWSER_ARGS=--no-sandbox --disable-setuid-sandbox
+```
+
+Depois do deploy, teste em uma OS:
+
+```text
+/admin/report-service/orders/ID/preview-html
+```
+
+No preview HTML, use o botao **Baixar PDF**.
+
 ### Backup e restore de assets (via UI)
 
 A UI de manutenção suporta upload de até **200 MB** (limite do Nginx).

@@ -44,14 +44,17 @@ services:
     build:
       target: prod
     restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    shm_size: '1gb'
     env_file:
       - .env.prod
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1536M
         reservations:
-          memory: 256M
+          memory: 512M
 
   nginx:
     image: nginx:1.30.0-alpine

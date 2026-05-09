@@ -47,6 +47,9 @@
 <% if (systemFontResult) { %>
   <div class="alert <%= systemFontResult.ok ? 'alert-success' : 'alert-danger' %>"><%= systemFontResult.message %></div>
 <% } %>
+<% if (datetimeResult) { %>
+  <div class="alert <%= datetimeResult.ok ? 'alert-success' : 'alert-danger' %>"><%= datetimeResult.message %></div>
+<% } %>
 <% if (selfPasswordResult) { %>
   <div class="alert <%= selfPasswordResult.ok ? 'alert-success' : 'alert-danger' %>"><%= selfPasswordResult.message %></div>
 <% } %>
@@ -113,6 +116,30 @@
 <% } %>
 
 <% if (canManageSystem) { %>
+<div class="card app-card mb-4">
+  <div class="card-body">
+    <h2 class="h6 app-card-title mb-3">Data e horario do sistema</h2>
+    <p class="text-muted mb-3">
+      Horario atual do sistema: <strong id="sysClockDisplay"><%= systemDatetimeNow %></strong>
+      <% if (timezoneOffsetLabel) { %><span class="text-muted small ms-1">(<%= timezoneOffsetLabel %>)</span><% } %>
+    </p>
+    <form method="post" action="/admin/maintenance/system/datetime" class="row g-3 align-items-end">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="col-12 col-lg-5">
+        <label class="form-label">Timezone (IANA)</label>
+        <select class="form-select" name="timezone" required>
+          <% (timezoneOptions || []).forEach(function(tz) { %>
+            <option value="<%= tz.value %>" <%= systemTimezone === tz.value ? "selected" : "" %>><%= tz.label %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-outline-primary btn-sm" type="submit">Salvar timezone</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="card app-card mb-4">
   <div class="card-body">
     <h2 class="h6 app-card-title mb-3">Comandos globais</h2>
@@ -700,5 +727,27 @@
     });
   })();
 </script>
+
+<% if (canManageSystem && systemTimezone) { %>
+<script>
+(function () {
+  var tz = <%- JSON.stringify(systemTimezone || '') %>;
+  var el = document.getElementById("sysClockDisplay");
+  if (!el || !tz) return;
+  function tick() {
+    try {
+      el.textContent = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: tz,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false
+      }).format(new Date());
+    } catch (_) {}
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+<% } %>
 
 <%- include("partials/footer") %>

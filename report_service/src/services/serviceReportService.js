@@ -414,6 +414,13 @@ async function createSignature(reportId, input = {}) {
     err.statusCode = 422;
     throw err;
   }
+  let currentRevision = "";
+  try {
+    const reportNow = await repo.getReportById(reportId);
+    currentRevision = sanitizeText(reportNow && reportNow.revision);
+  } catch (_err) {
+    // non-blocking
+  }
   const created = await repo.createSignature({
     serviceReportId: reportId,
     signerType,
@@ -421,7 +428,10 @@ async function createSignature(reportId, input = {}) {
     signerRole: sanitizeText(input.signerRole),
     signerCompany: sanitizeText(input.signerCompany),
     signatureData: sanitizeText(input.signatureData),
-    signatureFilePath: sanitizeText(input.signatureFilePath)
+    signatureFilePath: sanitizeText(input.signatureFilePath),
+    revision: currentRevision,
+    ipAddress: sanitizeText(input.ipAddress).slice(0, 100),
+    userAgent: sanitizeText(input.userAgent).slice(0, 500)
   });
   if (signerType === "vextrom_technician") {
     try {

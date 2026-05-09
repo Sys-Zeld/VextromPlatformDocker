@@ -19,6 +19,9 @@ services:
     build:
       target: prod           # testa exatamente a imagem que vai para produção
     restart: "no"
+    cap_add:
+      - SYS_ADMIN            # necessário para o Chrome (Puppeteer) rodar com sandbox
+    shm_size: '1gb'
     ports:
       - "80:3000"            # acesso direto: http://IP-DO-SERVIDOR
     env_file:
@@ -26,4 +29,4 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M

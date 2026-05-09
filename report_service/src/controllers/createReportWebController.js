@@ -1920,12 +1920,17 @@ function createReportWebController(deps) {
         return res.redirect(`/admin/report-service/orders/${orderId}/sign-report?error=1`);
       }
 
+      const signIpAddress = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 100);
+      const signUserAgent = String(req.headers["user-agent"] || "").slice(0, 500);
+
       await service.createSignature(data.report.id, {
         signerType: "vextrom_technician",
         signerName: req.body.signer_name,
         signerRole: req.body.signer_role,
         signerCompany: req.body.signer_company,
-        signatureData
+        signatureData,
+        ipAddress: signIpAddress,
+        userAgent: signUserAgent
       });
       return res.redirect(`/admin/report-service/orders/${orderId}/sign-report?signed=1`);
     },
@@ -2811,12 +2816,35 @@ function createReportWebController(deps) {
           htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;">${bodyIntro}<p style="margin:0 0 8px 0;"><strong>OS:</strong> ${orderDisplay}</p><p style="margin:0 0 8px 0;"><strong>Relatorio:</strong> ${reportNumber || "-"}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${data.order.customer_name || "-"}</p><p style="margin:16px 0;"><a href="${escapeHtml(signedLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#14532d;color:#fff;text-decoration:none;font-weight:600;">Abrir relatorio assinado</a></p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo modulo Service Report.</p></body></html>`;
         }
 
+        const attachments = [];
+        if (String(req.body.attach_pdf || "") === "1") {
+          let pdfBuf = null;
+          const histEntry = await repo.getLatestPdfHistoryByReportId(data.report.id);
+          if (histEntry && await objectStorage.existsObject(histEntry.object_key)) {
+            pdfBuf = await objectStorage.getObjectBuffer(histEntry.object_key);
+          } else {
+            const pdfPath = service.resolveReportPdfPath(data.report.id);
+            const pdfKey = objectStorage.normalizeKey(path.relative(process.cwd(), pdfPath));
+            if (await objectStorage.existsObject(pdfKey)) {
+              pdfBuf = await objectStorage.getObjectBuffer(pdfKey);
+            }
+          }
+          if (pdfBuf) {
+            attachments.push({
+              filename: `relatorio-${reportNumber || data.report.id}.pdf`,
+              content: pdfBuf,
+              contentType: "application/pdf"
+            });
+          }
+        }
+
         await transporter.sendMail({
           from: emailSettings.smtp.from,
           to,
           cc: cc.length ? cc : undefined,
           subject,
-          html: htmlBody
+          html: htmlBody,
+          attachments: attachments.length ? attachments : undefined
         });
 
         return res.redirect(`/admin/report-service/orders/${orderId}/report-editor?email_sent=1`);
@@ -2904,13 +2932,17 @@ function createReportWebController(deps) {
         return res.redirect(`/admin/report-service/orders/${orderId}/sign-report`);
       }
       const report = await service.ensureReportForOrder(orderId);
+      const addSigIpAddress = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 100);
+      const addSigUserAgent = String(req.headers["user-agent"] || "").slice(0, 500);
       await service.createSignature(report.id, {
         signerType,
         signerName: req.body.signer_name,
         signerRole: req.body.signer_role,
         signerCompany: req.body.signer_company,
         signatureData: req.body.signature_data,
-        updatedBy: res.locals.adminUsername || "manual-signature"
+        updatedBy: res.locals.adminUsername || "manual-signature",
+        ipAddress: addSigIpAddress,
+        userAgent: addSigUserAgent
       });
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
     },
@@ -3404,6 +3436,7 @@ function createReportWebController(deps) {
 </head>
 <body>
 <div class="rpt-action-bar">
+  <a class="report-pdf-btn" href="/admin/report-service/orders/${orderId}/pdf-preview?template_key=${encodeURIComponent(templateKey)}&download=1">Baixar PDF</a>
   <button class="report-print-btn" onclick="document.getElementById('rpt-print-modal').style.display='flex'">&#128424; Imprimir</button>
 </div>
 <div id="rpt-print-modal" role="dialog" aria-modal="true" aria-labelledby="rpt-modal-title">
@@ -3497,6 +3530,11 @@ ${bodyHtml}
       const { templateKey } = await resolveRenderConfig(requestedTemplateKey, null);
       const buffer = await buildPdfFromPreviewRoute(req, orderId, templateKey, payload);
       res.setHeader("Content-Type", "application/pdf");
+      if (String(req.query.download || "") === "1") {
+        const reportNumber = String(payload.report && payload.report.report_number ? payload.report.report_number : `service-report-${report.id}`)
+          .replace(/[^a-zA-Z0-9._-]/g, "-");
+        res.setHeader("Content-Disposition", `attachment; filename="${reportNumber}.pdf"`);
+      }
       return res.send(buffer);
     },
 
@@ -3526,6 +3564,39 @@ ${bodyHtml}
         issueDate: new Date().toISOString().slice(0, 10)
       });
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async generatePdfForEmail(req, res) {
+      try {
+        const orderId = Number(req.params.id);
+        const report = await service.ensureReportForOrder(orderId);
+        const payload = await service.buildReportAggregate(report.id);
+        if (!payload) return res.status(404).json({ ok: false, error: "Relatorio nao encontrado." });
+        const requestedTemplateKey = sanitizeInput(req.body.template_key || req.query.template_key);
+        const pdfBuffer = await buildPdfFromPreviewRoute(req, orderId, requestedTemplateKey, payload);
+        const outputPath = service.resolveReportPdfPath(report.id);
+        await objectStorage.putObject(
+          objectStorage.normalizeKey(path.relative(process.cwd(), outputPath)),
+          pdfBuffer,
+          { contentType: "application/pdf" }
+        );
+        return res.json({ ok: true });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[report-service] Erro ao gerar PDF para e-mail.", err);
+        return res.status(500).json({ ok: false, error: err.message || "Erro ao gerar PDF." });
+      }
+    },
+
+    async getSignedPdfStatus(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).json({ ok: false, hasSavedPdf: false });
+      const entry = await repo.getLatestPdfHistoryByReportId(data.report.id);
+      if (entry && await objectStorage.existsObject(entry.object_key)) {
+        return res.json({ ok: true, hasSavedPdf: true, fileName: entry.file_name || "" });
+      }
+      return res.json({ ok: true, hasSavedPdf: false });
     },
 
     async reportEditor(req, res) {
@@ -3658,6 +3729,65 @@ ${bodyHtml}
 
       const safeName = attachment.original_name.replace(/[^a-zA-Z0-9._\- ]/g, "_");
       return objectStorage.sendObjectDownload(res, storageKey, safeName, attachment.mime_type || "application/octet-stream");
+    },
+
+    async pdfHistoryPage(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).send("OS nao encontrada.");
+      const report = await service.ensureReportForOrder(orderId);
+      let pdfHistory = [];
+      let signatures = [];
+      try { pdfHistory = await repo.listPdfHistoryByOrderId(orderId); } catch (_e) { /* migration pendente */ }
+      try { signatures = await repo.listSignatures(report.id); } catch (_e) { /* ignore */ }
+      return res.render("report-service/pdf-history", {
+        pageTitle: `Relatorios Assinados - ${order.service_order_code || "OS"}`,
+        order,
+        report,
+        pdfHistory,
+        signatures,
+        csrfToken: req.csrfToken()
+      });
+    },
+
+    async deletePdfHistory(req, res) {
+      const orderId = Number(req.params.id);
+      const entryId = Number(req.params.entryId);
+      if (!Number.isInteger(entryId) || entryId <= 0) {
+        return res.status(400).json({ ok: false, error: "ID invalido." });
+      }
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS nao encontrada." });
+      const entry = await repo.getPdfHistoryEntry(entryId);
+      if (!entry || Number(entry.service_order_id) !== orderId) {
+        return res.status(404).json({ ok: false, error: "Entrada nao encontrada." });
+      }
+      try {
+        await objectStorage.deleteObject(entry.object_key);
+      } catch (_err) {
+        // ignore - file may already be gone
+      }
+      await repo.deletePdfHistoryEntry(entryId);
+      return res.json({ ok: true });
+    },
+
+    async downloadPdfHistory(req, res) {
+      const orderId = Number(req.params.id);
+      const entryId = Number(req.params.entryId);
+      if (!Number.isInteger(entryId) || entryId <= 0) {
+        return res.status(400).send("ID invalido.");
+      }
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).send("OS nao encontrada.");
+      const entry = await repo.getPdfHistoryEntry(entryId);
+      if (!entry || Number(entry.service_order_id) !== orderId) {
+        return res.status(404).send("Entrada nao encontrada.");
+      }
+      if (!await objectStorage.existsObject(entry.object_key)) {
+        return res.status(404).send("Arquivo nao encontrado.");
+      }
+      const safeName = entry.file_name.replace(/[^a-zA-Z0-9._-]/g, "-") || "relatorio.pdf";
+      return objectStorage.sendObjectDownload(res, entry.object_key, safeName, "application/pdf");
     }
   };
 }

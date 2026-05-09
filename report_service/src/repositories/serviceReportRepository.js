@@ -1732,11 +1732,14 @@ async function createSignature(payload) {
         signer_company,
         signature_data,
         signature_file_path,
+        revision,
+        ip_address,
+        user_agent,
         signed_at,
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW(),NOW())
       RETURNING *
     `,
     [
@@ -1746,7 +1749,10 @@ async function createSignature(payload) {
       payload.signerRole || "",
       payload.signerCompany || "",
       payload.signatureData || "",
-      payload.signatureFilePath || ""
+      payload.signatureFilePath || "",
+      payload.revision || "",
+      payload.ipAddress || "",
+      payload.userAgent || ""
     ]
   );
   return result.rows[0];
@@ -2352,6 +2358,69 @@ async function deleteOrderAttachment(id) {
   return result.rows[0] || null;
 }
 
+// ---- PDF History ----
+
+async function createPdfHistoryEntry(payload) {
+  const result = await db.query(
+    `
+      INSERT INTO service_report_pdf_history
+        (service_order_id, service_report_id, order_code, report_number, revision, object_key, file_name, generated_by, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING *
+    `,
+    [
+      payload.serviceOrderId,
+      payload.serviceReportId,
+      payload.orderCode || "",
+      payload.reportNumber || "",
+      payload.revision || "",
+      payload.objectKey || "",
+      payload.fileName || "",
+      payload.generatedBy || "auto"
+    ]
+  );
+  return result.rows[0];
+}
+
+async function listPdfHistoryByOrderId(serviceOrderId) {
+  const result = await db.query(
+    `
+      SELECT * FROM service_report_pdf_history
+      WHERE service_order_id = $1
+      ORDER BY created_at DESC, id DESC
+    `,
+    [serviceOrderId]
+  );
+  return result.rows;
+}
+
+async function getPdfHistoryEntry(id) {
+  const result = await db.query(
+    `SELECT * FROM service_report_pdf_history WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function getLatestPdfHistoryByReportId(serviceReportId) {
+  const result = await db.query(
+    `SELECT * FROM service_report_pdf_history
+     WHERE service_report_id = $1
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [serviceReportId]
+  );
+  return result.rows[0] || null;
+}
+
+async function deletePdfHistoryEntry(id) {
+  const result = await db.query(
+    `DELETE FROM service_report_pdf_history WHERE id = $1`,
+    [id]
+  );
+  return result.rowCount > 0;
+}
+
 module.exports = {
   toInt,
   getAppSetting,
@@ -2467,6 +2536,11 @@ module.exports = {
   listOrderAttachments,
   createOrderAttachment,
   getOrderAttachmentById,
-  deleteOrderAttachment
+  deleteOrderAttachment,
+  createPdfHistoryEntry,
+  listPdfHistoryByOrderId,
+  getPdfHistoryEntry,
+  getLatestPdfHistoryByReportId,
+  deletePdfHistoryEntry
 };
 

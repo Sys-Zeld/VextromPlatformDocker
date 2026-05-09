@@ -171,6 +171,14 @@ async function migrateConfigDb() {
   `);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_files_path_unique ON backup_files (file_path);`);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
   await migrateAdminUsersFromSpecflowDb();
   await migrateBackupFilesFromSpecflowDb();
 }

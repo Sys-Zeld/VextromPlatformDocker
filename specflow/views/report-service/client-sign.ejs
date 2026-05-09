@@ -19,27 +19,10 @@
     .sign-state-icon { font-size: 3rem; margin-bottom: 12px; }
     .sign-report-wrap { background: #fff; border-radius: 12px; border: 1px solid #dde8de; overflow: hidden; margin-bottom: 20px; }
     .sign-report-header { padding: 12px 20px; background: #f0f5f0; border-bottom: 1px solid #dde8de; font-weight: 600; font-size: 0.88rem; color: #3a5040; }
-    .sign-report-body { max-height: 480px; overflow-y: auto; overflow-x: hidden; padding: 12px; }
-    .sign-report-body .report-doc {
-      width: 100%;
-      max-width: 100%;
-      padding: 0;
-      gap: 12px;
-      background: transparent;
-      border-radius: 0;
-    }
-    .sign-report-body .report-page {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      min-height: 0;
-      padding: 16px;
-      box-sizing: border-box;
-    }
-    .sign-report-body img,
-    .sign-report-body table {
-      max-width: 100%;
-    }
+    /* O container rola; o relatório usa dimensões A4 reais para que o
+       report-pagination.js detecte overflow e faça a paginação correta.
+       overflow-x: auto permite scroll horizontal em telas estreitas. */
+    .sign-report-body { max-height: 480px; overflow-y: auto; overflow-x: auto; padding: 12px; }
     .sign-form-card { background: #fff; border-radius: 12px; padding: 24px; border: 1px solid #dde8de; }
     .sign-form-title { font-size: 1rem; font-weight: 700; color: #1a2b1e; margin-bottom: 16px; }
     .sign-canvas-wrap { border: 2px solid #b0c4b1; border-radius: 8px; background: #fafcfa; position: relative; }
@@ -89,9 +72,13 @@
         <h2 class="h5 mb-2">Documento já assinado</h2>
         <p class="text-muted">Este documento foi assinado por <strong><%= signRequest.signer_name %></strong> em <%= (() => { const d = new Date(signRequest.signed_at); const dd=String(d.getDate()).padStart(2,"0"), mo=String(d.getMonth()+1).padStart(2,"0"), yy=String(d.getFullYear()).slice(-2), hh=String(d.getHours()).padStart(2,"0"), mi=String(d.getMinutes()).padStart(2,"0"), ss=String(d.getSeconds()).padStart(2,"0"); return `${dd}/${mo}/${yy} ${hh}:${mi}:${ss}`; })() %>.</p>
       <% } %>
-      <div class="d-flex justify-content-center gap-2 mt-3">
+      <div class="d-flex justify-content-center gap-2 mt-3 flex-wrap">
         <a class="btn btn-outline-secondary btn-sm" href="/r/sign/<%= signRequest.token %>/report" target="_blank" rel="noopener">Expandir relatorio</a>
         <button type="button" class="btn btn-outline-primary btn-sm" onclick="printSignedReport()">Imprimir relatorio</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="downloadReportPdf(this, '<%= signRequest.token %>')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" class="me-1" viewBox="0 0 16 16" aria-hidden="true"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/></svg>
+          Baixar PDF
+        </button>
       </div>
     </div>
     <% if (reportHtml) { %>
@@ -171,8 +158,12 @@
 
       <%# Report preview %>
       <% if (reportHtml) { %>
-        <div class="d-flex justify-content-end mb-2">
+        <div class="d-flex justify-content-end gap-2 mb-2 flex-wrap">
           <a class="btn btn-outline-secondary btn-sm" href="/r/sign/<%= signRequest.token %>/report" target="_blank" rel="noopener">Expandir relatorio</a>
+          <button type="button" class="btn btn-success btn-sm" onclick="downloadReportPdf(this, '<%= signRequest.token %>')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" class="me-1" viewBox="0 0 16 16" aria-hidden="true"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/></svg>
+            Baixar PDF
+          </button>
         </div>
         <div class="sign-report-wrap">
           <div class="sign-report-header">Conteúdo do relatório - leia antes de assinar</div>
@@ -260,6 +251,40 @@ function printSignedReport() {
   var token = "<%= signRequest && signRequest.token ? signRequest.token : '' %>";
   if (!token) return;
   window.open("/r/sign/" + token + "/report?print=1", "_blank");
+}
+
+function downloadReportPdf(btn, token) {
+  if (!btn || btn.disabled) return;
+  var label = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML =
+    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Gerando PDF...';
+
+  fetch("/r/sign/" + token + "/pdf")
+    .then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(t || "Erro ao gerar PDF."); });
+      var disposition = res.headers.get("Content-Disposition") || "";
+      var match = disposition.match(/filename="?([^";]+)"?/);
+      var filename = match ? match[1] : "relatorio.pdf";
+      return res.blob().then(function (blob) { return { blob: blob, filename: filename }; });
+    })
+    .then(function (result) {
+      var url = URL.createObjectURL(result.blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    })
+    .catch(function (err) {
+      alert("Não foi possível gerar o PDF.\n" + (err && err.message ? err.message : "Tente novamente."));
+    })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = label;
+    });
 }
 
 (function () {
@@ -351,5 +376,6 @@ function printSignedReport() {
   window.addEventListener("resize", resizeCanvas);
 })();
 </script>
+<script src="/public/js/report-pagination.js"></script>
 </body>
 </html>

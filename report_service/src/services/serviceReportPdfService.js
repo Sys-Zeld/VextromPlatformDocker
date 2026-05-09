@@ -17,6 +17,17 @@ function getPlaywrightOrNull() {
   }
 }
 
+function getPuppeteerOrNull() {
+  try {
+    // optional dependency in some environments
+    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    return require("puppeteer");
+  } catch (err) {
+    if (err && err.code === "MODULE_NOT_FOUND") return null;
+    throw err;
+  }
+}
+
 function launchBrowser(playwright) {
   const chromium = playwright && playwright.chromium;
   if (!chromium) {
@@ -242,12 +253,14 @@ async function compressImageBuffer(buffer, ext) {
 const IMG_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml" };
 let previewStaticAssetsPromise = null;
 let sharedBrowserPromise = null;
+let sharedPuppeteerBrowserPromise = null;
 let activePdfJobs = 0;
 const pdfQueue = [];
 const REPORT_PDF_RENDERER = String(process.env.REPORT_PDF_RENDERER || "playwright").trim().toLowerCase();
 const DEFAULT_PDF_CONCURRENCY = Math.max(1, Math.min(4, Number.parseInt(process.env.REPORT_PDF_CONCURRENCY || "", 10) || Math.ceil((os.cpus() || []).length / 2) || 2));
 const IMAGE_PRELOAD_CONCURRENCY = Math.max(1, Number.parseInt(process.env.REPORT_PDF_IMAGE_PRELOAD_CONCURRENCY || "4", 10) || 4);
 let warnedPlaywrightMissingRuntime = false;
+let warnedPuppeteerMissingRuntime = false;
 
 function buildImageRouteMap() {
   return [
@@ -369,8 +382,30 @@ async function getSharedBrowser(playwright) {
   return sharedBrowserPromise;
 }
 
+async function getSharedPuppeteerBrowser(puppeteer) {
+  if (!sharedPuppeteerBrowserPromise) {
+    sharedPuppeteerBrowserPromise = launchPuppeteerBrowser(puppeteer)
+      .then((browser) => {
+        browser.on("disconnected", () => {
+          sharedPuppeteerBrowserPromise = null;
+        });
+        return browser;
+      })
+      .catch((err) => {
+        sharedPuppeteerBrowserPromise = null;
+        throw err;
+      });
+  }
+  return sharedPuppeteerBrowserPromise;
+}
+
 async function createPdfPage(playwright) {
   const browser = await getSharedBrowser(playwright);
+  return browser.newPage();
+}
+
+async function createPuppeteerPdfPage(puppeteer) {
+  const browser = await getSharedPuppeteerBrowser(puppeteer);
   return browser.newPage();
 }
 
@@ -390,6 +425,15 @@ function isPlaywrightRuntimeMissingError(err) {
   return text.includes("executable doesn't exist")
     || text.includes("playwright install")
     || text.includes("chrome-headless-shell");
+}
+
+function isPuppeteerRuntimeMissingError(err) {
+  const text = String((err && err.message) || "").toLowerCase();
+  return text.includes("could not find chrome")
+    || text.includes("browser was not found")
+    || text.includes("failed to launch the browser process")
+    || text.includes("no usable sandbox")
+    || text.includes("chrome");
 }
 
 function warnPlaywrightFallback(err) {
@@ -455,9 +499,102 @@ function buildPdfBufferFromHtmlWithPdfKit(html, fallbackPayload = {}) {
   });
 }
 
+async function buildPdfBufferFromHtmlWithPuppeteer(html, fallbackPayload = {}) {
+  const puppeteer = getPuppeteerOrNull();
+  if (!puppeteer) {
+    return buildPdfBufferFromHtmlWithPdfKit(html, fallbackPayload || {});
+  }
+
+  const { cssPreview, cssPrint, paginationJs } = await loadPreviewStaticAssets();
+  const appBaseUrl = String(env.appBaseUrl || "http://localhost:3000").replace(/\/+$/, "");
+  const imageCache = await preloadImageCache(html, appBaseUrl);
+
+  const fullHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=960, initial-scale=1.0" />
+  <base href="${appBaseUrl}/" />
+  <style>${cssPreview}</style>
+  <style>${cssPrint}</style>
+</head>
+<body>
+${html}
+<script>${paginationJs}</script>
+</body>
+</html>`;
+
+  if (process.env.PUPPETEER_SERVER_URL) {
+    try {
+      return await renderPdfViaServer(fullHtml, imageCache);
+    } catch (err) {
+      if (isPuppeteerRuntimeMissingError(err)) {
+        warnPuppeteerFallback(err);
+        return buildPdfBufferFromHtmlWithPdfKit(html, fallbackPayload || {});
+      }
+      throw err;
+    }
+  }
+
+  try {
+    return await withPuppeteerPdfPage(puppeteer, async (page) => {
+      if (imageCache.size) {
+        await page.setRequestInterception(true);
+        page.on("request", (request) => {
+          const reqUrl = request.url();
+          const cached = imageCache.get(reqUrl);
+          if (cached) {
+            request.respond({ status: 200, contentType: cached.mime, body: cached.body }).catch(() => {});
+            return;
+          }
+          request.abort().catch(() => {});
+        });
+      }
+
+      await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
+      if (typeof page.emulateMediaType === "function") {
+        await page.emulateMediaType("print");
+      }
+      await page.setContent(fullHtml, { waitUntil: "domcontentloaded" });
+
+      await page.evaluate(async () => {
+        const images = Array.from(document.images || []);
+        await Promise.all(images.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.addEventListener("load", resolve, { once: true });
+            img.addEventListener("error", resolve, { once: true });
+          });
+        }));
+        if (document.fonts && document.fonts.ready) {
+          await document.fonts.ready;
+        }
+      });
+      await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+
+      const buffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        preferCSSPageSize: true
+      });
+      return Buffer.from(buffer);
+    });
+  } catch (err) {
+    if (isPuppeteerRuntimeMissingError(err)) {
+      warnPuppeteerFallback(err);
+      return buildPdfBufferFromHtmlWithPdfKit(html, fallbackPayload || {});
+    }
+    throw err;
+  }
+}
+
 async function buildPdfBufferFromHtml(html, fallbackPayload) {
   if (REPORT_PDF_RENDERER === "pdfkit") {
     return buildPdfBufferFromHtmlWithPdfKit(html, fallbackPayload || {});
+  }
+  if (REPORT_PDF_RENDERER === "puppeteer") {
+    return buildPdfBufferFromHtmlWithPuppeteer(html, fallbackPayload || {});
   }
 
   const playwright = getPlaywrightOrNull();
@@ -589,6 +726,64 @@ async function generatePdfToFile(payload, outputPath, htmlSource = "") {
     contentType: "application/pdf"
   });
   return outputPath;
+}
+
+function warnPuppeteerFallback(err) {
+  if (warnedPuppeteerMissingRuntime) return;
+  warnedPuppeteerMissingRuntime = true;
+  const msg = err && err.message ? err.message : "Puppeteer runtime indisponivel.";
+  // eslint-disable-next-line no-console
+  console.warn(`[report-service] Puppeteer indisponivel, fallback para PDFKit: ${msg}`);
+}
+
+async function withPuppeteerPdfPage(puppeteer, task) {
+  return withPdfRenderSlot(async () => {
+    const page = await createPuppeteerPdfPage(puppeteer);
+    try {
+      return await task(page);
+    } finally {
+      await page.close().catch(() => {});
+    }
+  });
+}
+
+function resolveBrowserArgs(defaultArgs = []) {
+  const raw = String(process.env.REPORT_PDF_BROWSER_ARGS || "").trim();
+  if (!raw) return defaultArgs;
+  return raw.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function launchPuppeteerBrowser(puppeteer) {
+  if (!puppeteer || typeof puppeteer.launch !== "function") {
+    const err = new Error("Puppeteer nao esta disponivel.");
+    err.code = "PUPPETEER_UNAVAILABLE";
+    throw err;
+  }
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || undefined;
+  return puppeteer.launch({
+    headless: "new",
+    executablePath,
+    args: resolveBrowserArgs(["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]),
+  });
+}
+
+async function renderPdfViaServer(fullHtml, imageCache) {
+  const serverUrl = String(process.env.PUPPETEER_SERVER_URL || "").replace(/\/+$/, "");
+  const imageCacheObj = {};
+  imageCache.forEach(({ body, mime }, url) => {
+    imageCacheObj[url] = { mime, data: body.toString("base64") };
+  });
+  const payload = JSON.stringify({ html: fullHtml, imageCache: imageCacheObj });
+  const res = await fetch(`${serverUrl}/render-pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`puppeteer-server ${res.status}: ${text}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
 
 async function buildAnalyticsPdfBufferFromHtml(html) {

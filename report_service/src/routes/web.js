@@ -66,6 +66,7 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/sign-requests/:requestId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateSignRequest));
   router.post("/orders/:id/sign-requests/:requestId/cancel", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.cancelSignRequest));
   router.post("/orders/:id/sign-requests/:requestId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSignRequest));
+  router.get("/orders/:id/signed-pdf-status", deps.requireAdminAuth, asyncHandler(controller.getSignedPdfStatus));
   router.post("/orders/:id/send-signed-email", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.sendSignedReportByEmail));
   router.post("/orders/:id/send-os-email", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.sendOsCreatedEmail));
   router.get("/assets", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.listAssetsGlobal));
@@ -94,6 +95,10 @@ function createReportServiceWebRouter(deps) {
   );
   router.post("/orders/:id/images/:imageId/label", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateImageLabel));
   router.post("/orders/:id/images/:imageId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteImage));
+  router.get("/orders/:id/pdf-history", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.pdfHistoryPage));
+  router.post("/orders/:id/pdf-history/:entryId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deletePdfHistory));
+  router.get("/orders/:id/pdf-history/:entryId/download", deps.requireAdminAuth, asyncHandler(controller.downloadPdfHistory));
+
   router.get("/orders/:id/attachments", deps.requireAdminAuth, asyncHandler(controller.listOrderAttachments));
   router.post(
     "/orders/:id/attachments",
@@ -110,6 +115,7 @@ function createReportServiceWebRouter(deps) {
   router.get("/orders/:id/preview-html/template/:templateKey", deps.requireAdminAuth, asyncHandler(controller.previewHtmlByTemplatePage));
   router.get("/orders/:id/pdf-preview", deps.requireAdminAuth, asyncHandler(controller.pdfPreview));
   router.post("/orders/:id/generate-pdf", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.generatePdf));
+  router.post("/orders/:id/generate-pdf-for-email", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.generatePdfForEmail));
   router.get("/reports/:id/editor", deps.requireAdminAuth, asyncHandler(controller.reportEditor));
   router.get("/reports/:id/preview", deps.requireAdminAuth, asyncHandler(controller.reportPreview));
   router.post("/reports/:id/generate-pdf", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportGeneratePdf));

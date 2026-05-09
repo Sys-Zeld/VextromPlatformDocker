@@ -99,6 +99,7 @@
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
         <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#tagsSupportModal">Tag's</button>
         <a class="btn btn-outline-secondary btn-sm" href="<%= templatePreviewRoute || (`/admin/report-service/orders/${order.id}/preview-html/template/${templateKey || 'modern'}`) %>" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/pdf-history">Historico PDF</a>
         <% if (String(order.status || "").toLowerCase() === "valid") { %>
           <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report">Assinar Relatorio</a>
         <% } %>
@@ -723,38 +724,251 @@
           <% } %>
 
           <% if (canSendSignedReport) { %>
-            <details class="border rounded p-3 bg-light mb-4">
+            <details class="border rounded p-3 bg-light mb-4" id="sendSignedEmailDetails">
               <summary class="fw-semibold" style="cursor:pointer;">Enviar relatorio assinado por e-mail</summary>
-              <form method="post" action="/admin/report-service/orders/<%= order.id %>/send-signed-email" class="row g-2 mt-2">
+              <form method="post" action="/admin/report-service/orders/<%= order.id %>/send-signed-email" class="row g-2 mt-3" id="sendSignedEmailForm">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <input type="hidden" name="attach_pdf" id="seAttachPdf" value="0" />
+
+                <%# Linha 1: template + preview %>
                 <div class="col-12 col-md-4">
                   <label class="form-label mb-1 small">Template PDF</label>
-                  <select class="form-select form-select-sm" name="template_key" id="signedEmailTemplateKey">
+                  <select class="form-select form-select-sm" name="template_key" id="seTemplateKey">
                     <% ((reportConfig && reportConfig.templateOptions) || []).forEach(function (item) { %>
                       <option value="<%= item.key %>" <%= item.key === templateKey ? "selected" : "" %>><%= item.name %></option>
                     <% }); %>
                   </select>
                 </div>
                 <div class="col-12 col-md-8 d-flex align-items-end">
-                  <a class="btn btn-outline-secondary btn-sm" id="signedEmailTemplatePreviewLink" href="/admin/report-service/orders/<%= order.id %>/preview-html/template/<%= templateKey || 'modern' %>" target="_blank" rel="noopener">Abrir preview do template selecionado</a>
+                  <a class="btn btn-outline-secondary btn-sm" id="seTemplatePreviewLink" href="/admin/report-service/orders/<%= order.id %>/preview-html/template/<%= templateKey || 'modern' %>" target="_blank" rel="noopener">Abrir preview do template</a>
                 </div>
+
+                <%# Linha 2: destinatários %>
                 <div class="col-12 col-md-6">
                   <label class="form-label mb-1 small">Para <span class="text-danger">*</span></label>
-                  <input class="form-control form-control-sm" name="to" type="text" placeholder="email@empresa.com; outro@empresa.com" required />
+                  <input class="form-control form-control-sm" name="to" id="seTo" type="text" placeholder="email@empresa.com; outro@empresa.com" autocomplete="off" />
                 </div>
                 <div class="col-12 col-md-6">
                   <label class="form-label mb-1 small">CC (opcional)</label>
-                  <input class="form-control form-control-sm" name="cc" type="text" placeholder="cc@empresa.com" />
+                  <input class="form-control form-control-sm" name="cc" id="seCc" type="text" placeholder="cc@empresa.com" autocomplete="off" />
                 </div>
+
+                <%# Linha 3: mensagem %>
                 <div class="col-12">
                   <label class="form-label mb-1 small">Mensagem (opcional)</label>
-                  <textarea class="form-control form-control-sm" name="message" rows="3" placeholder="Mensagem para o destinatario"></textarea>
+                  <textarea class="form-control form-control-sm" name="message" id="seMessage" rows="3" placeholder="Mensagem para o destinatario"></textarea>
                 </div>
-                <div class="col-12">
-                  <button class="btn btn-outline-primary btn-sm" type="submit">Enviar e-mail + PDF assinado</button>
+
+                <%# Barra de progresso — visível durante a geração %>
+                <div class="col-12" id="sePdfProgressWrap" style="display:none;">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" id="sePdfSpinner" role="status" aria-hidden="true"></span>
+                    <span class="small text-muted" id="sePdfProgressLabel">Gerando PDF via Puppeteer...</span>
+                  </div>
+                  <div class="progress" style="height:5px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="sePdfProgressBar" role="progressbar" style="width:0%"></div>
+                  </div>
+                </div>
+
+                <%# Confirmação de PDF pronto %>
+                <div class="col-12" id="sePdfReadyMsg" style="display:none;">
+                  <div class="alert alert-success py-2 mb-0 d-flex align-items-center gap-2 small">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>
+                    <span id="sePdfReadyText">PDF gerado com sucesso — disponivel para envio como anexo.</span>
+                  </div>
+                </div>
+
+                <%# Botões de ação %>
+                <div class="col-12 d-flex align-items-center gap-2 flex-wrap">
+                  <%# Enviar sem PDF — sempre visível (some apenas durante geração) %>
+                  <button class="btn btn-outline-success btn-sm" type="button" id="seBtnSendNoPdf">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/></svg>
+                    Enviar e-mail
+                  </button>
+                  <%# Gerar PDF Anexo — visível no estado inicial %>
+                  <button class="btn btn-primary btn-sm" type="button" id="seBtnGeneratePdf">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16" aria-hidden="true"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/></svg>
+                    Gerar PDF Anexo
+                  </button>
+                  <%# Enviar com PDF — aparece após geração %>
+                  <button class="btn btn-primary btn-sm" type="button" id="seBtnSendWithPdf" style="display:none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/></svg>
+                    Enviar e-mail + PDF anexado
+                  </button>
+                  <button class="btn btn-link btn-sm text-muted px-0" type="button" id="seBtnRegenerate" style="display:none;">Regerar PDF</button>
                 </div>
               </form>
             </details>
+
+            <script>
+            (function () {
+              var orderId    = '<%= order.id %>';
+              var csrfToken  = '<%= csrfToken %>';
+
+              var form          = document.getElementById('sendSignedEmailForm');
+              var attachPdfIn   = document.getElementById('seAttachPdf');
+              var btnSendNoPdf  = document.getElementById('seBtnSendNoPdf');
+              var btnGenerate   = document.getElementById('seBtnGeneratePdf');
+              var btnSendWithPdf = document.getElementById('seBtnSendWithPdf');
+              var btnRegenerate = document.getElementById('seBtnRegenerate');
+              var progressWrap  = document.getElementById('sePdfProgressWrap');
+              var progressBar   = document.getElementById('sePdfProgressBar');
+              var progressLabel = document.getElementById('sePdfProgressLabel');
+              var spinner       = document.getElementById('sePdfSpinner');
+              var readyMsg      = document.getElementById('sePdfReadyMsg');
+              var templateSel   = document.getElementById('seTemplateKey');
+              var previewLink   = document.getElementById('seTemplatePreviewLink');
+              var toInput       = document.getElementById('seTo');
+
+              if (!btnGenerate) return;
+
+              if (templateSel && previewLink) {
+                templateSel.addEventListener('change', function () {
+                  previewLink.href = '/admin/report-service/orders/' + orderId + '/preview-html/template/' + (this.value || 'modern');
+                  resetPdfState();
+                });
+              }
+
+              function validateTo() {
+                if (!toInput || !toInput.value.trim()) {
+                  toInput.focus();
+                  toInput.classList.add('is-invalid');
+                  return false;
+                }
+                toInput.classList.remove('is-invalid');
+                return true;
+              }
+
+              function resetPdfState() {
+                pdfChecked                    = true;
+                progressWrap.style.display    = 'none';
+                readyMsg.style.display        = 'none';
+                btnSendWithPdf.style.display  = 'none';
+                btnRegenerate.style.display   = 'none';
+                btnGenerate.style.display     = '';
+                btnGenerate.disabled          = false;
+                btnSendNoPdf.style.display    = '';
+                btnSendNoPdf.disabled         = false;
+                progressBar.style.width       = '0%';
+                progressBar.className         = 'progress-bar progress-bar-striped progress-bar-animated';
+                spinner.style.display         = '';
+                progressLabel.textContent     = 'Gerando PDF via Puppeteer...';
+                attachPdfIn.value             = '0';
+              }
+
+              function startProgressAnimation() {
+                progressWrap.style.display    = '';
+                readyMsg.style.display        = 'none';
+                btnSendWithPdf.style.display  = 'none';
+                btnRegenerate.style.display   = 'none';
+                btnGenerate.disabled          = true;
+                btnSendNoPdf.disabled         = true;
+                progressBar.style.width       = '5%';
+                progressBar.className         = 'progress-bar progress-bar-striped progress-bar-animated';
+                spinner.style.display         = '';
+                progressLabel.textContent     = 'Gerando PDF via Puppeteer...';
+
+                var width = 5;
+                var timer = setInterval(function () {
+                  if (width < 82) {
+                    width += Math.random() * 6 + 1;
+                    if (width > 82) width = 82;
+                    progressBar.style.width = width + '%';
+                  }
+                }, 500);
+                return timer;
+              }
+
+              function finishProgress(timer) {
+                clearInterval(timer);
+                spinner.style.display     = 'none';
+                progressBar.style.width   = '100%';
+                progressBar.className     = 'progress-bar bg-success';
+                progressLabel.textContent = 'PDF gerado!';
+                setTimeout(function () {
+                  progressWrap.style.display   = 'none';
+                  readyMsg.style.display       = '';
+                  btnGenerate.style.display    = 'none';
+                  btnSendWithPdf.style.display = '';
+                  btnRegenerate.style.display  = '';
+                  btnSendNoPdf.disabled        = false;
+                }, 700);
+              }
+
+              function showError(timer, msg) {
+                clearInterval(timer);
+                spinner.style.display     = 'none';
+                progressBar.style.width   = '100%';
+                progressBar.className     = 'progress-bar bg-danger';
+                progressLabel.textContent = 'Erro: ' + msg;
+                btnGenerate.disabled      = false;
+                btnSendNoPdf.disabled     = false;
+              }
+
+              btnSendNoPdf.addEventListener('click', function () {
+                if (!validateTo()) return;
+                attachPdfIn.value = '0';
+                form.submit();
+              });
+
+              btnGenerate.addEventListener('click', function () {
+                if (!validateTo()) return;
+                var templateKey = templateSel ? templateSel.value : '';
+                var timer = startProgressAnimation();
+                fetch('/admin/report-service/orders/' + orderId + '/generate-pdf-for-email', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                  },
+                  body: '_csrf=' + encodeURIComponent(csrfToken) + '&template_key=' + encodeURIComponent(templateKey)
+                })
+                  .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+                  .then(function (result) {
+                    if (!result.ok || !result.data.ok) throw new Error(result.data.error || 'Falha ao gerar PDF.');
+                    finishProgress(timer);
+                  })
+                  .catch(function (err) {
+                    showError(timer, err.message || 'Tente novamente.');
+                  });
+              });
+
+              btnSendWithPdf.addEventListener('click', function () {
+                attachPdfIn.value = '1';
+                form.submit();
+              });
+
+              btnRegenerate.addEventListener('click', resetPdfState);
+
+              var pdfChecked = false;
+
+              function checkSavedPdf() {
+                if (pdfChecked) return;
+                pdfChecked = true;
+                fetch('/admin/report-service/orders/' + orderId + '/signed-pdf-status')
+                  .then(function(resp) { return resp.json(); })
+                  .then(function(result) {
+                    if (!result.ok || !result.hasSavedPdf) return;
+                    var readyText = document.getElementById('sePdfReadyText');
+                    if (readyText) readyText.textContent = 'PDF assinado disponivel — pronto para envio como anexo.';
+                    readyMsg.style.display       = '';
+                    btnGenerate.style.display    = 'none';
+                    btnSendWithPdf.style.display = '';
+                    btnRegenerate.style.display  = '';
+                    btnSendNoPdf.disabled        = false;
+                  })
+                  .catch(function() {});
+              }
+
+              var detailsEl = document.getElementById('sendSignedEmailDetails');
+              if (detailsEl) {
+                detailsEl.addEventListener('toggle', function() {
+                  if (detailsEl.open) checkSavedPdf();
+                });
+                if (detailsEl.open) checkSavedPdf();
+              }
+            })();
+            </script>
           <% } %>
 
           <%# Assinaturas registradas %>

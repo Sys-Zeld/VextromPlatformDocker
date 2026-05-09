@@ -39,7 +39,27 @@ services:
       S3_ACCESS_KEY_ID: vextrom
       S3_SECRET_ACCESS_KEY: vextrom-minio-change-me
       S3_FORCE_PATH_STYLE: "true"
+      REPORT_PDF_RENDERER: puppeteer
+      PUPPETEER_SERVER_URL: http://puppeteer:4000
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    depends_on:
+      - puppeteer
     volumes:
       - .:/app                  # hot-reload: código atualizado em tempo real
       - /app/node_modules       # preserva node_modules da imagem
       - dados_volume:/app/dados
+
+  puppeteer:
+    build:
+      context: .
+      target: dev
+    command: ["node", "puppeteer-server.js"]
+    shm_size: '2gb'
+    environment:
+      HOSTNAME_ADVERTISE: puppeteer
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      # Chrome instalado pelo pptruser da imagem base — aponta root para o mesmo cache
+      PUPPETEER_CACHE_DIR: /home/pptruser/.cache/puppeteer
+    volumes:
+      - ./puppeteer-server.js:/app/puppeteer-server.js:ro
+      - /app/node_modules
