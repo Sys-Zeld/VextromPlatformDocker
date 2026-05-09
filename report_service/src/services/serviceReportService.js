@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const repo = require("../repositories/serviceReportRepository");
+const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
 const {
   ORDER_STATUSES,
@@ -519,6 +520,53 @@ function resolveReportHtmlPath(serviceReportId) {
   return path.join(folder, `service-report-${serviceReportId}.html`);
 }
 
+async function deleteOrderFull(orderId) {
+  const [attachments, pdfHistory, report] = await Promise.all([
+    repo.listOrderAttachments(orderId),
+    repo.listPdfHistoryByOrderId(orderId),
+    repo.getReportByOrderId(orderId)
+  ]);
+
+  let images = [];
+  if (report) {
+    images = await repo.listImages(report.id);
+  }
+
+  const deleted = await repo.deleteOrder(orderId);
+  if (!deleted) return false;
+
+  const cleanups = [];
+
+  for (const att of attachments) {
+    cleanups.push(
+      objectStorage.deleteObject(path.join("dados", "order-attachments", String(orderId), att.stored_name))
+        .catch(() => {})
+    );
+  }
+
+  for (const entry of pdfHistory) {
+    if (entry.object_key) {
+      cleanups.push(objectStorage.deleteObject(entry.object_key).catch(() => {}));
+    }
+  }
+
+  for (const img of images) {
+    if (img.file_path) {
+      cleanups.push(
+        objectStorage.deleteObject(path.join("dados", "report-img", img.file_path)).catch(() => {})
+      );
+    }
+  }
+
+  if (report) {
+    cleanups.push(fs.promises.unlink(resolveReportPdfPath(report.id)).catch(() => {}));
+    cleanups.push(fs.promises.unlink(resolveReportHtmlPath(report.id)).catch(() => {}));
+  }
+
+  await Promise.all(cleanups);
+  return true;
+}
+
 module.exports = {
   ORDER_STATUSES,
   SECTION_DEFINITIONS,
@@ -539,5 +587,6 @@ module.exports = {
   createSignature,
   buildReportAggregate,
   resolveReportPdfPath,
-  resolveReportHtmlPath
+  resolveReportHtmlPath,
+  deleteOrderFull
 };

@@ -1040,7 +1040,7 @@ function createReportWebController(deps) {
 
     async deleteOrder(req, res) {
       const orderId = Number(req.params.id);
-      const deleted = await repo.deleteOrder(orderId);
+      const deleted = await service.deleteOrderFull(orderId);
       if (!deleted) return res.status(404).send("OS nao encontrada.");
       return res.redirect("/admin/report-service/orders?deleted=1");
     },

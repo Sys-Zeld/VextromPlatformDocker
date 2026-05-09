@@ -47,7 +47,7 @@ function createReportApiController(deps) {
 
     async deleteOrder(req, res) {
       const id = Number(req.params.id);
-      const deleted = await repo.deleteOrder(id);
+      const deleted = await service.deleteOrderFull(id);
       if (!deleted) return res.status(404).json({ error: "OS nao encontrada.", errorCode: "ORDER_NOT_FOUND", details: null });
       return res.status(204).send();
     },
