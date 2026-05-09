@@ -559,7 +559,6 @@ async function deleteOrderFull(orderId) {
   }
 
   if (report) {
-    cleanups.push(fs.promises.unlink(resolveReportPdfPath(report.id)).catch(() => {}));
     cleanups.push(fs.promises.unlink(resolveReportHtmlPath(report.id)).catch(() => {}));
   }
 
