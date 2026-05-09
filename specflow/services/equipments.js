@@ -145,16 +145,31 @@ async function getEquipmentByToken(token) {
   return result.rows[0] ? normalizeEquipmentRow(result.rows[0]) : null;
 }
 
-async function listEquipments() {
+async function listEquipments(purchaser) {
+  const params = [];
+  let where = "";
+  if (purchaser) {
+    params.push(purchaser);
+    where = "WHERE e.purchaser = $1";
+  }
   const result = await db.query(
     `
       SELECT e.*, p.name AS profile_name
       FROM equipments e
       LEFT JOIN field_profiles p ON p.id = e.profile_id
+      ${where}
       ORDER BY e.created_at DESC
-    `
+    `,
+    params
   );
   return result.rows.map(normalizeEquipmentRow);
+}
+
+async function listDistinctPurchasers() {
+  const result = await db.query(
+    `SELECT DISTINCT purchaser FROM equipments WHERE purchaser <> '' ORDER BY purchaser ASC`
+  );
+  return result.rows.map(r => r.purchaser);
 }
 
 async function updateEquipmentStatus(id, status) {
@@ -258,6 +273,7 @@ module.exports = {
   getEquipmentById,
   getEquipmentByToken,
   listEquipments,
+  listDistinctPurchasers,
   updateEquipmentClientData,
   updateEquipmentConfiguration,
   updateEquipmentStatus,

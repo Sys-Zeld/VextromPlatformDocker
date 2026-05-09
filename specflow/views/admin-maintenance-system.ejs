@@ -3,11 +3,11 @@
 <div class="card app-card mb-4">
   <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <div>
-      <h1 class="h4 app-card-title mb-1">Manutencao do sistema</h1>
-      <p class="text-muted mb-0">Central de operacoes administrativas dos modulos.</p>
+      <h1 class="h4 app-card-title mb-1"><%= t("admin.sys.pageTitle") %></h1>
+      <p class="text-muted mb-0"><%= t("admin.sys.pageSubtitle") %></p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a class="btn btn-outline-secondary btn-sm" href="/admin/hub">Voltar ao hub</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/hub"><%= t("admin.sys.backToHub") %></a>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <button class="btn btn-outline-secondary btn-sm" type="submit"><%= t("admin.logoutSessionButton") %></button>
@@ -18,20 +18,20 @@
 
 <% if (commandResult) { %>
   <div class="alert <%= commandResult.ok ? 'alert-success' : 'alert-danger' %>">
-    <div><strong>Comando:</strong> <code><%= commandResult.label %></code></div>
-    <div><strong>Exit code:</strong> <%= commandResult.code %></div>
+    <div><strong><%= t("admin.maint.commandLabel") %>:</strong> <code><%= commandResult.label %></code></div>
+    <div><strong><%= t("admin.maint.exitCodeLabel") %>:</strong> <%= commandResult.code %></div>
   </div>
   <div class="card app-card mb-4">
     <div class="card-body">
-      <h2 class="h6 app-card-title">Saida</h2>
+      <h2 class="h6 app-card-title"><%= t("admin.sys.outputTitle") %></h2>
       <% if (commandResult.downloadPath) { %>
         <div class="mb-2">
           <a class="btn btn-sm btn-outline-primary" href="<%= commandResult.downloadPath %>">
-            <%= commandResult.downloadPath.includes('/assets-backup/') ? 'Baixar backup .zip' : 'Baixar backup .sql' %>
+            <%= commandResult.downloadPath.includes('/assets-backup/') ? t("admin.sys.downloadZipButton") : t("admin.sys.downloadSqlButton") %>
           </a>
         </div>
       <% } %>
-      <pre class="mb-0" style="white-space: pre-wrap;"><%= commandResult.output || "(sem saida)" %></pre>
+      <pre class="mb-0" style="white-space: pre-wrap;"><%= commandResult.output || t("admin.sys.noOutput") %></pre>
     </div>
   </div>
 <% } %>
@@ -57,24 +57,24 @@
 <% if (!canManageSystem) { %>
   <div class="card app-card mb-4">
     <div class="card-body">
-      <h2 class="h6 app-card-title mb-3">Minha conta</h2>
-      <p class="text-muted mb-3">Altere sua senha de acesso.</p>
+      <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.myAccountTitle") %></h2>
+      <p class="text-muted mb-3"><%= t("admin.sys.myAccountSubtitle") %></p>
       <form method="post" action="/admin/maintenance/system/password" class="row g-3">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <div class="col-12 col-md-4">
-          <label class="form-label">Senha atual</label>
+          <label class="form-label"><%= t("admin.sys.currentPasswordLabel") %></label>
           <input class="form-control" type="password" name="current_password" minlength="8" required />
         </div>
         <div class="col-12 col-md-4">
-          <label class="form-label">Nova senha</label>
+          <label class="form-label"><%= t("admin.sys.newPasswordLabel") %></label>
           <input class="form-control" type="password" name="new_password" minlength="8" required />
         </div>
         <div class="col-12 col-md-4">
-          <label class="form-label">Confirmar nova senha</label>
+          <label class="form-label"><%= t("admin.sys.confirmPasswordLabel") %></label>
           <input class="form-control" type="password" name="new_password_confirm" minlength="8" required />
         </div>
         <div class="col-12">
-          <button class="btn btn-outline-primary btn-sm" type="submit">Salvar nova senha</button>
+          <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.savePasswordButton") %></button>
         </div>
       </form>
     </div>
@@ -83,12 +83,12 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Tipografia por usuario</h2>
-    <p class="text-muted mb-3">A fonte selecionada fica salva no usuario logado e personalizada por conta.</p>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.typographyTitle") %></h2>
+    <p class="text-muted mb-3"><%= t("admin.sys.typographySubtitle") %></p>
     <form method="post" action="/admin/maintenance/system/font" class="row g-3 align-items-end">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-12 col-lg-6">
-        <label class="form-label">Fonte principal</label>
+        <label class="form-label"><%= t("admin.sys.fontLabel") %></label>
         <select class="form-select" name="system_font" required>
           <% (systemFontOptions || []).forEach((fontOption) => { %>
             <option value="<%= fontOption.key %>" <%= currentSystemFont === fontOption.key ? "selected" : "" %>>
@@ -105,28 +105,28 @@
         </div>
       </div>
       <div class="col-12">
-        <button class="btn btn-outline-primary btn-sm" type="submit">Salvar minha fonte</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.saveFontButton") %></button>
       </div>
     </form>
   </div>
 </div>
 
 <% if (!canManageSystem) { %>
-  <div class="alert alert-info">Perfil user com acesso limitado: somente alteracao de senha e tipografia.</div>
+  <div class="alert alert-info"><%= t("admin.sys.userLimitedNotice") %></div>
 <% } %>
 
 <% if (canManageSystem) { %>
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Data e horario do sistema</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.datetimeTitle") %></h2>
     <p class="text-muted mb-3">
-      Horario atual do sistema: <strong id="sysClockDisplay"><%= systemDatetimeNow %></strong>
+      <%= t("admin.sys.datetimeCurrentLabel") %> <strong id="sysClockDisplay"><%= systemDatetimeNow %></strong>
       <% if (timezoneOffsetLabel) { %><span class="text-muted small ms-1">(<%= timezoneOffsetLabel %>)</span><% } %>
     </p>
     <form method="post" action="/admin/maintenance/system/datetime" class="row g-3 align-items-end">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-12 col-lg-5">
-        <label class="form-label">Timezone (IANA)</label>
+        <label class="form-label"><%= t("admin.sys.timezoneLabel") %></label>
         <select class="form-select" name="timezone" required>
           <% (timezoneOptions || []).forEach(function(tz) { %>
             <option value="<%= tz.value %>" <%= systemTimezone === tz.value ? "selected" : "" %>><%= tz.label %></option>
@@ -134,7 +134,7 @@
         </select>
       </div>
       <div class="col-12">
-        <button class="btn btn-outline-primary btn-sm" type="submit">Salvar timezone</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.saveTimezoneButton") %></button>
       </div>
     </form>
   </div>
@@ -142,27 +142,27 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Comandos globais</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.globalCommandsTitle") %></h2>
     <div class="d-flex gap-2 flex-wrap">
-      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma backup de todos os bancos?">
+      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.backupAllConfirm') %>">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="action" value="backup_all" />
-        <button class="btn btn-outline-primary btn-sm" type="submit">Backup todos os bancos</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.backupAllButton") %></button>
       </form>
-      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma executar migracoes de todos os modulos?">
+      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.migrateAllConfirm') %>">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="action" value="migrate_all" />
-        <button class="btn btn-outline-primary btn-sm" type="submit">Migrar todos os modulos</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.migrateAllButton") %></button>
       </form>
-      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma executar seed de todos os modulos?">
+      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.seedAllConfirm') %>">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="action" value="seed_all" />
-        <button class="btn btn-outline-primary btn-sm" type="submit">Seed todos os modulos</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.seedAllButton") %></button>
       </form>
-      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma limpar as sessoes administrativas?">
+      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.clearSessionsConfirm') %>">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="action" value="admin_sessions_clear" />
-        <button class="btn btn-outline-warning btn-sm" type="submit">Limpar sessoes</button>
+        <button class="btn btn-outline-warning btn-sm" type="submit"><%= t("admin.sys.clearSessionsButton") %></button>
       </form>
     </div>
   </div>
@@ -170,20 +170,20 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Backup e restore (SpecFlow)</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.backupRestoreTitle") %></h2>
     <div class="row g-3 mt-1">
       <div class="col-12 col-lg-4">
         <form
           id="maintenance-import-restore-form"
           class="border rounded p-3"
           data-url="/admin/maintenance/system/restore-import"
-          data-confirm="Confirma importar este arquivo .sql para a lista de backups?"
+          data-confirm="<%= t('admin.sys.importSqlLabel') %>"
         >
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-          <label class="form-label">Importar arquivo .sql</label>
+          <label class="form-label"><%= t("admin.sys.importSqlLabel") %></label>
           <div class="d-flex flex-column gap-2">
             <input class="form-control" type="file" name="sqlFile" accept=".sql" required />
-            <button class="btn btn-outline-primary" type="submit">Importar backup</button>
+            <button class="btn btn-outline-primary" type="submit"><%= t("admin.sys.importBackupButton") %></button>
             <div id="maintenance-import-progress-wrap" style="display:none;">
               <div class="progress" role="progressbar" aria-label="Progresso de upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                 <div
@@ -192,9 +192,9 @@
                   style="width: 0%;"
                 >0%</div>
               </div>
-              <small id="maintenance-import-progress-text" class="text-muted">Aguardando upload...</small>
+              <small id="maintenance-import-progress-text" class="text-muted"><%= t("admin.sys.importProgress") %></small>
             </div>
-            <small class="text-muted">Limite: 50 MB. O arquivo sera salvo em <code>dados/backups</code> e aparecera na lista abaixo para restore.</small>
+            <small class="text-muted"><%= t("admin.sys.importSqlHint") %></small>
             <pre id="maintenance-import-restore-output" class="mb-0 small" style="white-space: pre-wrap; display:none;"></pre>
           </div>
         </form>
@@ -205,29 +205,29 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Backup e restore de Assets</h2>
-    <p class="text-muted mb-3">Exporta e importa arquivos das pastas <code>dados/docs</code>, <code>dados/service-report-pdfs</code>, <code>dados/service-report-html</code> e <code>dados/report-img</code>.</p>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.assetsTitle") %></h2>
+    <p class="text-muted mb-3"><%= t("admin.sys.assetsSubtitle") %></p>
     <div class="row g-3">
       <div class="col-12 col-lg-4">
         <div class="border rounded p-3 d-flex flex-column gap-2">
-          <div class="fw-semibold small">Exportar assets</div>
-          <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma gerar backup de assets (docs, PDFs, imagens)?">
+          <div class="fw-semibold small"><%= t("admin.sys.exportAssetsTitle") %></div>
+          <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.exportAssetsConfirm') %>">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <input type="hidden" name="action" value="assets_backup" />
-            <button class="btn btn-outline-primary btn-sm w-100" type="submit">Gerar backup de assets (.zip)</button>
+            <button class="btn btn-outline-primary btn-sm w-100" type="submit"><%= t("admin.sys.exportAssetsButton") %></button>
           </form>
-          <small class="text-muted">Gera um <code>.zip</code> em <code>dados/backups/</code> com link para download.</small>
+          <small class="text-muted"><%= t("admin.sys.exportAssetsHint") %></small>
         </div>
       </div>
       <div class="col-12 col-lg-4">
         <div class="border rounded p-3 d-flex flex-column gap-2">
-          <div class="fw-semibold small">Restaurar assets (ultimo backup)</div>
-          <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma restaurar assets do ultimo backup .zip encontrado? Os arquivos atuais serao substituidos.">
+          <div class="fw-semibold small"><%= t("admin.sys.restoreAssetsTitle") %></div>
+          <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.restoreAssetsConfirm') %>">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <input type="hidden" name="action" value="assets_restore" />
-            <button class="btn btn-outline-danger btn-sm w-100" type="submit">Restaurar assets (ultimo .zip)</button>
+            <button class="btn btn-outline-danger btn-sm w-100" type="submit"><%= t("admin.sys.restoreAssetsButton") %></button>
           </form>
-          <small class="text-muted">Restaura automaticamente do <code>assets-backup-*.zip</code> mais recente em <code>dados/backups/</code>.</small>
+          <small class="text-muted"><%= t("admin.sys.restoreAssetsHint") %></small>
         </div>
       </div>
       <div class="col-12 col-lg-4">
@@ -235,12 +235,12 @@
           id="maintenance-assets-import-form"
           class="border rounded p-3"
           data-url="/admin/maintenance/system/assets-restore-import"
-          data-confirm="Confirma importar e restaurar este arquivo .zip de assets? Os arquivos atuais serao substituidos."
+          data-confirm="<%= t('admin.sys.importRestoreZipConfirm') %>"
         >
-          <div class="fw-semibold small mb-2">Importar e restaurar .zip</div>
+          <div class="fw-semibold small mb-2"><%= t("admin.sys.importRestoreZipTitle") %></div>
           <div class="d-flex flex-column gap-2">
             <input class="form-control form-control-sm" type="file" name="zipFile" accept=".zip" required />
-            <button class="btn btn-outline-primary btn-sm" type="submit">Importar e restaurar</button>
+            <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.importRestoreZipButton") %></button>
             <div id="maintenance-assets-import-progress-wrap" style="display:none;">
               <div class="progress" role="progressbar" aria-label="Progresso de upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                 <div
@@ -249,9 +249,9 @@
                   style="width: 0%;"
                 >0%</div>
               </div>
-              <small id="maintenance-assets-import-progress-text" class="text-muted">Aguardando upload...</small>
+              <small id="maintenance-assets-import-progress-text" class="text-muted"><%= t("admin.sys.importProgress") %></small>
             </div>
-            <small class="text-muted">Limite: 200 MB. O restore e executado automaticamente apos o upload.</small>
+            <small class="text-muted"><%= t("admin.sys.importZipHint") %></small>
             <pre id="maintenance-assets-import-output" class="mb-0 small" style="white-space: pre-wrap; display:none;"></pre>
           </div>
         </form>
@@ -262,24 +262,24 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Backups disponiveis para restore</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.backupsListTitle") %></h2>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 app-table">
         <thead>
           <tr>
             <th>ID</th>
-            <th>Timestamp</th>
-            <th>Arquivo</th>
-            <th>Pasta</th>
-            <th>Tamanho</th>
-            <th>Status</th>
-            <th>Acoes</th>
+            <th><%= t("admin.sys.colTimestamp") %></th>
+            <th><%= t("admin.sys.colFile") %></th>
+            <th><%= t("admin.sys.colFolder") %></th>
+            <th><%= t("admin.sys.colSize") %></th>
+            <th><%= t("admin.sys.colStatus") %></th>
+            <th><%= t("admin.sys.colActions") %></th>
           </tr>
         </thead>
         <tbody>
           <% if (!backups || !backups.length) { %>
             <tr>
-              <td colspan="7" class="text-muted">Nenhum backup catalogado.</td>
+              <td colspan="7" class="text-muted"><%= t("admin.sys.noBackups") %></td>
             </tr>
           <% } %>
           <% (backups || []).forEach((backup) => { %>
@@ -293,23 +293,23 @@
                 <% if (backup.existsOnDisk) { %>
                   <span class="badge text-bg-success">OK</span>
                 <% } else { %>
-                  <span class="badge text-bg-danger">Arquivo ausente</span>
+                  <span class="badge text-bg-danger"><%= t("admin.sys.statusMissing") %></span>
                 <% } %>
               </td>
               <td>
                 <div class="d-flex gap-2 flex-wrap">
-                  <a class="btn btn-outline-primary btn-sm <%= backup.existsOnDisk ? '' : 'disabled' %>" href="<%= backup.existsOnDisk ? `/admin/backups/${backup.id}/download` : '#' %>" <%= backup.existsOnDisk ? '' : 'tabindex="-1" aria-disabled="true"' %>>Baixar</a>
-                  <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma restore deste backup?">
+                  <a class="btn btn-outline-primary btn-sm <%= backup.existsOnDisk ? '' : 'disabled' %>" href="<%= backup.existsOnDisk ? `/admin/backups/${backup.id}/download` : '#' %>" <%= backup.existsOnDisk ? '' : 'tabindex="-1" aria-disabled="true"' %>><%= t("admin.sys.downloadButton") %></a>
+                  <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.restoreConfirm') %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <input type="hidden" name="action" value="db_restore_selected" />
                     <input type="hidden" name="backupId" value="<%= backup.id %>" />
-                    <button class="btn btn-outline-danger btn-sm" type="submit" <%= backup.existsOnDisk ? "" : "disabled" %>>Restaurar</button>
+                    <button class="btn btn-outline-danger btn-sm" type="submit" <%= backup.existsOnDisk ? "" : "disabled" %>><%= t("admin.sys.restoreButton") %></button>
                   </form>
-                  <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="Confirma deletar este backup? Esta acao remove o arquivo .sql do disco e do catalogo.">
+                  <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.deleteBackupConfirm') %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <input type="hidden" name="action" value="db_delete_selected" />
                     <input type="hidden" name="backupId" value="<%= backup.id %>" />
-                    <button class="btn btn-outline-danger btn-sm" type="submit">Deletar</button>
+                    <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.sys.deleteBackupButton") %></button>
                   </form>
                 </div>
               </td>
@@ -331,7 +331,7 @@
             <p class="text-muted mb-0"><%= card.description %></p>
           </div>
           <div class="mt-auto">
-            <a class="btn btn-outline-primary btn-sm" href="<%= card.href %>">Acessar manutencao</a>
+            <a class="btn btn-outline-primary btn-sm" href="<%= card.href %>"><%= t("admin.sys.accessModuleButton") %></a>
           </div>
         </div>
       </article>
@@ -341,23 +341,23 @@
 
 <div class="card app-card mb-4 mt-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Cadastrar usuarios do sistema</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.createUserTitle") %></h2>
     <form method="post" action="/admin/maintenance/system/admin-users/create" class="row g-3">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-12 col-md-3">
-        <label class="form-label">Usuario</label>
+        <label class="form-label"><%= t("admin.sys.usernameLabel") %></label>
         <input class="form-control" type="text" name="username" minlength="3" required />
-        <small class="text-muted">Aceita maiusculas, minusculas e caracteres especiais.</small>
+        <small class="text-muted"><%= t("admin.sys.usernameHint") %></small>
       </div>
       <div class="col-12 col-md-3">
-        <label class="form-label">Perfil</label>
+        <label class="form-label"><%= t("admin.sys.roleLabel") %></label>
         <select class="form-select" name="role" required>
           <option value="user">user</option>
           <option value="admin">admin</option>
         </select>
       </div>
       <div class="col-12">
-        <label class="form-label d-block mb-2">Modulos permitidos (para user)</label>
+        <label class="form-label d-block mb-2"><%= t("admin.sys.allowedModulesLabel") %></label>
         <div class="d-flex gap-3 flex-wrap">
           <div class="form-check">
             <input class="form-check-input" type="checkbox" name="module_access" id="create_module_specflow" value="specflow" checked />
@@ -372,18 +372,18 @@
             <label class="form-check-label" for="create_module_report_service">Report Service</label>
           </div>
         </div>
-        <small class="text-muted">Usuarios admin sempre tem acesso total aos modulos.</small>
+        <small class="text-muted"><%= t("admin.sys.adminAlwaysFullAccess") %></small>
       </div>
       <div class="col-12 col-md-3">
-        <label class="form-label">Senha</label>
+        <label class="form-label"><%= t("admin.sys.passwordLabel") %></label>
         <input class="form-control" type="password" name="password" minlength="8" required />
       </div>
       <div class="col-12 col-md-3">
-        <label class="form-label">Confirmar senha</label>
+        <label class="form-label"><%= t("admin.sys.passwordConfirmLabel") %></label>
         <input class="form-control" type="password" name="passwordConfirm" minlength="8" required />
       </div>
       <div class="col-12">
-        <button class="btn btn-primary" type="submit">Cadastrar usuario</button>
+        <button class="btn btn-primary" type="submit"><%= t("admin.sys.createUserButton") %></button>
       </div>
     </form>
   </div>
@@ -391,22 +391,22 @@
 
 <div class="card app-card">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Usuarios admin cadastrados</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.sys.adminUsersListTitle") %></h2>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 app-table">
         <thead>
           <tr>
-            <th>Usuario</th>
-            <th>Perfil</th>
-            <th>Modulos</th>
-            <th>Criado em</th>
-            <th>Atualizado em</th>
-            <th>Acoes</th>
+            <th><%= t("admin.sys.colUsername") %></th>
+            <th><%= t("admin.sys.colRole") %></th>
+            <th><%= t("admin.sys.colModules") %></th>
+            <th><%= t("admin.sys.colCreatedAt") %></th>
+            <th><%= t("admin.sys.colUpdatedAt") %></th>
+            <th><%= t("admin.sys.colActions") %></th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code><%= envAdminUser || "admin" %></code> <span class="badge text-bg-secondary">principal</span></td>
+            <td><code><%= envAdminUser || "admin" %></code> <span class="badge text-bg-secondary"><%= t("admin.sys.principalBadge") %></span></td>
             <td><span class="badge text-bg-danger">admin</span></td>
             <td><small>SpecFlow, ModuleSpec, Report Service</small></td>
             <td>-</td>
@@ -415,7 +415,7 @@
           </tr>
           <% if (!users || !users.length) { %>
             <tr>
-              <td colspan="6" class="text-muted">Nenhum usuario adicional cadastrado.</td>
+              <td colspan="6" class="text-muted"><%= t("admin.sys.noAdditionalUsers") %></td>
             </tr>
           <% } %>
           <% (users || []).forEach((user) => { %>
@@ -427,17 +427,17 @@
               <td><%= user.updatedAt ? new Date(user.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td>
                 <div class="d-flex flex-column gap-2">
-                  <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/update" class="maintenance-user-update-form" data-confirm="Confirma salvar alteracoes deste usuario?">
+                  <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/update" class="maintenance-user-update-form" data-confirm="<%= t('admin.sys.confirmSaveUser') %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <div class="d-flex flex-column gap-2">
                       <input class="form-control form-control-sm" type="text" name="username" value="<%= user.username %>" minlength="3" required />
-                      <small class="text-muted">Aceita maiusculas, minusculas e caracteres especiais.</small>
+                      <small class="text-muted"><%= t("admin.sys.usernameHint") %></small>
                       <select class="form-select form-select-sm" name="role" required>
                         <option value="user" <%= user.role === "user" ? "selected" : "" %>>user</option>
                         <option value="admin" <%= user.role === "admin" ? "selected" : "" %>>admin</option>
                       </select>
                       <div class="border rounded p-2">
-                        <div class="small fw-semibold mb-1">Modulos (user)</div>
+                        <div class="small fw-semibold mb-1"><%= t("admin.sys.editUserModulesLabel") %></div>
                         <div class="d-flex gap-2 flex-wrap">
                           <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_specflow" value="specflow" <%= user.role === "admin" || (user.moduleAccess || []).includes("specflow") ? "checked" : "" %> />
@@ -453,14 +453,14 @@
                           </div>
                         </div>
                       </div>
-                      <input class="form-control form-control-sm" type="password" name="password" minlength="8" placeholder="Nova senha (opcional)" />
-                      <input class="form-control form-control-sm" type="password" name="passwordConfirm" minlength="8" placeholder="Confirmar nova senha" />
-                      <button class="btn btn-outline-primary btn-sm" type="submit">Salvar</button>
+                      <input class="form-control form-control-sm" type="password" name="password" minlength="8" placeholder="<%= t('admin.sys.newPasswordPh') %>" />
+                      <input class="form-control form-control-sm" type="password" name="passwordConfirm" minlength="8" placeholder="<%= t('admin.sys.confirmPasswordPh') %>" />
+                      <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.saveUserButton") %></button>
                     </div>
                   </form>
-                  <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/delete" class="maintenance-user-update-form" data-confirm="Confirma remover este usuario?">
+                  <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/delete" class="maintenance-user-update-form" data-confirm="<%= t('admin.sys.confirmDeleteUser') %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                    <button class="btn btn-outline-danger btn-sm" type="submit">Deletar usuario</button>
+                    <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.sys.deleteUserButton") %></button>
                   </form>
                 </div>
               </td>
@@ -475,10 +475,23 @@
 
 <script>
   (function () {
+    var defaultConfirm = <%- JSON.stringify(t("admin.sys.confirmExecuteCommand")) %>;
+    var noOutput = <%- JSON.stringify(t("admin.sys.noOutput")) %>;
+    var uploadingStatusTpl = <%- JSON.stringify(t("admin.sys.uploadingStatus")) %>;
+    var uploadComplete = <%- JSON.stringify(t("admin.sys.uploadComplete")) %>;
+    var importingBackup = <%- JSON.stringify(t("admin.sys.importingBackup")) %>;
+    var importingAssets = <%- JSON.stringify(t("admin.sys.importingAssets")) %>;
+    var invalidSqlFile = <%- JSON.stringify(t("admin.sys.invalidSqlFile")) %>;
+    var onlySqlAllowed = <%- JSON.stringify(t("admin.sys.onlySqlAllowed")) %>;
+    var sqlSizeLimitExceeded = <%- JSON.stringify(t("admin.sys.sqlSizeLimitExceeded")) %>;
+    var selectZipFile = <%- JSON.stringify(t("admin.sys.selectZipFile")) %>;
+    var onlyZipAllowed = <%- JSON.stringify(t("admin.sys.onlyZipAllowed")) %>;
+    var zipSizeLimitExceeded = <%- JSON.stringify(t("admin.sys.zipSizeLimitExceeded")) %>;
+
     var forms = document.querySelectorAll(".maintenance-command-form, .maintenance-user-update-form");
     forms.forEach(function (form) {
       form.addEventListener("submit", function (event) {
-        var message = form.getAttribute("data-confirm") || "Confirma executar este comando?";
+        var message = form.getAttribute("data-confirm") || defaultConfirm;
         if (!window.confirm(message)) {
           event.preventDefault();
         }
@@ -502,7 +515,7 @@
       if (!outputEl) return;
       outputEl.style.display = "block";
       outputEl.style.color = isError ? "#b42318" : "#1f2937";
-      outputEl.textContent = String(text || "").trim() || "(sem saida)";
+      outputEl.textContent = String(text || "").trim() || noOutput;
     }
 
     function formatBytes(bytes) {
@@ -523,7 +536,7 @@
         progressBar.textContent = "0%";
         progressBar.parentElement && progressBar.parentElement.setAttribute("aria-valuenow", "0");
       }
-      if (progressText) progressText.textContent = "Aguardando upload...";
+      if (progressText) progressText.textContent = uploadingStatusTpl.replace("{loaded}", "").replace("{total}", "");
     }
 
     function updateUploadProgress(percent, loaded, total) {
@@ -535,9 +548,9 @@
       }
       if (progressText) {
         if (Number(total || 0) > 0) {
-          progressText.textContent = "Enviado " + formatBytes(loaded) + " de " + formatBytes(total) + ".";
+          progressText.textContent = uploadingStatusTpl.replace("{loaded}", formatBytes(loaded)).replace("{total}", formatBytes(total));
         } else {
-          progressText.textContent = "Enviado " + formatBytes(loaded) + ".";
+          progressText.textContent = uploadingStatusTpl.replace("{loaded}", formatBytes(loaded)).replace(" de {total}", "");
         }
       }
     }
@@ -593,38 +606,38 @@
         if (!assetsOutputEl) return;
         assetsOutputEl.style.display = "block";
         assetsOutputEl.style.color = isError ? "#b42318" : "#1f2937";
-        assetsOutputEl.textContent = String(text || "").trim() || "(sem saida)";
+        assetsOutputEl.textContent = String(text || "").trim() || noOutput;
       }
 
       function resetAssetsProgress() {
         if (assetsProgressWrap) assetsProgressWrap.style.display = "none";
         if (assetsProgressBar) { assetsProgressBar.style.width = "0%"; assetsProgressBar.textContent = "0%"; }
-        if (assetsProgressText) assetsProgressText.textContent = "Aguardando upload...";
+        if (assetsProgressText) assetsProgressText.textContent = uploadingStatusTpl.replace("{loaded}", "").replace("{total}", "");
       }
 
       function updateAssetsProgress(percent, loaded, total) {
         var p = Math.max(0, Math.min(100, Math.floor(Number(percent || 0))));
         if (assetsProgressBar) { assetsProgressBar.style.width = p + "%"; assetsProgressBar.textContent = p + "%"; }
         if (assetsProgressText && Number(total || 0) > 0) {
-          assetsProgressText.textContent = "Enviado " + formatBytes(loaded) + " de " + formatBytes(total) + ".";
+          assetsProgressText.textContent = uploadingStatusTpl.replace("{loaded}", formatBytes(loaded)).replace("{total}", formatBytes(total));
         }
       }
 
       assetsImportForm.addEventListener("submit", async function (event) {
         event.preventDefault();
         var file = assetsFileInput && assetsFileInput.files ? assetsFileInput.files[0] : null;
-        if (!file) { showAssetsOutput("Selecione um arquivo .zip para importar.", true); return; }
-        if (!String(file.name || "").toLowerCase().endsWith(".zip")) { showAssetsOutput("Somente arquivos .zip sao permitidos.", true); return; }
-        if (file.size > assetsMaxBytes) { showAssetsOutput("Arquivo ZIP excede limite de 200 MB.", true); return; }
+        if (!file) { showAssetsOutput(selectZipFile, true); return; }
+        if (!String(file.name || "").toLowerCase().endsWith(".zip")) { showAssetsOutput(onlyZipAllowed, true); return; }
+        if (file.size > assetsMaxBytes) { showAssetsOutput(zipSizeLimitExceeded, true); return; }
 
-        var message = assetsImportForm.getAttribute("data-confirm") || "Confirma importar e restaurar este arquivo?";
+        var message = assetsImportForm.getAttribute("data-confirm") || defaultConfirm;
         if (!window.confirm(message)) return;
 
         if (assetsSubmitBtn) assetsSubmitBtn.disabled = true;
         resetAssetsProgress();
         if (assetsProgressWrap) assetsProgressWrap.style.display = "block";
         updateAssetsProgress(0, 0, file.size);
-        showAssetsOutput("Importando e restaurando assets, aguarde...", false);
+        showAssetsOutput(importingAssets, false);
 
         try {
           var endpoint = assetsImportForm.getAttribute("data-url");
@@ -667,26 +680,26 @@
       event.preventDefault();
       var file = fileInput && fileInput.files ? fileInput.files[0] : null;
       if (!file) {
-        showImportOutput("Selecione um arquivo .sql para importar.", true);
+        showImportOutput(invalidSqlFile, true);
         return;
       }
       if (!String(file.name || "").toLowerCase().endsWith(".sql")) {
-        showImportOutput("Somente arquivos .sql sao permitidos.", true);
+        showImportOutput(onlySqlAllowed, true);
         return;
       }
       if (file.size > maxBytes) {
-        showImportOutput("Arquivo SQL excede limite de 50 MB.", true);
+        showImportOutput(sqlSizeLimitExceeded, true);
         return;
       }
 
-      var message = importForm.getAttribute("data-confirm") || "Confirma importar este arquivo?";
+      var message = importForm.getAttribute("data-confirm") || defaultConfirm;
       if (!window.confirm(message)) return;
 
       if (submitBtn) submitBtn.disabled = true;
       resetUploadProgress();
       showUploadProgress();
       updateUploadProgress(0, 0, file.size);
-      showImportOutput("Importando backup, aguarde...", false);
+      showImportOutput(importingBackup, false);
 
       try {
         var endpoint = importForm.getAttribute("data-url");
@@ -705,7 +718,7 @@
 
         updateUploadProgress(100, file.size, file.size);
         if (progressText) {
-          progressText.textContent = "Upload concluido. Aguardando atualizacao da lista...";
+          progressText.textContent = uploadComplete;
         }
 
         var data = response.data;
@@ -736,7 +749,7 @@
   if (!el || !tz) return;
   function tick() {
     try {
-      el.textContent = new Intl.DateTimeFormat("pt-BR", {
+      el.textContent = new Intl.DateTimeFormat(<%- JSON.stringify(lang === "pt" ? "pt-BR" : "en-US") %>, {
         timeZone: tz,
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "2-digit", minute: "2-digit", second: "2-digit",

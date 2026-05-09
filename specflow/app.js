@@ -101,6 +101,7 @@ const { seedAnnexDFields } = require("./services/fieldSeed");
 const {
   createEquipment,
   listEquipments,
+  listDistinctPurchasers,
   getEquipmentById,
   getEquipmentByToken,
   updateEquipmentClientData,
@@ -1994,10 +1995,16 @@ async function renderAdminApiKeysPage(req, res, options = {}) {
 }
 
 async function renderAdminTokensPage(req, res, options = {}) {
-  const rows = await listEquipments();
+  const selectedPurchaser = req.query.purchaser || "";
+  const [rows, purchasers] = await Promise.all([
+    listEquipments(selectedPurchaser || null),
+    listDistinctPurchasers()
+  ]);
   res.status(options.statusCode || 200).render("admin-tokens", {
     pageTitle: req.t("admin.pageTitle"),
     rows,
+    purchasers,
+    selectedPurchaser,
     saved: req.query.saved === "1",
     tokenStatusSaved: req.query.token_status_saved === "1",
     deleted: req.query.deleted === "1",

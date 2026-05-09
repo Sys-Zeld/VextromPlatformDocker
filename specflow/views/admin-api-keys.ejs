@@ -4,11 +4,11 @@
   <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <div>
       <h1 class="h4 app-card-title mb-1">API Keys</h1>
-      <p class="text-muted mb-0">Cadastro, visualizacao e exclusao de chaves de integracao.</p>
+      <p class="text-muted mb-0"><%= t("admin.apiKey.pageSubtitle") %></p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens">Voltar para tokens</a>
-      <a class="btn btn-outline-danger btn-sm" href="/admin/maintenance">Manutencao</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
+      <a class="btn btn-outline-danger btn-sm" href="/admin/maintenance"><%= t("admin.apiKey.maintenanceButton") %></a>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <button class="btn btn-outline-secondary btn-sm" type="submit"><%= t("admin.logoutSessionButton") %></button>
@@ -21,7 +21,7 @@
   <div class="alert <%= createResult.ok ? 'alert-success' : 'alert-danger' %>">
     <div><%= createResult.message %></div>
     <% if (createResult.ok && createResult.key) { %>
-      <div class="mt-2"><strong>Copie agora, esta chave nao sera exibida novamente:</strong></div>
+      <div class="mt-2"><strong><%= t("admin.apiKey.keyCopyNotice") %></strong></div>
       <pre class="mb-0 mt-1"><code><%= createResult.key %></code></pre>
     <% } %>
   </div>
@@ -33,23 +33,23 @@
 
 <div class="card app-card mb-4">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">Criar nova API Key</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.apiKey.createTitle") %></h2>
     <form method="post" action="/admin/api-keys/create" class="row g-3">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-12 col-lg-4">
-        <label class="form-label">Nome</label>
+        <label class="form-label"><%= t("admin.apiKey.nameLabel") %></label>
         <input class="form-control" type="text" name="keyName" value="<%= formValues.keyName || '' %>" required />
       </div>
       <div class="col-12 col-lg-5">
-        <label class="form-label">Escopos (separados por virgula)</label>
+        <label class="form-label"><%= t("admin.apiKey.scopesLabel") %></label>
         <input class="form-control" type="text" name="keyScopes" value="<%= formValues.keyScopes || '' %>" placeholder="fields:read,spec:read,spec:write" required />
       </div>
       <div class="col-12 col-lg-2">
-        <label class="form-label">TTL dias</label>
-        <input class="form-control" type="number" min="1" name="keyTtlDays" value="<%= formValues.keyTtlDays || '' %>" placeholder="Opcional" />
+        <label class="form-label"><%= t("admin.apiKey.ttlLabel") %></label>
+        <input class="form-control" type="number" min="1" name="keyTtlDays" value="<%= formValues.keyTtlDays || '' %>" placeholder="<%= t('admin.apiKey.ttlPlaceholder') %>" />
       </div>
       <div class="col-12 col-lg-1 d-flex align-items-end">
-        <button class="btn btn-primary w-100" type="submit">Criar</button>
+        <button class="btn btn-primary w-100" type="submit"><%= t("admin.apiKey.createButton") %></button>
       </div>
     </form>
   </div>
@@ -57,26 +57,26 @@
 
 <div class="card app-card">
   <div class="card-body">
-    <h2 class="h6 app-card-title mb-3">API Keys cadastradas</h2>
+    <h2 class="h6 app-card-title mb-3"><%= t("admin.apiKey.listTitle") %></h2>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 app-table">
         <thead>
           <tr>
             <th>ID</th>
-            <th>Nome</th>
-            <th>Prefixo</th>
-            <th>Escopos</th>
-            <th>Status</th>
-            <th>Expira em</th>
-            <th>Ultimo uso</th>
-            <th>Criada em</th>
-            <th>Acoes</th>
+            <th><%= t("admin.apiKey.colName") %></th>
+            <th><%= t("admin.apiKey.colPrefix") %></th>
+            <th><%= t("admin.apiKey.colScopes") %></th>
+            <th><%= t("admin.apiKey.colStatus") %></th>
+            <th><%= t("admin.apiKey.colExpiresAt") %></th>
+            <th><%= t("admin.apiKey.colLastUsed") %></th>
+            <th><%= t("admin.apiKey.colCreatedAt") %></th>
+            <th><%= t("admin.apiKey.colActions") %></th>
           </tr>
         </thead>
         <tbody>
           <% if (!apiKeys || !apiKeys.length) { %>
             <tr>
-              <td colspan="9" class="text-muted text-center py-4">Nenhuma API key cadastrada.</td>
+              <td colspan="9" class="text-muted text-center py-4"><%= t("admin.apiKey.noKeys") %></td>
             </tr>
           <% } %>
           <% (apiKeys || []).forEach((item) => { %>
@@ -87,18 +87,18 @@
               <td><code><%= (item.scopes || []).join(", ") || "-" %></code></td>
               <td>
                 <% if (item.isActive) { %>
-                  <span class="badge text-bg-success">ativa</span>
+                  <span class="badge text-bg-success"><%= t("admin.apiKey.statusActive") %></span>
                 <% } else { %>
-                  <span class="badge text-bg-secondary">inativa</span>
+                  <span class="badge text-bg-secondary"><%= t("admin.apiKey.statusInactive") %></span>
                 <% } %>
               </td>
               <td><%= item.expiresAt ? new Date(item.expiresAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td><%= item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td><%= item.createdAt ? new Date(item.createdAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td>
-                <form method="post" action="/admin/api-keys/<%= item.id %>/delete" onsubmit="return confirm('Confirma excluir esta API key?');">
+                <form method="post" action="/admin/api-keys/<%= item.id %>/delete" onsubmit="return confirm('<%= t('admin.apiKey.confirmDelete') %>');">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                  <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                  <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.apiKey.deleteButton") %></button>
                 </form>
               </td>
             </tr>

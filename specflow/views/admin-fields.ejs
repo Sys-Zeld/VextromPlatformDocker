@@ -10,7 +10,7 @@
       <a class="btn btn-outline-secondary btn-sm" href="/admin/tokens"><%= t("admin.backToTokensButton") %></a>
       <form method="post" action="/admin/seed-annexd">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <button class="btn btn-outline-primary btn-sm" type="submit">Reaplicar seed Annex D</button>
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.fields.seedButton") %></button>
       </form>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
@@ -24,7 +24,7 @@
   <div class="alert alert-success"><%= t("admin.fieldsSaved") %></div>
 <% } %>
 <% if (deleted) { %>
-  <div class="alert alert-success">Campo removido com sucesso.</div>
+  <div class="alert alert-success"><%= t("admin.fields.deletedSuccess") %></div>
 <% } %>
 <% if (errors.generic) { %>
   <div class="alert alert-danger"><%= errors.generic %></div>
@@ -34,7 +34,7 @@
   <div class="col-12 col-xl-4" id="form">
     <div class="card app-card">
       <div class="card-body">
-        <h2 class="h6 app-card-title"><%= editingFieldId ? "Editar campo" : "Novo campo" %></h2>
+        <h2 class="h6 app-card-title"><%= editingFieldId ? t("admin.fields.editTitle") : t("admin.fields.newTitle") %></h2>
         <form method="post" action="<%= editingFieldId ? `/admin/fields/${editingFieldId}/update` : '/admin/fields/create' %>" class="row g-2">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="col-12">
@@ -70,14 +70,14 @@
             <input class="form-control" name="unit" value="<%= formValues.unit || '' %>" />
           </div>
           <div class="col-12">
-            <label class="form-label">Enum options (uma por linha)</label>
+            <label class="form-label"><%= t("admin.fields.enumLabel") %></label>
             <textarea class="form-control <%= errors.enumOptions ? 'is-invalid' : '' %>" name="enum_options" rows="4"><%= formValues.enum_options || '' %></textarea>
             <% if (errors.enumOptions) { %><div class="invalid-feedback d-block"><%= errors.enumOptions %></div><% } %>
           </div>
           <div class="col-12">
             <div class="form-check form-switch">
               <input class="form-check-input" type="checkbox" id="has_default" name="has_default" value="true" <%= formValues.has_default ? 'checked' : '' %> />
-              <label class="form-check-label" for="has_default">Usar valor padrão</label>
+              <label class="form-check-label" for="has_default"><%= t("admin.fields.hasDefaultLabel") %></label>
             </div>
           </div>
           <div class="col-12">
@@ -86,9 +86,9 @@
             <% if (errors.defaultValue) { %><div class="invalid-feedback d-block"><%= errors.defaultValue %></div><% } %>
           </div>
           <div class="col-12 d-flex gap-2">
-            <button class="btn btn-primary btn-sm" type="submit"><%= editingFieldId ? "Atualizar" : "Criar" %></button>
+            <button class="btn btn-primary btn-sm" type="submit"><%= editingFieldId ? t("admin.fields.updateButton") : t("admin.fields.createButton") %></button>
             <% if (editingFieldId) { %>
-              <a class="btn btn-outline-secondary btn-sm" href="/admin/fields">Cancelar</a>
+              <a class="btn btn-outline-secondary btn-sm" href="/admin/fields"><%= t("admin.fields.cancelButton") %></a>
             <% } %>
           </div>
         </form>
@@ -115,7 +115,7 @@
                       <th>Label</th>
                       <th>Type</th>
                       <th>Default</th>
-                      <th>Ações</th>
+                      <th><%= t("admin.fields.colActions") %></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -126,10 +126,10 @@
                         <td><span class="badge text-bg-light border"><%= field.fieldType %></span></td>
                         <td><%= field.hasDefault ? JSON.stringify(field.defaultValue) : '-' %></td>
                         <td>
-                          <a class="btn btn-outline-primary btn-sm" href="/admin/fields?edit=<%= field.id %>#form">Editar</a>
-                          <form method="post" action="/admin/fields/<%= field.id %>/delete" class="d-inline" onsubmit="return confirm('Excluir campo?')">
+                          <a class="btn btn-outline-primary btn-sm" href="/admin/fields?edit=<%= field.id %>#form"><%= t("admin.fields.editButton") %></a>
+                          <form method="post" action="/admin/fields/<%= field.id %>/delete" class="d-inline" onsubmit="return confirm('<%= t('admin.fields.confirmDelete') %>')">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                            <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                            <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("admin.fields.deleteButton") %></button>
                           </form>
                         </td>
                       </tr>

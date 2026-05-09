@@ -133,7 +133,7 @@
     <div class="alert alert-success token-feedback"><%= t("admin.clientConfigSaved") %></div>
   <% } %>
   <% if (tokenStatusSaved) { %>
-    <div class="alert alert-success token-feedback">Status do token atualizado com sucesso.</div>
+    <div class="alert alert-success token-feedback"><%= t("admin.tokenStatusSaved") %></div>
   <% } %>
   <% if (imported) { %>
     <div class="alert alert-success token-feedback"><%= t("admin.tokenImportApplied") %></div>
@@ -142,8 +142,21 @@
   <div class="card app-card token-search-card">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
-        <h2 class="h6 app-card-title mb-0">Gerenciamento de tokens</h2>
-        <span class="badge text-bg-secondary" id="tokens-count">Total: 0</span>
+        <h2 class="h6 app-card-title mb-0"><%= t("admin.tokenManagementTitle") %></h2>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <% if (purchasers && purchasers.length > 0) { %>
+            <form method="get" action="/admin/tokens" class="d-flex align-items-center gap-2 mb-0">
+              <label for="purchaser-filter" class="form-label mb-0 text-muted small text-nowrap"><%= t("admin.filterPurchaserLabel") %>:</label>
+              <select id="purchaser-filter" name="purchaser" class="form-select form-select-sm" onchange="this.form.submit()" style="min-width:160px;max-width:220px">
+                <option value=""><%= t("admin.filterShowAll") %></option>
+                <% purchasers.forEach(function(p) { %>
+                  <option value="<%= p %>" <%= selectedPurchaser === p ? 'selected' : '' %>><%= p %></option>
+                <% }) %>
+              </select>
+            </form>
+          <% } %>
+          <span class="badge text-bg-secondary" id="tokens-count">Total: 0</span>
+        </div>
       </div>
       <div class="token-grid-wrap">
         <div id="tokensGrid"></div>
