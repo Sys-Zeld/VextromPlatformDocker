@@ -15,7 +15,7 @@ const REPORT_UI_LABELS = {
     tocEmpty: "Sem capitulos.",
     signatures: "ASSINATURAS",
     signatureAlt: "Assinatura",
-    continuation: "(continuacao...)",
+    continuation: "",
     chapter: "CAPITULO",
     image: "Imagem",
     customer: "Cliente",
@@ -36,7 +36,7 @@ const REPORT_UI_LABELS = {
     tocEmpty: "No chapters.",
     signatures: "SIGNATURES",
     signatureAlt: "Signature",
-    continuation: "(continued...)",
+    continuation: "",
     chapter: "CHAPTER",
     image: "Image",
     customer: "Client",
@@ -57,7 +57,7 @@ const REPORT_UI_LABELS = {
     tocEmpty: "Sin capitulos.",
     signatures: "FIRMAS",
     signatureAlt: "Firma",
-    continuation: "(continuacion...)",
+    continuation: "",
     chapter: "CAPITULO",
     image: "Imagen",
     customer: "Cliente",
@@ -78,7 +78,7 @@ const REPORT_UI_LABELS = {
     tocEmpty: "Pas de chapitres.",
     signatures: "SIGNATURES",
     signatureAlt: "Signature",
-    continuation: "(suite...)",
+    continuation: "",
     chapter: "CHAPITRE",
     image: "Image",
     customer: "Client",
@@ -135,6 +135,20 @@ function normalizeTocTitle(section) {
   return normalized || fallback;
 }
 
+const TOC_INLINE_TAGS = ["strong", "b", "em", "i", "u", "s", "strike", "span", "mark", "sup", "sub"];
+
+function tocTitleHtml(section) {
+  const raw = String(section?.section_title_html_preview || section?.section_title_html || "").trim();
+  if (!raw) return escapeHtml(normalizeTocTitle(section));
+  const firstBlock = raw
+    .split(/<\/p>|<\/div>|<br\s*\/?>/i)[0]
+    .replace(/<p[^>]*>|<div[^>]*>/gi, "");
+  return sanitizeHtml(firstBlock, {
+    allowedTags: TOC_INLINE_TAGS,
+    allowedAttributes: { span: ["style", "class"], mark: ["style", "class"] }
+  });
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -185,7 +199,16 @@ function renderInlineImageCard(image, requestedId = null, imageLabel = "Imagem")
     return `<figure class="report-inline-image-card"><div class="report-inline-image-missing">${escapeHtml(`ID ${requestedId || "-"}`)}</div><figcaption class="report-inline-image-caption">${captionHtml}</figcaption></figure>`;
   }
   const safePath = escapeHtml(publicSrc);
-  return `<figure class="report-inline-image-card"><img class="report-inline-image" src="${safePath}" alt="${captionAlt}" width="250" height="250" style="object-fit:cover;width:250px;height:250px;display:block;" /><figcaption class="report-inline-image-caption">${captionHtml}</figcaption></figure>`;
+  const rotation = [90, 180, 270].includes(Number(image && image.rotation)) ? Number(image.rotation) : 0;
+  const rotateStyle = rotation ? `transform:rotate(${rotation}deg);` : "";
+  const swapDims = rotation === 90 || rotation === 270;
+  const wrapStyle = swapDims
+    ? `display:flex;align-items:center;justify-content:center;width:250px;height:250px;overflow:hidden;`
+    : `width:250px;height:250px;`;
+  const imgStyle = swapDims
+    ? `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`
+    : `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`;
+  return `<figure class="report-inline-image-card"><div style="${wrapStyle}"><img class="report-inline-image" src="${safePath}" alt="${captionAlt}" width="250" height="250" data-rotation="${rotation}" style="${imgStyle}" /></div><figcaption class="report-inline-image-caption">${captionHtml}</figcaption></figure>`;
 }
 
 function formatComponentQuantity(value) {
@@ -407,10 +430,10 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
   const safeColumns = columns.length ? columns : ["Teste", "Valor", "Observacoes"];
   const rows = normalizeMeasurementList(table.rows_json);
 
-  const borderColor = "#b0c4d4";
-  const thStyle = `border:1px solid ${borderColor};background:#1e3a5f;color:#ffffff;padding:6px 9px;text-align:left;font-weight:600;font-size:11px;letter-spacing:0.04em;`;
+  const borderColor = "#87b86a";
+  const thStyle = `border:1px solid ${borderColor};background:#5d8f3d;color:#ffffff;padding:6px 9px;text-align:left;font-weight:600;font-size:11px;letter-spacing:0.04em;`;
   const tdBase = `border:1px solid ${borderColor};padding:5px 9px;height:22px;vertical-align:top;font-size:12px;`;
-  const tdAlt = `${tdBase}background:#eef3f8;`;
+  const tdAlt = `${tdBase}background:#f0f5e8;`;
 
   const bodyRows = rows.length
     ? rows.map((row, rowIndex) => {
@@ -424,7 +447,7 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
   const title = decodeHtmlEntities(String(table.title || "")).trim();
   const notes = decodeHtmlEntities(String(table.notes || "")).trim();
   const titleTheadRow = title
-    ? `<tr><th colspan="${safeColumns.length}" style="border:1px solid ${borderColor};background:#1e3a5f;color:#ffffff;padding:7px 9px;font-weight:700;font-size:16px;letter-spacing:0.01em;">${escapeHtml(title)}</th></tr>`
+    ? `<tr><th colspan="${safeColumns.length}" style="border:1px solid ${borderColor};background:#5d8f3d;color:#ffffff;padding:7px 9px;font-weight:700;font-size:16px;letter-spacing:0.01em;">${escapeHtml(title)}</th></tr>`
     : "";
   const notesHtml = notes
     ? `<div class="report-inline-meas-notes" style="font-size:18px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
@@ -991,7 +1014,8 @@ function buildPreviewModel(payload, options = {}) {
         {
           id: Number(item.ref_id || item.id),
           filePath: String(item.file_path || "").trim(),
-          caption: String(item.caption || "").trim()
+          caption: String(item.caption || "").trim(),
+          rotation: Number(item.rotation || 0)
         }
       ])
   );
@@ -1178,6 +1202,7 @@ function buildPreviewModel(payload, options = {}) {
     components,
     toc: orderedVisibleSectionsNumbered.map((item, index) => ({
       title: normalizeTocTitle(item),
+      titleHtml: tocTitleHtml(item),
       startPage: index + 3,
       anchorId: item.anchor_id || "",
       tables: (sectionTableRegistry[index] ? sectionTableRegistry[index].tables : []).filter((t) => t.visible)

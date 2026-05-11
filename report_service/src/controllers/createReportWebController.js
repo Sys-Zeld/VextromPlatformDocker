@@ -3278,6 +3278,21 @@ function createReportWebController(deps) {
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
     },
 
+    async updateImageRotation(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) {
+        return res.status(403).json({ ok: false, error: "Sem permissao" });
+      }
+      const imageId = Number(req.params.imageId);
+      if (!Number.isInteger(imageId) || imageId <= 0) {
+        return res.status(400).json({ ok: false, error: "ID invalido" });
+      }
+      const rotation = Number(req.body.rotation);
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateImageRotationByRefId(report.id, imageId, rotation);
+      return res.json({ ok: true, rotation: [0, 90, 180, 270].includes(rotation) ? rotation : 0 });
+    },
+
     async deleteImage(req, res) {
       const orderId = Number(req.params.id);
       if (!await ensureOrderEditable(req, res, orderId)) return;
@@ -3519,11 +3534,13 @@ ${bodyHtml}
     var caption = document.getElementById("rpt-image-caption");
     if (!modal || !view || !caption) return;
 
-    function openModal(src, text) {
+    function openModal(src, text, rotation) {
       if (!src) return;
       view.src = src;
       view.alt = text || "Imagem";
       caption.textContent = text || "";
+      var deg = [90, 180, 270].indexOf(Number(rotation)) !== -1 ? Number(rotation) : 0;
+      view.style.transform = deg ? "rotate(" + deg + "deg)" : "";
       modal.classList.add("rpt-open");
       document.body.style.overflow = "hidden";
     }
@@ -3533,6 +3550,7 @@ ${bodyHtml}
       document.body.style.overflow = "";
       view.src = "";
       view.alt = "";
+      view.style.transform = "";
       caption.textContent = "";
     }
 
@@ -3541,12 +3559,13 @@ ${bodyHtml}
       if (img) {
         var src = img.getAttribute("src") || "";
         var text = img.getAttribute("alt") || "";
+        var rotation = img.getAttribute("data-rotation") || "0";
         if (!text) {
           var figure = img.closest ? img.closest("figure") : null;
           var figcap = figure ? figure.querySelector("figcaption") : null;
           text = figcap ? String(figcap.textContent || "").trim() : "";
         }
-        openModal(src, text);
+        openModal(src, text, rotation);
         return;
       }
       if (event.target === modal || (event.target && event.target.closest && event.target.closest(".rpt-image-close"))) {

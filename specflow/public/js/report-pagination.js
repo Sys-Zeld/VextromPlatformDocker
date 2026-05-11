@@ -4,7 +4,7 @@
 
   function getContinuationLabel() {
     var doc = document.getElementById("report-pages");
-    return (doc && doc.getAttribute("data-continuation-label")) || "(continuacao...)";
+    return (doc && doc.getAttribute("data-continuation-label")) || "";
   }
 
   function schedule(fn) {
@@ -148,7 +148,7 @@
     title.classList.toggle("section-title-continued", Boolean(isContinuation));
 
     var numberEl = title.querySelector(".section-title-number");
-    if (numberEl) numberEl.textContent = String(sectionMeta && sectionMeta.numberLabel ? sectionMeta.numberLabel : "");
+    if (numberEl) numberEl.textContent = isContinuation ? "" : String(sectionMeta && sectionMeta.numberLabel ? sectionMeta.numberLabel : "");
 
     var richTitleEl = title.querySelector(".report-section-title-rich");
     if (richTitleEl) {
@@ -197,7 +197,7 @@
 
     var numberEl = document.createElement("span");
     numberEl.className = "section-title-number";
-    numberEl.textContent = String(sectionMeta && sectionMeta.numberLabel ? sectionMeta.numberLabel : "");
+    numberEl.textContent = isContinuation ? "" : String(sectionMeta && sectionMeta.numberLabel ? sectionMeta.numberLabel : "");
     title.appendChild(numberEl);
 
     var richTitleEl = document.createElement("div");

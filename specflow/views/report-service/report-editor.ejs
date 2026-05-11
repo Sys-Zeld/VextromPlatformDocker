@@ -1306,7 +1306,8 @@
       (getTagImageRegistry() || []).map((item) => ({
         id: Number(item.ref_id || item.id),
         fileName: extractImageFileName(item.file_path),
-        caption: stripHtmlTags(item.caption || "")
+        caption: stripHtmlTags(item.caption || ""),
+        rotation: Number(item.rotation || 0)
       }))
     ) %>;
 
@@ -1322,9 +1323,11 @@
       var abbrev = fileName.length > 34
         ? (fileName.slice(0, Math.max(8, 34 - ((fileName.split(".").pop() || "").length + 4))) + "..." + (fileName.includes(".") ? "." + fileName.split(".").pop() : ""))
         : fileName;
+      var rotation = item.rotation || 0;
+      var thumbTransform = rotation ? 'transform:rotate(' + rotation + 'deg);' : '';
       return [
         gridjs.html("<code>" + esc(item.id) + "</code>"),
-        gridjs.html('<img src="' + esc(imgSrc) + '" alt="' + safeCaption + '" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '" class="tag-image-preview-trigger" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6;cursor:pointer;" title="Clique para ampliar" />'),
+        gridjs.html('<div style="width:48px;height:48px;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #dee2e6;cursor:pointer;" class="tag-image-preview-trigger" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '" data-image-id="' + esc(item.id) + '" data-rotation="' + rotation + '" title="Clique para ampliar"><img src="' + esc(imgSrc) + '" alt="' + safeCaption + '" style="width:48px;height:48px;object-fit:cover;' + thumbTransform + '" /></div>'),
         gridjs.html('<code title="' + esc(fileName) + '">' + esc(abbrev) + '</code>'),
         gridjs.html(
           '<form method="post" action="/admin/report-service/orders/' + orderId + '/images/' + item.id + '/label" class="d-flex gap-1 align-items-center m-0">' +
@@ -1335,7 +1338,7 @@
         ),
         gridjs.html(
           '<div class="d-flex gap-1">' +
-            '<button class="btn btn-outline-secondary btn-sm tag-image-preview-trigger" type="button" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '">Ver</button>' +
+            '<button class="btn btn-outline-secondary btn-sm tag-image-preview-trigger" type="button" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '" data-image-id="' + esc(item.id) + '" data-rotation="' + rotation + '">Ver</button>' +
             '<form method="post" action="/admin/report-service/orders/' + orderId + '/images/' + item.id + '/delete" class="m-0 tag-image-delete-form">' +
               '<input type="hidden" name="_csrf" value="' + esc(csrfToken) + '" />' +
               '<button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>' +
@@ -1361,7 +1364,9 @@
       if (!trigger) return;
       var src = trigger.getAttribute("data-preview-src") || "";
       var caption = trigger.getAttribute("data-preview-caption") || "";
-      if (src) openImagePreviewModal(src, caption);
+      var imageId = trigger.getAttribute("data-image-id") || null;
+      var rotation = Number(trigger.getAttribute("data-rotation") || 0);
+      if (src) openImagePreviewModal(src, caption, imageId, rotation);
     });
     host.addEventListener("submit", function (event) {
       var form = event.target && event.target.closest ? event.target.closest(".tag-image-delete-form") : null;
@@ -1444,21 +1449,101 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
       </div>
       <div class="modal-body text-center p-3">
-        <img id="imagePreviewModalImg" src="" alt="" style="max-width:100%;max-height:70vh;object-fit:contain;border-radius:6px;" />
+        <div style="min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          <img id="imagePreviewModalImg" src="" alt="" style="max-width:100%;max-height:60vh;object-fit:contain;border-radius:6px;transition:transform 0.25s ease;" />
+        </div>
+      </div>
+      <div class="modal-footer py-2 justify-content-between align-items-center" id="imagePreviewModalFooter">
+        <div class="d-flex gap-2 align-items-center">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="imgRotateLeft" title="Girar 90° para esquerda">&#8634; -90°</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="imgRotateRight" title="Girar 90° para direita">&#8635; +90°</button>
+          <span class="text-muted small ms-1" id="imgRotationDisplay"></span>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <span class="text-muted small" id="imgRotateSaveStatus"></span>
+          <button type="button" class="btn btn-primary btn-sm" id="imgRotateSave">Salvar rotação</button>
+        </div>
       </div>
     </div>
   </div>
 </div>
 <script>
-  function openImagePreviewModal(src, caption) {
-    var img = document.getElementById("imagePreviewModalImg");
-    var label = document.getElementById("imagePreviewModalLabel");
-    img.src = src;
-    img.alt = caption || "";
-    label.textContent = caption || "Preview da imagem";
-    var modal = new bootstrap.Modal(document.getElementById("imagePreviewModal"));
-    modal.show();
-  }
+  (function () {
+    var _imgModal = null;
+    var _currentImageId = null;
+    var _currentRotation = 0;
+    var _orderId = <%= Number(order.id) %>;
+    var _csrfToken = <%- JSON.stringify(csrfToken) %>;
+
+    function getImgEl() { return document.getElementById("imagePreviewModalImg"); }
+    function getLabel() { return document.getElementById("imagePreviewModalLabel"); }
+    function getRotDisplay() { return document.getElementById("imgRotationDisplay"); }
+    function getSaveStatus() { return document.getElementById("imgRotateSaveStatus"); }
+
+    function applyRotation(deg) {
+      var img = getImgEl();
+      if (!img) return;
+      img.style.transform = deg ? "rotate(" + deg + "deg)" : "";
+      var disp = getRotDisplay();
+      if (disp) disp.textContent = deg ? deg + "°" : "0°";
+    }
+
+    function openImagePreviewModal(src, caption, imageId, rotation) {
+      _currentImageId = imageId || null;
+      _currentRotation = [0, 90, 180, 270].includes(Number(rotation)) ? Number(rotation) : 0;
+
+      var img = getImgEl();
+      var label = getLabel();
+      var saveStatus = getSaveStatus();
+      if (img) { img.src = src; img.alt = caption || ""; }
+      if (label) label.textContent = caption || "Preview da imagem";
+      if (saveStatus) saveStatus.textContent = "";
+
+      applyRotation(_currentRotation);
+
+      var footer = document.getElementById("imagePreviewModalFooter");
+      if (footer) footer.style.display = _currentImageId ? "" : "none";
+
+      if (!_imgModal) {
+        _imgModal = new bootstrap.Modal(document.getElementById("imagePreviewModal"));
+      }
+      _imgModal.show();
+    }
+
+    window.openImagePreviewModal = openImagePreviewModal;
+
+    document.getElementById("imgRotateLeft").addEventListener("click", function () {
+      _currentRotation = (_currentRotation - 90 + 360) % 360;
+      applyRotation(_currentRotation);
+    });
+
+    document.getElementById("imgRotateRight").addEventListener("click", function () {
+      _currentRotation = (_currentRotation + 90) % 360;
+      applyRotation(_currentRotation);
+    });
+
+    document.getElementById("imgRotateSave").addEventListener("click", function () {
+      if (!_currentImageId) return;
+      var btn = this;
+      var status = getSaveStatus();
+      btn.disabled = true;
+      if (status) status.textContent = "Salvando...";
+      fetch(
+        "/admin/report-service/orders/" + _orderId + "/images/" + _currentImageId + "/rotate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": _csrfToken },
+          body: JSON.stringify({ rotation: _currentRotation })
+        }
+      )
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (status) status.textContent = data.ok ? "Salvo!" : "Erro ao salvar.";
+        })
+        .catch(function () { if (status) status.textContent = "Erro ao salvar."; })
+        .finally(function () { btn.disabled = false; });
+    });
+  })();
 </script>
 
 <script>

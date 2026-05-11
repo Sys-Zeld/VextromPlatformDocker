@@ -2268,6 +2268,19 @@ async function updateImageCaptionByRefId(serviceReportId, imageRefId, caption) {
   );
 }
 
+async function updateImageRotationByRefId(serviceReportId, imageRefId, rotation) {
+  const validRotations = [0, 90, 180, 270];
+  const normalizedRotation = validRotations.includes(Number(rotation)) ? Number(rotation) : 0;
+  await db.query(
+    `
+      UPDATE service_report_images
+      SET rotation = $1, updated_at = NOW()
+      WHERE service_report_id = $2 AND ref_id = $3
+    `,
+    [normalizedRotation, Number(serviceReportId), Number(imageRefId)]
+  );
+}
+
 async function deleteImageByRefId(serviceReportId, imageRefId) {
   const result = await db.query(
     `
@@ -2533,6 +2546,7 @@ module.exports = {
   createImage,
   updateImageCaption,
   updateImageCaptionByRefId,
+  updateImageRotationByRefId,
   deleteImageByRefId,
   deleteImagesBySection,
   replaceSectionImages,

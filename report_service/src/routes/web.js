@@ -95,6 +95,7 @@ function createReportServiceWebRouter(deps) {
     asyncHandler(controller.importImage)
   );
   router.post("/orders/:id/images/:imageId/label", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateImageLabel));
+  router.post("/orders/:id/images/:imageId/rotate", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateImageRotation));
   router.post("/orders/:id/images/:imageId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteImage));
   router.get("/orders/:id/pdf-history", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.pdfHistoryPage));
   router.post("/orders/:id/pdf-history/:entryId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deletePdfHistory));
