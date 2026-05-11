@@ -24,6 +24,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD:                ${PGADMIN_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE:              "True"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_GUNICORN_WORKERS:                "2"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
@@ -32,9 +33,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
         reservations:
-          memory: 64M
+          memory: 128M
 
   portainer:
     image: portainer/portainer-ce:latest
