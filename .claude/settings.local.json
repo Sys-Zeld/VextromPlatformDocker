@@ -21,7 +21,8 @@
       "Bash(Select-Object -First 5)",
       "Bash(Get-ChildItem -Path . -Recurse -Filter \"*.js\" -Depth 2)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(node -e \"const i18n = require\\('./i18n'\\); const t = i18n.createTranslator\\('en'\\); console.log\\(t\\('admin.rs.pageTitle'\\)\\); console.log\\(t\\('admin.mspec.pageTitle'\\)\\); console.log\\(t\\('admin.rs.purposeNovaOs'\\)\\); console.log\\(t\\('admin.sys.uploadingStatus'\\)\\);\")"
+      "Bash(node -e \"const i18n = require\\('./i18n'\\); const t = i18n.createTranslator\\('en'\\); console.log\\(t\\('admin.rs.pageTitle'\\)\\); console.log\\(t\\('admin.mspec.pageTitle'\\)\\); console.log\\(t\\('admin.rs.purposeNovaOs'\\)\\); console.log\\(t\\('admin.sys.uploadingStatus'\\)\\);\")",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
