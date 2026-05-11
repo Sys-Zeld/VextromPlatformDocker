@@ -89,6 +89,14 @@
             <span class="report-toc-dots"></span>
             <a class="report-toc-link report-toc-page" href="#<%= item.anchorId %>"><%= item.startPage %></a>
           </li>
+          <% (item.tables || []).forEach((tbl) => { %>
+            <li class="report-toc-table-entry">
+              <a class="report-toc-link report-toc-table-label" href="#<%= tbl.anchorId %>"><%= tbl.label %></a>
+              <span class="report-toc-table-title">– <%= tbl.title %></span>
+              <span class="report-toc-dots"></span>
+              <a class="report-toc-link report-toc-page" href="#<%= tbl.anchorId %>">-</a>
+            </li>
+          <% }) %>
         <% }) %>
       </ul>
     </div>

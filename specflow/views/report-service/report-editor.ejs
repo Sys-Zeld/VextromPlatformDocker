@@ -460,25 +460,29 @@
 
     <%# ===== MODAL REORDENAR CAPITULOS ===== %>
     <div class="modal fade" id="reorderSectionsModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Reordenar capitulos</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
           <div class="modal-body p-0">
-            <p class="px-3 pt-3 text-muted small mb-2">Arraste os capitulos para definir a ordem desejada e clique em Salvar.</p>
+            <p class="px-3 pt-3 text-muted small mb-2">Arraste os capitulos para definir a ordem. Marque as tabelas que devem aparecer no sumario.</p>
+            <div id="reorderTablesLoading" class="px-3 pb-2 text-muted small d-none">Carregando tabelas...</div>
             <ul class="list-group list-group-flush" id="reorderSectionsList">
               <% sections.forEach((sec, idx) => { %>
                 <li
-                  class="list-group-item d-flex align-items-center gap-2 reorder-section-item"
+                  class="list-group-item reorder-section-item"
                   data-section-key="<%= sec.section_key %>"
                   draggable="true"
                   style="cursor:grab;"
                 >
-                  <span class="reorder-drag-handle text-muted" title="Arrastar">&#9776;</span>
-                  <span class="badge bg-secondary-subtle text-secondary-emphasis border reorder-section-idx"><%= idx + 1 %></span>
-                  <span class="flex-grow-1 small fw-medium"><%= getReorderSectionLabel(sec) %></span>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="reorder-drag-handle text-muted" title="Arrastar">&#9776;</span>
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border reorder-section-idx"><%= idx + 1 %></span>
+                    <span class="flex-grow-1 small fw-medium"><%= getReorderSectionLabel(sec) %></span>
+                  </div>
+                  <ul class="reorder-tables-list list-unstyled mb-0 mt-1 ms-4 ps-1" style="display:none;"></ul>
                 </li>
               <% }) %>
             </ul>
@@ -1467,12 +1471,65 @@
   var list = document.getElementById("reorderSectionsList");
   var saveBtn = document.getElementById("saveReorderBtn");
   var statusEl = document.getElementById("reorderSectionsStatus");
+  var loadingEl = document.getElementById("reorderTablesLoading");
   var csrfToken = "<%= csrfToken %>";
   var reorderUrl = "/admin/report-service/orders/<%= order.id %>/sections/reorder";
+  var tocTablesUrl = "/admin/report-service/orders/<%= order.id %>/toc-tables";
 
   if (!list || !saveBtn) return;
 
   var draggingEl = null;
+  var tablesLoaded = false;
+
+  var tableTypeLabels = {
+    measurements: "Ensaios/Medicoes",
+    components: "Componentes",
+    timesheet: "Time Sheet",
+    techteam: "Equipe Tecnica",
+    equipments: "Equipamentos",
+    other: "Tabela"
+  };
+
+  var modalEl = document.getElementById("reorderSectionsModal");
+  if (modalEl) {
+    modalEl.addEventListener("show.bs.modal", function () {
+      if (tablesLoaded) return;
+      if (loadingEl) loadingEl.classList.remove("d-none");
+      fetch(tocTablesUrl, { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (loadingEl) loadingEl.classList.add("d-none");
+          if (!data || !data.ok || !Array.isArray(data.sections)) return;
+          data.sections.forEach(function (sec) {
+            var li = list.querySelector('[data-section-key="' + sec.sectionKey + '"]');
+            if (!li) return;
+            var subList = li.querySelector(".reorder-tables-list");
+            if (!subList) return;
+            if (!sec.tables || !sec.tables.length) return;
+            sec.tables.forEach(function (tbl) {
+              var checkId = "tbl-chk-" + tbl.anchorId;
+              var typeLabel = tableTypeLabels[tbl.tableType] || tbl.tableType;
+              var item = document.createElement("li");
+              item.className = "d-flex align-items-center gap-2 py-1";
+              item.innerHTML =
+                '<input type="checkbox" class="form-check-input tbl-visibility-chk" id="' + checkId + '"' +
+                ' data-config-key="' + tbl.configKey + '"' +
+                (tbl.visible ? " checked" : "") + ' style="flex-shrink:0;">' +
+                '<label class="form-check-label small text-muted mb-0" for="' + checkId + '" style="cursor:pointer;">' +
+                  '<span class="badge bg-light text-secondary border me-1" style="font-size:0.65rem;">' + typeLabel + '</span>' +
+                  (tbl.title || tbl.label) +
+                '</label>';
+              subList.appendChild(item);
+            });
+            subList.style.display = "";
+          });
+          tablesLoaded = true;
+        })
+        .catch(function () {
+          if (loadingEl) loadingEl.classList.add("d-none");
+        });
+    });
+  }
 
   list.addEventListener("dragstart", function (e) {
     draggingEl = e.target.closest(".reorder-section-item");
@@ -1527,6 +1584,13 @@
   saveBtn.addEventListener("click", function () {
     var items = list.querySelectorAll(".reorder-section-item");
     var keys = Array.prototype.map.call(items, function (el) { return el.getAttribute("data-section-key"); });
+
+    var tocTablesConfig = {};
+    list.querySelectorAll(".tbl-visibility-chk").forEach(function (chk) {
+      var configKey = chk.getAttribute("data-config-key");
+      if (configKey) tocTablesConfig[configKey] = chk.checked;
+    });
+
     saveBtn.disabled = true;
     if (statusEl) statusEl.textContent = "Salvando...";
     fetch(reorderUrl, {
@@ -1537,7 +1601,9 @@
         "x-csrf-token": csrfToken
       },
       credentials: "same-origin",
-      body: "_csrf=" + encodeURIComponent(csrfToken) + "&section_keys=" + encodeURIComponent(JSON.stringify(keys))
+      body: "_csrf=" + encodeURIComponent(csrfToken) +
+            "&section_keys=" + encodeURIComponent(JSON.stringify(keys)) +
+            "&toc_tables_config=" + encodeURIComponent(JSON.stringify(tocTablesConfig))
     })
       .then(function (resp) { return resp.json(); })
       .then(function (data) {

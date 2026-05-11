@@ -1527,6 +1527,13 @@ async function reorderSections(serviceReportId, orderedKeys) {
   }
 }
 
+async function saveTocTablesConfig(reportId, config) {
+  await db.query(
+    `UPDATE service_report_reports SET toc_tables_config = $2, updated_at = NOW() WHERE id = $1`,
+    [reportId, JSON.stringify(config)]
+  );
+}
+
 async function deleteSection(serviceReportId, sectionKey) {
   const result = await db.query(
     `
@@ -2485,6 +2492,7 @@ module.exports = {
   createSection,
   upsertSection,
   reorderSections,
+  saveTocTablesConfig,
   deleteSection,
   listComponents,
   createComponent,

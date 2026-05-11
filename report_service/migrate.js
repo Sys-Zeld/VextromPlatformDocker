@@ -577,6 +577,7 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS revision TEXT NOT NULL DEFAULT '';`);
   await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';`);
   await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_reports ADD COLUMN IF NOT EXISTS toc_tables_config JSONB;`);
 
   await seedServiceReportEquipment();
   await seedServiceReportSample();

@@ -143,6 +143,20 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function decodeHtmlEntities(str) {
+  return String(str == null ? "" : str)
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'");
+}
+
+function safeText(value) {
+  return escapeHtml(decodeHtmlEntities(value));
+}
+
 function stripHtml(value) {
   return String(value || "")
     .replace(/<[^>]*>/g, " ")
@@ -242,7 +256,7 @@ function renderSingleEquipmentComponentsTable(componentRows) {
     `;
 
   return `
-    <div class="report-inline-components-wrap">
+    <div class="report-inline-components-wrap avoid-break" data-table-title="${equipmentName}">
       <table class="report-inline-components-table">
         <thead>
           <tr class="report-inline-components-meta">
@@ -326,7 +340,7 @@ function renderTimesheetInlineTable(timesheetItems) {
     `;
 
   return `
-    <div class="report-inline-timesheet-wrap">
+    <div class="report-inline-timesheet-wrap avoid-break" data-table-title="TIME SHEET">
       <table class="report-inline-timesheet-table">
         <thead>
           <tr class="report-inline-timesheet-title-row">
@@ -359,7 +373,7 @@ function renderTechTeamInlineTable(technicianItems) {
     : `<tr><td colspan="3" class="report-inline-techteam-empty">Sem tecnicos cadastrados.</td></tr>`;
 
   return `
-    <div class="report-inline-techteam-wrap">
+    <div class="report-inline-techteam-wrap avoid-break" data-table-title="EQUIPE TECNICA">
       <table class="report-inline-techteam-table">
         <thead>
           <tr class="report-inline-techteam-title-row">
@@ -402,27 +416,27 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
     ? rows.map((row, rowIndex) => {
       const source = Array.isArray(row) ? row : [];
       const tdStyle = rowIndex % 2 === 0 ? tdBase : tdAlt;
-      const cells = safeColumns.map((_, index) => `<td style="${tdStyle}">${escapeHtml(source[index] || "")}</td>`).join("");
+      const cells = safeColumns.map((_, index) => `<td style="${tdStyle}">${safeText(source[index] || "")}</td>`).join("");
       return `<tr>${cells}</tr>`;
     }).join("")
     : `<tr><td colspan="${safeColumns.length}" style="${tdBase}color:#6b7280;">Sem medicoes cadastradas.</td></tr>`;
 
-  const title = String(table.title || "").trim();
-  const notes = String(table.notes || "").trim();
-  const titleHtml = title
-    ? `<div style="font-weight:700;font-size:12px;color:#1e3a5f;margin:0 0 5px 0;letter-spacing:0.01em;">${escapeHtml(title)}</div>`
+  const title = decodeHtmlEntities(String(table.title || "")).trim();
+  const notes = decodeHtmlEntities(String(table.notes || "")).trim();
+  const titleTheadRow = title
+    ? `<tr><th colspan="${safeColumns.length}" style="border:1px solid ${borderColor};background:#1e3a5f;color:#ffffff;padding:7px 9px;font-weight:700;font-size:16px;letter-spacing:0.01em;">${escapeHtml(title)}</th></tr>`
     : "";
   const notesHtml = notes
-    ? `<div style="font-size:11px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
+    ? `<div class="report-inline-meas-notes" style="font-size:18px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
     : "";
 
   return `
-    <div class="report-inline-measurements-wrap" style="margin:8px 0 14px 0;break-inside:avoid;">
-      ${titleHtml}
+    <div class="report-inline-measurements-wrap avoid-break" data-table-title="${escapeHtml(title)}" style="margin:8px 0 14px 0;break-inside:avoid;page-break-inside:avoid;">
       <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
         <thead>
+          ${titleTheadRow}
           <tr>
-            ${safeColumns.map((column) => `<th style="${thStyle}">${escapeHtml(column)}</th>`).join("")}
+            ${safeColumns.map((column) => `<th style="${thStyle}">${safeText(column)}</th>`).join("")}
           </tr>
         </thead>
         <tbody>${bodyRows}</tbody>
@@ -444,7 +458,7 @@ function renderEquipmentsInlineTable(orderEquipments) {
 
   if (!rows.length) {
     return `
-      <div class="report-inline-equipments-wrap">
+      <div class="report-inline-equipments-wrap avoid-break" data-table-title="Equipamentos">
         <table class="report-inline-equipments-table">
           <tbody>
             <tr><td class="report-inline-equipments-empty">Sem equipamentos vinculados na OS.</td></tr>
@@ -508,7 +522,7 @@ function renderEquipmentsInlineTable(orderEquipments) {
     `;
   }).join("");
 
-  return `<div class="report-inline-equipments-wrap">${tablesHtml}</div>`;
+  return `<div class="report-inline-equipments-wrap avoid-break" data-table-title="Equipamentos">${tablesHtml}</div>`;
 }
 
 function renderEquipmentTagsInline(orderEquipments) {
@@ -649,6 +663,170 @@ function wrapImageCardsIntoRows(html) {
   return result;
 }
 
+function extractMeasurementBlockBoundaries(html) {
+  const OPEN_MARKER = 'data-table-title="';
+  const boundaries = [];
+  let searchPos = 0;
+
+  while (searchPos < html.length) {
+    const markerPos = html.indexOf(OPEN_MARKER, searchPos);
+    if (markerPos === -1) break;
+
+    let divStart = markerPos - 1;
+    while (divStart >= 0 && html[divStart] !== "<") divStart--;
+    if (divStart < 0) break;
+
+    let depth = 1;
+    let pos = markerPos + OPEN_MARKER.length;
+
+    while (pos < html.length && depth > 0) {
+      if (html.slice(pos, pos + 6) === "</div>") {
+        depth--;
+        if (depth === 0) {
+          boundaries.push({ start: divStart, end: pos + 6 });
+          searchPos = pos + 6;
+          break;
+        }
+        pos += 6;
+      } else if (html.slice(pos, pos + 4) === "<div") {
+        depth++;
+        pos += 4;
+      } else {
+        pos++;
+      }
+    }
+
+    if (depth > 0) break;
+  }
+
+  return boundaries;
+}
+
+function isOnlyPaddingBetweenMeasurements(between) {
+  // Accept whitespace and empty Quill paragraphs (<p><br></p>, <p>&nbsp;</p>, <p></p>)
+  const stripped = between
+    .replace(/\s+/g, "")
+    .replace(/<p[^>]*>(?:<br\s*\/?>|&nbsp;|\s)*<\/p>/gi, "")
+    .replace(/<br\s*\/?>/gi, "");
+  return stripped.length === 0;
+}
+
+function mergeSameTitleMeasurementTables(html) {
+  const source = String(html || "");
+  if (!source.includes('data-table-title=')) return source;
+
+  const blocks = extractMeasurementBlockBoundaries(source);
+  if (blocks.length < 2) return source;
+
+  const groups = [];
+  let i = 0;
+
+  while (i < blocks.length) {
+    const blockHtml = source.slice(blocks[i].start, blocks[i].end);
+    const titleMatch = /data-table-title="([^"]+)"/.exec(blockHtml);
+    const title = titleMatch ? titleMatch[1] : null;
+
+    const group = [blocks[i]];
+
+    if (title) {
+      let j = i + 1;
+      while (j < blocks.length) {
+        const between = source.slice(group[group.length - 1].end, blocks[j].start);
+        if (!isOnlyPaddingBetweenMeasurements(between)) break;
+        const nextTitleMatch = /data-table-title="([^"]+)"/.exec(source.slice(blocks[j].start, blocks[j].end));
+        if ((nextTitleMatch ? nextTitleMatch[1] : null) !== title) break;
+        group.push(blocks[j]);
+        j++;
+      }
+    }
+
+    groups.push(group);
+    i += group.length;
+  }
+
+  let result = "";
+  let cursor = 0;
+
+  for (const group of groups) {
+    result += source.slice(cursor, group[0].start);
+
+    if (group.length === 1) {
+      result += source.slice(group[0].start, group[0].end);
+    } else {
+      let merged = source.slice(group[0].start, group[0].end);
+
+      for (let k = 1; k < group.length; k++) {
+        const extraBlockHtml = source.slice(group[k].start, group[k].end);
+        const tbodyMatch = /<tbody>([\s\S]*?)<\/tbody>/.exec(extraBlockHtml);
+        if (tbodyMatch && tbodyMatch[1].trim()) {
+          merged = merged.replace(/<\/tbody>/, tbodyMatch[1] + "</tbody>");
+        }
+      }
+
+      result += merged;
+    }
+
+    cursor = group[group.length - 1].end;
+  }
+
+  result += source.slice(cursor);
+  return result;
+}
+
+function getTableType(blockHtml) {
+  if (blockHtml.includes("report-inline-measurements-wrap")) return "measurements";
+  if (blockHtml.includes("report-inline-components-wrap")) return "components";
+  if (blockHtml.includes("report-inline-timesheet-wrap")) return "timesheet";
+  if (blockHtml.includes("report-inline-techteam-wrap")) return "techteam";
+  if (blockHtml.includes("report-inline-equipments-wrap")) return "equipments";
+  return "other";
+}
+
+function numberMeasurementTablesInHtml(html, chapterNum) {
+  const source = String(html || "");
+  if (!source.includes('data-table-title=')) {
+    return { html: source, tables: [] };
+  }
+
+  const blocks = extractMeasurementBlockBoundaries(source);
+  if (!blocks.length) return { html: source, tables: [] };
+
+  const tables = [];
+  let result = "";
+  let cursor = 0;
+
+  blocks.forEach((block, idx) => {
+    result += source.slice(cursor, block.start);
+
+    const blockHtml = source.slice(block.start, block.end);
+    const titleMatch = /data-table-title="([^"]*)"/.exec(blockHtml);
+    const title = decodeHtmlEntities(titleMatch ? titleMatch[1] : "");
+    const tableNum = idx + 1;
+    const label = `Tabela ${chapterNum}.${tableNum}`;
+    const anchorId = `tbl-${chapterNum}-${tableNum}`;
+
+    const tableType = getTableType(blockHtml);
+    tables.push({ label, title, anchorId, tableType });
+
+    const captionHtml = `<div style="font-size:14px;color:#6b7280;margin-top:0;text-align:left;font-style:italic;">${escapeHtml(label)}</div>`;
+
+    let numbered = blockHtml.replace(/^(<div\b)/, `$1 id="${anchorId}"`);
+    const notesIdx = numbered.indexOf('<div class="report-inline-meas-notes"');
+    if (notesIdx !== -1) {
+      numbered = numbered.slice(0, notesIdx) + captionHtml + numbered.slice(notesIdx);
+    } else {
+      const lastDivIdx = numbered.lastIndexOf("</div>");
+      numbered = numbered.slice(0, lastDivIdx) + captionHtml + numbered.slice(lastDivIdx);
+    }
+
+    result += numbered;
+    cursor = block.end;
+  });
+
+  result += source.slice(cursor);
+  return { html: result, tables };
+}
+
 /**
  * For block-level tags: replaces the entire <p>...</p> that wraps the tag
  * (including any inline wrappers like <span style="...">) with the block content.
@@ -730,7 +908,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const measurementsSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*ensaios(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
   const measurementsFn = (_match, rawId) => renderMeasurementsInlineTable(measurementTables, rawId) || _match;
   const withMeasurementsP = liftBlockTagFromParagraph(r6, measurementsSrc, measurementsFn);
-  const r7 = withMeasurementsP.replace(new RegExp(measurementsSrc, "gi"), measurementsFn);
+  const r7 = mergeSameTitleMeasurementTables(withMeasurementsP.replace(new RegExp(measurementsSrc, "gi"), measurementsFn));
 
   if (!opts.expandDailyLogTags) return r7;
 
@@ -773,7 +951,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const withConclusaoGeralP = liftBlockTagFromParagraph(withAllDailyLogs, conclusaoGeralSrc, conclusaoGeralFn);
   const withConclusaoGeral = withConclusaoGeralP.replace(new RegExp(conclusaoGeralSrc, "gi"), conclusaoGeralFn);
 
-  return wrapImageCardsIntoRows(withConclusaoGeral);
+  return wrapImageCardsIntoRows(mergeSameTitleMeasurementTables(withConclusaoGeral));
 }
 
 function buildPreviewModel(payload, options = {}) {
@@ -942,6 +1120,26 @@ function buildPreviewModel(payload, options = {}) {
         image_right_path: section.image_right_path || ""
       };
     });
+  const rawTocConfig = payload.report && payload.report.toc_tables_config;
+  const tocTablesConfig = rawTocConfig && typeof rawTocConfig === "object" && !Array.isArray(rawTocConfig)
+    ? rawTocConfig
+    : null;
+
+  const sectionTableRegistry = [];
+  const orderedVisibleSectionsNumbered = orderedVisibleSections.map((section, index) => {
+    const { html, tables } = numberMeasurementTablesInHtml(section.content_html_preview, index + 1);
+    const sectionKey = section.section_key || `section-${index + 1}`;
+    const tablesWithMeta = tables.map((tbl, tblIdx) => {
+      const configKey = `${sectionKey}:${tblIdx + 1}`;
+      const visible = tocTablesConfig !== null && configKey in tocTablesConfig
+        ? !!tocTablesConfig[configKey]
+        : tbl.tableType === "measurements";
+      return { ...tbl, configKey, visible };
+    });
+    sectionTableRegistry.push({ sectionKey, tables: tablesWithMeta });
+    return { ...section, content_html_preview: html };
+  });
+
   const sectionMap = {
     scope: getSectionContent(previewSections, "scope"),
     technicalDescription: getSectionContent(previewSections, "technical_description"),
@@ -959,7 +1157,7 @@ function buildPreviewModel(payload, options = {}) {
     ...payload,
     report,
     order,
-    orderedVisibleSections,
+    orderedVisibleSections: orderedVisibleSectionsNumbered,
     signatures: Array.isArray(payload.signatures) ? payload.signatures : [],
     uiLabels,
     footerHtml,
@@ -978,10 +1176,16 @@ function buildPreviewModel(payload, options = {}) {
     reportTemplateKey: templateKey || "modern",
     sectionMap,
     components,
-    toc: orderedVisibleSections.map((item, index) => ({
+    toc: orderedVisibleSectionsNumbered.map((item, index) => ({
       title: normalizeTocTitle(item),
       startPage: index + 3,
-      anchorId: item.anchor_id || ""
+      anchorId: item.anchor_id || "",
+      tables: (sectionTableRegistry[index] ? sectionTableRegistry[index].tables : []).filter((t) => t.visible)
+    })),
+    tocTablesMeta: sectionTableRegistry.map((sec, index) => ({
+      sectionKey: sec.sectionKey,
+      label: normalizeTocTitle(orderedVisibleSectionsNumbered[index]),
+      tables: sec.tables
     })),
     generatedAt: new Date().toISOString()
   };

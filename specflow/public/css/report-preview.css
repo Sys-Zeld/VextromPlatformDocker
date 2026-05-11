@@ -236,6 +236,27 @@
   text-decoration: underline;
 }
 
+.report-toc-table-entry {
+  padding-left: 20px;
+  font-size: 0.82rem;
+  color: #4b5563;
+  margin-bottom: 4px;
+}
+
+.report-toc-table-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.report-toc-table-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .report-table {
   width: 100%;
   border-collapse: collapse;
@@ -692,7 +713,7 @@ blockquote {
 .rich-output table {
   width: 100%;
   border-collapse: collapse;
-  margin: 8px 0 12px;
+  margin: 8px 0 4px;
 }
 
 .rich-output img {

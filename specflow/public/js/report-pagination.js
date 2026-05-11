@@ -574,12 +574,12 @@
 
     removeFromFlow(block, currentPage);
 
-    if (blockIsTable(block)) return splitTableBlock(block, currentPage, reportDoc, sectionMeta);
-    if (blockIsList(block)) return splitListBlock(block, currentPage, reportDoc, sectionMeta);
-    if (blockCanSplitAsParagraph(block) && !blockIsImage(block)) return splitParagraphBlock(block, currentPage, reportDoc, sectionMeta);
     if ((block.classList && block.classList.contains("avoid-break")) || blockIsImage(block)) {
       return moveWholeBlockToNextPage(block, currentPage, reportDoc, sectionMeta);
     }
+    if (blockIsTable(block)) return splitTableBlock(block, currentPage, reportDoc, sectionMeta);
+    if (blockIsList(block)) return splitListBlock(block, currentPage, reportDoc, sectionMeta);
+    if (blockCanSplitAsParagraph(block) && !blockIsImage(block)) return splitParagraphBlock(block, currentPage, reportDoc, sectionMeta);
     return splitRichBlockByChildren(block, currentPage, reportDoc, sectionMeta);
   }
 

@@ -326,6 +326,34 @@ function createReportWebController(deps) {
       .replace(/'/g, "&#39;");
   }
 
+  function decodeHtmlEntities(str) {
+    return String(str == null ? "" : str)
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&#39;/g, "'");
+  }
+
+  function safeTrimText(value) {
+    return decodeHtmlEntities(String(value == null ? "" : value))
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+      .trim();
+  }
+
+  function decodeMeasurements(measurements) {
+    return (Array.isArray(measurements) ? measurements : []).map((m) => ({
+      ...m,
+      title: decodeHtmlEntities(m.title),
+      notes: decodeHtmlEntities(m.notes),
+      columns_json: Array.isArray(m.columns_json) ? m.columns_json.map(decodeHtmlEntities) : m.columns_json,
+      rows_json: Array.isArray(m.rows_json)
+        ? m.rows_json.map((row) => (Array.isArray(row) ? row.map(decodeHtmlEntities) : row))
+        : m.rows_json
+    }));
+  }
+
   function parseMeasurementJson(raw, fallback) {
     if (Array.isArray(raw)) return raw;
     try {
@@ -338,7 +366,7 @@ function createReportWebController(deps) {
 
   function normalizeMeasurementPayload(body) {
     const columns = parseMeasurementJson(body.columns_json, [])
-      .map((item) => sanitizeInput(item))
+      .map((item) => safeTrimText(item))
       .filter(Boolean)
       .slice(0, 12);
     const safeColumns = columns.length ? columns : ["Teste", "Valor", "Observacoes"];
@@ -347,7 +375,7 @@ function createReportWebController(deps) {
         const source = Array.isArray(row) ? row : [];
         const cells = [];
         for (let i = 0; i < safeColumns.length; i += 1) {
-          cells.push(sanitizeInput(source[i]));
+          cells.push(safeTrimText(source[i]));
         }
         return cells;
       })
@@ -356,10 +384,10 @@ function createReportWebController(deps) {
 
     return {
       id: Number(body.measurement_id || 0),
-      title: sanitizeInput(body.title) || "Ensaios/Medicoes",
+      title: safeTrimText(body.title) || "Ensaios/Medicoes",
       columns: safeColumns,
       rows: rows.length ? rows : [safeColumns.map(() => "")],
-      notes: sanitizeInput(body.notes),
+      notes: safeTrimText(body.notes),
       sortOrder: Number(body.sort_order || 0)
     };
   }
@@ -1795,7 +1823,7 @@ function createReportWebController(deps) {
         pageTitle: `Ensaios/Medições - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
         order: orderView,
         report: data.report,
-        measurements: data.measurements,
+        measurements: decodeMeasurements(data.measurements),
         saved: req.query.saved === "1",
         editLocked: req.query.edit_locked === "1",
         csrfToken: req.csrfToken()
@@ -2500,9 +2528,28 @@ function createReportWebController(deps) {
 
       await repo.reorderSections(report.id, cleanKeys);
 
+      if (req.body.toc_tables_config) {
+        try {
+          const tocConfig = JSON.parse(req.body.toc_tables_config);
+          if (tocConfig && typeof tocConfig === "object" && !Array.isArray(tocConfig)) {
+            await repo.saveTocTablesConfig(report.id, tocConfig);
+          }
+        } catch (_e) { /* ignore malformed config */ }
+      }
+
       const isJsonReq = String(req.headers.accept || "").includes("application/json");
       if (isJsonReq) return res.json({ ok: true });
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async getTocTables(req, res) {
+      const orderId = Number(req.params.id);
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = await service.buildReportAggregate(report.id);
+      if (!payload) return res.status(404).json({ ok: false, message: "Relatorio nao encontrado." });
+      const { reportConfig, templateKey } = await resolveRenderConfig("", null);
+      const model = buildPreviewModel(payload, { reportConfig, templateKey });
+      return res.json({ ok: true, sections: model.tocTablesMeta });
     },
 
     async deleteSection(req, res) {
