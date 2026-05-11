@@ -1327,7 +1327,7 @@
       var thumbTransform = rotation ? 'transform:rotate(' + rotation + 'deg);' : '';
       return [
         gridjs.html("<code>" + esc(item.id) + "</code>"),
-        gridjs.html('<div style="width:48px;height:48px;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #dee2e6;cursor:pointer;" class="tag-image-preview-trigger" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '" data-image-id="' + esc(item.id) + '" data-rotation="' + rotation + '" title="Clique para ampliar"><img src="' + esc(imgSrc) + '" alt="' + safeCaption + '" style="width:48px;height:48px;object-fit:cover;' + thumbTransform + '" /></div>'),
+        gridjs.html('<img src="' + esc(imgSrc) + '" alt="' + safeCaption + '" data-preview-src="' + esc(imgSrc) + '" data-preview-caption="' + safeCaption + '" data-image-id="' + esc(item.id) + '" data-rotation="' + rotation + '" class="tag-image-preview-trigger" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6;cursor:pointer;' + thumbTransform + '" title="Clique para ampliar" />'),
         gridjs.html('<code title="' + esc(fileName) + '">' + esc(abbrev) + '</code>'),
         gridjs.html(
           '<form method="post" action="/admin/report-service/orders/' + orderId + '/images/' + item.id + '/label" class="d-flex gap-1 align-items-center m-0">' +
@@ -1538,10 +1538,18 @@
       )
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (status) status.textContent = data.ok ? "Salvo!" : "Erro ao salvar.";
+          if (data.ok) {
+            if (status) status.textContent = "Salvo!";
+            setTimeout(function () { window.location.reload(); }, 800);
+          } else {
+            if (status) status.textContent = "Erro ao salvar.";
+            btn.disabled = false;
+          }
         })
-        .catch(function () { if (status) status.textContent = "Erro ao salvar."; })
-        .finally(function () { btn.disabled = false; });
+        .catch(function () {
+          if (status) status.textContent = "Erro ao salvar.";
+          btn.disabled = false;
+        });
     });
   })();
 </script>
