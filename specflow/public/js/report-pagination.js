@@ -548,6 +548,16 @@
     return appendBlockWithPagination(rest, nextPage, reportDoc, null, sectionMeta);
   }
 
+  function inlineHeaderFitsAlone(pageEl, headingBlock) {
+    var flow = getFlow(pageEl);
+    if (!flow) return false;
+    var probe = headingBlock.cloneNode(true);
+    flow.appendChild(probe);
+    var fits = !isFlowOverflowing(flow, pageEl) && !isPageOverflowing(pageEl);
+    flow.removeChild(probe);
+    return fits;
+  }
+
   function moveWholeBlockToNextPage(block, pageEl, reportDoc, sectionMeta) {
     var nextPage = ensureNextPageForSection(pageEl, reportDoc, sectionMeta, true);
     ensureImageSizeForPage(block, nextPage);
@@ -729,8 +739,7 @@
           currentPage.setAttribute("data-page-section-continued", "false");
         } else {
           var inlineHeader = buildInlineSectionHeader(sectionMeta);
-          var firstContentProbe = blocks.length ? blocks[0].cloneNode(true) : null;
-          var canStay = keepHeadingWithNext(currentPage, inlineHeader, firstContentProbe);
+          var canStay = inlineHeaderFitsAlone(currentPage, inlineHeader);
           if (!canStay) {
             currentPage = ensureNextPageForSection(currentPage, reportDoc, sectionMeta, false);
             if (sectionMeta.anchorId) currentPage.id = sectionMeta.anchorId;
