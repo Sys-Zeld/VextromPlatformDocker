@@ -514,6 +514,29 @@
 
     if (splitAt === 0) {
       removeFromFlow(first, pageEl);
+
+      var firstElem = null;
+      for (var fi = 0; fi < children.length; fi++) {
+        if (children[fi].nodeType === Node.ELEMENT_NODE) { firstElem = children[fi]; break; }
+      }
+      if (firstElem &&
+          findParagraphTarget(firstElem) &&
+          !blockIsImage(firstElem) &&
+          !blockIsTable(firstElem) &&
+          !(firstElem.classList && firstElem.classList.contains("avoid-break"))) {
+        var splitPage = splitParagraphBlock(firstElem.cloneNode(true), pageEl, reportDoc, sectionMeta);
+        var afterFirst = block.cloneNode(false);
+        var seenFirst = false;
+        for (var ai = 0; ai < children.length; ai++) {
+          if (!seenFirst && children[ai] === firstElem) { seenFirst = true; continue; }
+          if (seenFirst) afterFirst.appendChild(children[ai].cloneNode(true));
+        }
+        if (afterFirst.childNodes.length > 0) {
+          return appendBlockWithPagination(afterFirst, splitPage, reportDoc, null, sectionMeta);
+        }
+        return splitPage;
+      }
+
       return moveWholeBlockToNextPage(block, pageEl, reportDoc, sectionMeta);
     }
 
