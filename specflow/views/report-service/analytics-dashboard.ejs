@@ -1,5 +1,5 @@
 <%- include("../partials/head", { pageTitle }) %>
-<link href="/public/css/report-analytics.css" rel="stylesheet" />
+<link href="/public/css/report-analytics.css?v=<%= appVersion %>" rel="stylesheet" />
 <%
   function fmtNumber(value) {
     const n = Number(value || 0);
