@@ -25,7 +25,12 @@
       "Bash(git commit -m ' *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\" -Recurse -Directory -Name)",
       "Bash(Select-String \"report\")",
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\\\\report_service\" -Include \"*.ejs\" -Recurse)"
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\\\\report_service\" -Include \"*.ejs\" -Recurse)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\OneDrive\\\\Área de Trabalho\\\\Projetos\\\\Vextrom\\\\VextromPlatform\\\\VextromPlatform - Docker\" -Directory)",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(xargs grep -l \"sanitize-html\")",
+      "Bash(node -e ' *)",
+      "Bash(grep -r \"sig\\\\\\\\.signature_data\\\\|sig\\\\\\\\.signatureData\\\\|item\\\\\\\\.signature_data\" --include=\"*.js\" --include=\"*.ejs\" .)"
     ]
   }
 }

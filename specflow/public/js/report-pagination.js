@@ -1,6 +1,7 @@
 (function () {
   var rafToken = null;
   var resizeTimer = null;
+  var isFirstRunDone = false;
 
   function getContinuationLabel() {
     var doc = document.getElementById("report-pages");
@@ -792,24 +793,54 @@
 
   function run() {
     var reportDoc = document.querySelector(".report-doc");
-    if (!reportDoc) return;
+    if (!isFirstRunDone) {
+      isFirstRunDone = true;
+      document.dispatchEvent(new CustomEvent("reportPaginationReady"));
+    }
+    if (!reportDoc) {
+      window.__reportPaginationDone = true;
+      return;
+    }
     repaginateSections(reportDoc);
     updateTocPages(reportDoc);
     bindImageReflow(reportDoc);
     window.__reportPaginationDone = true;
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      schedule(run);
-    });
-  } else {
+  var hasFinalRun = false;
+  var finalRunTimer = null;
+
+  function finalRun() {
+    if (finalRunTimer) window.clearTimeout(finalRunTimer);
+    finalRunTimer = null;
+    hasFinalRun = true;
     schedule(run);
   }
 
-  window.addEventListener("load", function () {
+  function scheduleFallback() {
+    if (finalRunTimer) window.clearTimeout(finalRunTimer);
+    // Fallback: força re-execução após 10s caso window.load nunca dispare
+    // (ocorre quando uma imagem ou recurso trava por conexão lenta/queda)
+    finalRunTimer = window.setTimeout(finalRun, 10000);
+  }
+
+  function initPagination() {
     schedule(run);
-  });
+    scheduleFallback();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () {
+        if (!hasFinalRun) schedule(run);
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initPagination);
+  } else {
+    initPagination();
+  }
+
+  window.addEventListener("load", finalRun);
 
   window.addEventListener("resize", function () {
     debounceRun();

@@ -67,10 +67,14 @@ function createReportPublicController(deps) {
     return cookieValue && cookieValue === buildEmailProof(signRequest);
   }
 
-  function setEmailProofCookie(res, signRequest) {
+  function setEmailProofCookie(res, signRequest, req) {
+    const secure = req
+      ? req.secure || String(req.headers["x-forwarded-proto"] || "").toLowerCase().split(",")[0].trim() === "https"
+      : String(env.appBaseUrl || "").startsWith("https://");
     res.cookie(EMAIL_PROOF_COOKIE, buildEmailProof(signRequest), {
       httpOnly: true,
       sameSite: "lax",
+      secure,
       maxAge: 30 * 60 * 1000
     });
   }
@@ -122,11 +126,12 @@ function createReportPublicController(deps) {
   }
 
   function resolveRequestBaseUrl(req) {
+    if (env.appBaseUrl) return String(env.appBaseUrl).replace(/\/+$/, "");
     const host = String((req.get && req.get("host")) || req.headers.host || "").trim();
     const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
     const protocol = forwardedProto || req.protocol || "http";
     if (host) return `${protocol}://${host}`;
-    return String(env.appBaseUrl || "http://localhost:3000").replace(/\/+$/, "");
+    return "http://localhost:3000";
   }
 
   return {
@@ -163,6 +168,7 @@ function createReportPublicController(deps) {
   <title>${pageTitle || "Relatorio assinado"}</title>
   <link href="/public/css/report-preview.css" rel="stylesheet" />
   <link href="/public/css/report-print.css" rel="stylesheet" />
+  <script src="/public/js/report-pagination.js?v=${cv}" defer></script>
   <style>
     .rpt-action-bar {
       position: fixed;
@@ -279,8 +285,44 @@ function createReportPublicController(deps) {
     </div>
   </div>
 </div>
+<div id="report-loading-overlay" class="report-loading-overlay" role="status" aria-live="polite" aria-label="Carregando documento">
+  <div class="report-loading-spinner"></div>
+  <p class="report-loading-label">Preparando documento...</p>
+</div>
+<noscript>
+  <div class="report-js-error">
+    <span class="report-js-error-icon">&#9888;</span>
+    <p>JavaScript está desabilitado. O documento não pode ser exibido.</p>
+  </div>
+</noscript>
+<script>
+(function () {
+  var startTime = Date.now();
+  var MIN_DELAY = 3000;
+  document.documentElement.classList.add("report-paginating");
+  function hideOverlay() {
+    document.documentElement.classList.remove("report-paginating");
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    overlay.style.opacity = "0";
+    setTimeout(function () { overlay.style.display = "none"; }, 350);
+  }
+  var safetyTimer = setTimeout(function () {
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    var spinner = overlay.querySelector(".report-loading-spinner");
+    var label = overlay.querySelector(".report-loading-label");
+    if (spinner) spinner.style.display = "none";
+    if (label) { label.textContent = "Conexão lenta demais..."; label.style.color = "#c0392b"; }
+  }, 60000);
+  document.addEventListener("reportPaginationReady", function () {
+    clearTimeout(safetyTimer);
+    var remaining = Math.max(0, MIN_DELAY - (Date.now() - startTime));
+    setTimeout(hideOverlay, remaining);
+  }, { once: true });
+})();
+</script>
 ${reportHtml}
-<script src="/public/js/report-pagination.js?v=${cv}"></script>
 ${autoPrint ? `
 <script>
 (function () {
@@ -527,7 +569,7 @@ ${autoPrint ? `
         return res.redirect(`/r/sign/${token}?email_mismatch=1`);
       }
 
-      setEmailProofCookie(res, signRequest);
+      setEmailProofCookie(res, signRequest, req);
       return res.redirect(`/r/sign/${token}`);
     },
 
@@ -550,7 +592,7 @@ ${autoPrint ? `
       }
 
       const signatureData = String(req.body.signature_data || "").trim();
-      if (!signatureData || signatureData === "data:,") {
+      if (!signatureData || !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(signatureData)) {
         return res.redirect(`/r/sign/${token}?error=nosig`);
       }
       const signerName = sanitizeInput(req.body.signer_name).trim();

@@ -1,6 +1,7 @@
 <%- include("../partials/head", { pageTitle }) %>
 <link href="/public/css/report-preview.css?v=<%= appVersion %>" rel="stylesheet" />
 <link href="/public/css/report-print.css?v=<%= appVersion %>" rel="stylesheet" />
+<script src="/public/js/report-pagination.js?v=<%= encodeURIComponent(String((typeof generatedAt !== 'undefined' && generatedAt) ? generatedAt : Date.now())) %>" defer></script>
 
 <section class="report-preview-actions card app-card mb-3">
   <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -15,7 +16,44 @@
   </div>
 </section>
 
+<div id="report-loading-overlay" class="report-loading-overlay" role="status" aria-live="polite" aria-label="Carregando documento">
+  <div class="report-loading-spinner"></div>
+  <p class="report-loading-label">Preparando documento...</p>
+</div>
+<noscript>
+  <div class="report-js-error">
+    <span class="report-js-error-icon">&#9888;</span>
+    <p>JavaScript está desabilitado. O documento não pode ser exibido.</p>
+  </div>
+</noscript>
+<script>
+(function () {
+  var startTime = Date.now();
+  var MIN_DELAY = 3000;
+  document.documentElement.classList.add("report-paginating");
+  function hideOverlay() {
+    document.documentElement.classList.remove("report-paginating");
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    overlay.style.opacity = "0";
+    setTimeout(function () { overlay.style.display = "none"; }, 350);
+  }
+  var safetyTimer = setTimeout(function () {
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    var spinner = overlay.querySelector(".report-loading-spinner");
+    var label = overlay.querySelector(".report-loading-label");
+    if (spinner) spinner.style.display = "none";
+    if (label) { label.textContent = "Conexão lenta demais..."; label.style.color = "#c0392b"; }
+  }, 60000);
+  document.addEventListener("reportPaginationReady", function () {
+    clearTimeout(safetyTimer);
+    var remaining = Math.max(0, MIN_DELAY - (Date.now() - startTime));
+    setTimeout(hideOverlay, remaining);
+  }, { once: true });
+})();
+</script>
+
 <%- include("preview-document") %>
-<script src="/public/js/report-pagination.js?v=<%= encodeURIComponent(String((typeof generatedAt !== 'undefined' && generatedAt) ? generatedAt : Date.now())) %>"></script>
 
 <%- include("../partials/footer") %>

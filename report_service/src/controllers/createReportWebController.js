@@ -121,11 +121,12 @@ function createReportWebController(deps) {
   };
   const buildTemplatePreviewRoute = (orderId, templateKey) => `/admin/report-service/orders/${orderId}/preview-html/template/${normalizeReportTemplateKey(templateKey)}`;
   const resolveRequestBaseUrl = (req) => {
+    if (env.appBaseUrl) return String(env.appBaseUrl).replace(/\/+$/, "");
     const host = String((req.get && req.get("host")) || req.headers.host || "").trim();
     const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
     const protocol = forwardedProto || req.protocol || "http";
     if (host) return `${protocol}://${host}`;
-    return String(env.appBaseUrl || "http://localhost:3000").replace(/\/+$/, "");
+    return "http://localhost:3000";
   };
   const buildTemplatePreviewAbsoluteUrl = (req, orderId, templateKey) => `${resolveRequestBaseUrl(req)}${buildTemplatePreviewRoute(orderId, templateKey)}`;
   const buildSignedReportLink = (req, token) => `${resolveRequestBaseUrl(req)}/r/signed/${encodeURIComponent(String(token || "").trim())}`;
@@ -3344,6 +3345,7 @@ function createReportWebController(deps) {
   <title>${String(pageTitle).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
   <link href="/public/css/report-preview.css" rel="stylesheet" />
   <link href="/public/css/report-print.css" rel="stylesheet" />
+  <script src="/public/js/report-pagination.js?v=${cacheVersion}" defer></script>
   <style>
     .rpt-action-bar {
       position: fixed;
@@ -3518,6 +3520,43 @@ function createReportWebController(deps) {
     </div>
   </div>
 </div>
+<div id="report-loading-overlay" class="report-loading-overlay" role="status" aria-live="polite" aria-label="Carregando documento">
+  <div class="report-loading-spinner"></div>
+  <p class="report-loading-label">Preparando documento...</p>
+</div>
+<noscript>
+  <div class="report-js-error">
+    <span class="report-js-error-icon">&#9888;</span>
+    <p>JavaScript está desabilitado. O documento não pode ser exibido.</p>
+  </div>
+</noscript>
+<script>
+(function () {
+  var startTime = Date.now();
+  var MIN_DELAY = 3000;
+  document.documentElement.classList.add("report-paginating");
+  function hideOverlay() {
+    document.documentElement.classList.remove("report-paginating");
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    overlay.style.opacity = "0";
+    setTimeout(function () { overlay.style.display = "none"; }, 350);
+  }
+  var safetyTimer = setTimeout(function () {
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    var spinner = overlay.querySelector(".report-loading-spinner");
+    var label = overlay.querySelector(".report-loading-label");
+    if (spinner) spinner.style.display = "none";
+    if (label) { label.textContent = "Conexão lenta demais..."; label.style.color = "#c0392b"; }
+  }, 60000);
+  document.addEventListener("reportPaginationReady", function () {
+    clearTimeout(safetyTimer);
+    var remaining = Math.max(0, MIN_DELAY - (Date.now() - startTime));
+    setTimeout(hideOverlay, remaining);
+  }, { once: true });
+})();
+</script>
 ${bodyHtml}
 <div id="rpt-image-modal" role="dialog" aria-modal="true" aria-label="Visualizacao da imagem">
   <div class="rpt-image-box">
@@ -3526,7 +3565,6 @@ ${bodyHtml}
     <p id="rpt-image-caption" class="rpt-image-caption"></p>
   </div>
 </div>
-<script src="/public/js/report-pagination.js?v=${cacheVersion}"></script>
 <script>
   (function () {
     var modal = document.getElementById("rpt-image-modal");

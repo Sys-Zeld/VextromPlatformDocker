@@ -5,7 +5,7 @@
   "moduleVersions": {
     "specflow": "beta",
     "module_spec": "0.0.1",
-    "report_service": "0.0.6"
+    "report_service": "0.0.7"
   },
   "moduleStatuses": {
     "specflow": "active",

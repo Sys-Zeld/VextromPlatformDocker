@@ -12,6 +12,11 @@ limit_conn_status 429;
 # ── Conexões simultâneas por IP ───────────────────────────────────────────────
 limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
 
+# ── Log format com rastreabilidade (item 8) ───────────────────────────────────
+log_format main '$remote_addr - [$time_local] "$request" $status '
+                '$request_time $upstream_response_time '
+                '$request_id "$http_user_agent"';
+
 # ── HTTP: redireciona tudo para HTTPS, exceto o desafio ACME ──────────────────
 server {
     listen 80;
@@ -51,23 +56,29 @@ server {
     # Oculta versão do nginx nos headers e páginas de erro
     server_tokens off;
 
-    # ── Headers de segurança ───────────────────────────────────────────────────
+    # ── Log (item 8) ──────────────────────────────────────────────────────────
+    access_log /var/log/nginx/access.log main;
+
+    # ── Headers de segurança (itens 1a, 1b, 1d) ───────────────────────────────
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header X-Frame-Options           "SAMEORIGIN"                                   always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
     add_header Permissions-Policy        "camera=(), microphone=(), geolocation=()"     always;
+    add_header X-Request-ID              $request_id                                    always;
 
-    # ── Timeouts de request (fecha conexões lentas/incompletas) ───────────────
-    # client_body_timeout e send_timeout são sobrescritos por location onde necessário
+    # ── Timeouts de request ────────────────────────────────────────────────────
     client_header_timeout 12s;
-    keepalive_timeout     15s;
+    keepalive_timeout     65s;  # item 6a: era 15s
 
-    # ── Limites de buffer (proteção contra overflow e header gigante) ──────────
+    # ── Limites de buffer ──────────────────────────────────────────────────────
     client_max_body_size        200M;
     client_body_buffer_size      16k;
     client_header_buffer_size     1k;
     large_client_header_buffers 4 8k;
-    proxy_buffer_size             4k;
+    proxy_buffer_size            16k;   # item 6b: era 4k
     proxy_buffers               8 16k;
+    proxy_buffering             on;     # item 2: default explícito; AI e login sobrescrevem para off
 
     # ── Compressão ────────────────────────────────────────────────────────────
     gzip            on;
@@ -78,11 +89,6 @@ server {
     gzip_types      text/plain text/css text/xml application/json
                     application/javascript application/xml+rss
                     image/svg+xml;
-
-    # ── Bloquear métodos HTTP perigosos ───────────────────────────────────────
-    if ($request_method !~ ^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$) {
-        return 405;
-    }
 
     # ── Bloquear User-Agent vazio ou scanners conhecidos ──────────────────────
     if ($http_user_agent = "") {
@@ -132,6 +138,7 @@ server {
         proxy_set_header      X-Real-IP         $remote_addr;
         proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Request-ID      $request_id;
         proxy_cache_bypass    $http_upgrade;
         proxy_read_timeout    30s;
         proxy_send_timeout    30s;
@@ -140,12 +147,18 @@ server {
     }
 
     # ── Rotas de IA (1 req/s, 3 conexões por IP, timeout 620s) ───────────────
+    # item 2: proxy_buffering off (respostas longas, sem cache)
+    # item 3: gzip off (incompatível com respostas chunked/streaming)
     location ~* /(ai/generate|ai/translate|revise-text|generate-conclusion|translate/start) {
         limit_req  zone=ai_limit burst=3 nodelay;
         limit_conn conn_limit 3;
 
         client_body_timeout 60s;
         send_timeout        620s;
+
+        gzip            off;
+        proxy_cache     off;
+        proxy_buffering off;
 
         proxy_pass            http://app:3000;
         proxy_http_version    1.1;
@@ -155,11 +168,11 @@ server {
         proxy_set_header      X-Real-IP         $remote_addr;
         proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Request-ID      $request_id;
         proxy_cache_bypass    $http_upgrade;
         proxy_read_timeout    620s;
         proxy_send_timeout    620s;
         proxy_connect_timeout 10s;
-        proxy_buffering       off;
     }
 
     # ── API (20 req/s, 30 conexões por IP) ────────────────────────────────────
@@ -178,21 +191,55 @@ server {
         proxy_set_header      X-Real-IP         $remote_addr;
         proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Request-ID      $request_id;
         proxy_cache_bypass    $http_upgrade;
         proxy_read_timeout    60s;
         proxy_send_timeout    60s;
         proxy_connect_timeout 10s;
-        proxy_buffering       off;
+    }
+
+    # ── Uploads do admin (item 5 — regex adaptado para este app) ─────────────
+    # Cobre: logo-upload, image-upload, images/import, attachments, bulk-import
+    # proxy_request_buffering off: stream do body direto ao Node sem bufferizar no nginx
+    location ~* ^/admin/report-service/.*(upload|import|attachments) {
+        limit_req  zone=req_limit burst=2 nodelay;
+        limit_conn conn_limit 5;
+
+        client_max_body_size        200M;
+        client_body_timeout         300s;
+        client_body_buffer_size     1M;
+        send_timeout                120s;
+
+        proxy_buffering             on;
+        proxy_request_buffering     off;
+
+        proxy_pass            http://app:3000;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Request-ID      $request_id;
+        proxy_cache_bypass    $http_upgrade;
+        proxy_read_timeout    120s;
+        proxy_send_timeout    120s;
+        proxy_connect_timeout 10s;
     }
 
     # ── Aplicação geral (10 req/s, 20 conexões por IP) ────────────────────────
-    # client_body_timeout alto para suportar uploads de até 200M
-    # send_timeout alto para suportar respostas longas de IA em qualquer rota
+    # item 4: limit_except substitui o if ($request_method) do server block
+    # item 5: client_body_timeout reduzido de 300s para 30s (uploads têm location próprio)
     location / {
         limit_req  zone=req_limit burst=20 nodelay;
         limit_conn conn_limit 20;
 
-        client_body_timeout 300s;
+        limit_except GET POST PUT PATCH DELETE OPTIONS HEAD {
+            return 405;
+        }
+
+        client_body_timeout 30s;
         send_timeout        620s;
 
         proxy_pass            http://app:3000;
@@ -203,10 +250,10 @@ server {
         proxy_set_header      X-Real-IP         $remote_addr;
         proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header      X-Forwarded-Proto $scheme;
+        proxy_set_header      X-Request-ID      $request_id;
         proxy_cache_bypass    $http_upgrade;
         proxy_read_timeout    620s;
         proxy_send_timeout    620s;
         proxy_connect_timeout 10s;
-        proxy_buffering       off;
     }
 }

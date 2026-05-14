@@ -189,9 +189,19 @@ function sanitizeReportSectionHtml(inputHtml) {
     },
     allowedSchemes: ["http", "https", "mailto", "tel"],
     allowedSchemesByTag: {
-      img: ["http", "https", "data", ""]
+      img: ["http", "https", "data"]
     },
-    allowProtocolRelative: false
+    allowProtocolRelative: false,
+    transformTags: {
+      img: (tagName, attribs) => {
+        const src = String(attribs.src || "");
+        if (src.startsWith("data:") && !/^data:image\/(png|jpe?g|gif|webp|avif);base64,[A-Za-z0-9+/]+=*$/i.test(src)) {
+          const { src: _removed, ...rest } = attribs;
+          return { tagName, attribs: { ...rest, src: "" } };
+        }
+        return { tagName, attribs };
+      }
+    }
   }).trim();
 }
 
@@ -235,9 +245,19 @@ function sanitizeReportTitleHtml(inputHtml) {
     },
     allowedSchemes: ["http", "https", "mailto", "tel"],
     allowedSchemesByTag: {
-      img: ["http", "https", "data", ""]
+      img: ["http", "https", "data"]
     },
-    allowProtocolRelative: false
+    allowProtocolRelative: false,
+    transformTags: {
+      img: (tagName, attribs) => {
+        const src = String(attribs.src || "");
+        if (src.startsWith("data:") && !/^data:image\/(png|jpe?g|gif|webp|avif);base64,[A-Za-z0-9+/]+=*$/i.test(src)) {
+          const { src: _removed, ...rest } = attribs;
+          return { tagName, attribs: { ...rest, src: "" } };
+        }
+        return { tagName, attribs };
+      }
+    }
   }).trim();
 }
 
