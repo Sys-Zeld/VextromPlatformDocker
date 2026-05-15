@@ -255,13 +255,13 @@ server {
     }
 
     # ── Aplicação geral (10 req/s, 20 conexões por IP) ────────────────────────
-    # item 4: limit_except substitui o if ($request_method) do server block
+    # item 4: restringe metodos HTTP aceitos pela aplicacao
     # item 5: client_body_timeout reduzido de 300s para 30s (uploads têm location próprio)
     location / {
         limit_req  zone=req_limit burst=20 nodelay;
         limit_conn conn_limit 20;
 
-        limit_except GET POST PUT PATCH DELETE OPTIONS HEAD {
+        if ($request_method !~ ^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$) {
             return 405;
         }
 
