@@ -16,9 +16,9 @@ limit_conn_status 429;
 limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
 
 # ── Log format com rastreabilidade (item 8) ───────────────────────────────────
-log_format main '$remote_addr - [$time_local] "$request" $status '
-                '$request_time $upstream_response_time '
-                '$request_id "$http_user_agent"';
+log_format vextrom_main '$remote_addr - [$time_local] "$request" $status '
+                         '$request_time $upstream_response_time '
+                         '$request_id "$http_user_agent"';
 
 # ── HTTP: redireciona tudo para HTTPS, exceto o desafio ACME ──────────────────
 server {
@@ -60,7 +60,7 @@ server {
     server_tokens off;
 
     # ── Log (item 8) ──────────────────────────────────────────────────────────
-    access_log /var/log/nginx/access.log main;
+    access_log /var/log/nginx/access.log vextrom_main;
 
     # ── Headers de segurança (itens 1a, 1b, 1d) ───────────────────────────────
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
