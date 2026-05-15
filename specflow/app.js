@@ -242,6 +242,7 @@ app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
     ".webp": "image/webp",
     ".gif": "image/gif"
   };
+  res.setHeader("Cache-Control", "public, max-age=86400, immutable");
   return objectStorage.sendObjectDownload(res, key, "", contentTypes[ext] || "application/octet-stream");
 })()).catch(next));
 ensureDocsDirectory();
