@@ -71,7 +71,7 @@ server {
     add_header X-Request-ID              $request_id                                    always;
 
     # ── Timeouts de request ────────────────────────────────────────────────────
-    client_header_timeout 12s;
+    client_header_timeout 30s;
     keepalive_timeout     65s;  # item 6a: era 15s
 
     # ── Limites de buffer ──────────────────────────────────────────────────────
@@ -125,13 +125,13 @@ server {
         return 404;
     }
 
-    # ── Login (5 req/min, 5 conexões por IP) ──────────────────────────────────
+    # ── Login (5 req/min, 8 conexões por IP) ──────────────────────────────────
     location = /admin/login {
         limit_req  zone=login_limit burst=5 nodelay;
-        limit_conn conn_limit 5;
+        limit_conn conn_limit 8;
 
-        client_body_timeout 12s;
-        send_timeout        10s;
+        client_body_timeout 30s;
+        send_timeout        30s;
 
         proxy_pass            http://app:3000;
         proxy_http_version    1.1;
@@ -178,12 +178,12 @@ server {
         proxy_connect_timeout 10s;
     }
 
-    # ── API (20 req/s, 30 conexões por IP) ────────────────────────────────────
+    # ── API (20 req/s, 45 conexões por IP) ────────────────────────────────────
     location ~* ^/api/ {
         limit_req  zone=api_limit burst=30 nodelay;
-        limit_conn conn_limit 30;
+        limit_conn conn_limit 45;
 
-        client_body_timeout 30s;
+        client_body_timeout 60s;
         send_timeout        60s;
 
         proxy_pass            http://app:3000;
@@ -238,7 +238,7 @@ server {
     # Sem add_header aqui: herda todos os security headers do server block.
     location ~* ^/(docs/|public/) {
         limit_req  zone=assets_limit burst=150 nodelay;
-        limit_conn conn_limit 50;
+        limit_conn conn_limit 75;
 
         send_timeout 60s;
 
@@ -254,18 +254,18 @@ server {
         proxy_connect_timeout 10s;
     }
 
-    # ── Aplicação geral (10 req/s, 20 conexões por IP) ────────────────────────
+    # ── Aplicação geral (10 req/s, 30 conexões por IP) ────────────────────────
     # item 4: restringe metodos HTTP aceitos pela aplicacao
-    # item 5: client_body_timeout reduzido de 300s para 30s (uploads têm location próprio)
+    # item 5: client_body_timeout reduzido de 300s para 60s (uploads têm location próprio)
     location / {
         limit_req  zone=req_limit burst=20 nodelay;
-        limit_conn conn_limit 20;
+        limit_conn conn_limit 30;
 
         if ($request_method !~ ^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$) {
             return 405;
         }
 
-        client_body_timeout 30s;
+        client_body_timeout 60s;
         send_timeout        620s;
 
         proxy_pass            http://app:3000;

@@ -546,48 +546,152 @@
   })();
 </script>
 <script>
-  (function () {
+  document.addEventListener("DOMContentLoaded", function () {
     var btn = document.getElementById("generateConclusionBtn");
-    var statusEl = document.getElementById("generateConclusionStatus");
+    var confirmBtn = document.getElementById("generateConclusionConfirmBtn");
+    var promptTextarea = document.getElementById("conclusionPromptTextarea");
+    var modalErrorEl = document.getElementById("generateConclusionModalError");
     var successEl = document.getElementById("generateConclusionSuccess");
     var errorEl = document.getElementById("generateConclusionError");
-    if (!btn) return;
+    if (!btn || !confirmBtn) return;
 
+    var DEFAULT_PROMPT = "Crie um resumo de todas as atividades para servir como uma conclusao tecnica. Escreva em paragrafos claros, objetivos e resumidos, em portugues. Nao repita datas, sintetize o que foi feito. Separe cada paragrafo com uma linha em branco.";
     var csrfInput = document.querySelector('input[name="_csrf"]');
     var csrfToken = csrfInput ? csrfInput.value : "";
     var endpoint = "/admin/report-service/orders/<%= order.id %>/daily-logs/generate-conclusion";
+    var bsModal = null;
 
-    btn.addEventListener("click", async function () {
-      btn.disabled = true;
-      if (statusEl) { statusEl.textContent = "Gerando com IA..."; statusEl.classList.remove("d-none"); }
-      if (successEl) successEl.classList.add("d-none");
-      if (errorEl) errorEl.classList.add("d-none");
+    function getModal() {
+      if (!bsModal) {
+        var el = document.getElementById("generateConclusionModal");
+        if (el && window.bootstrap) bsModal = new window.bootstrap.Modal(el);
+      }
+      return bsModal;
+    }
+
+    function setLoading(loading) {
+      var labelDefault = confirmBtn.querySelector(".gcm-label-default");
+      var labelLoading = confirmBtn.querySelector(".gcm-label-loading");
+      var cancelBtn = document.getElementById("generateConclusionCancelBtn");
+      confirmBtn.disabled = loading;
+      if (cancelBtn) cancelBtn.disabled = loading;
+      if (labelDefault) labelDefault.classList.toggle("d-none", loading);
+      if (labelLoading) labelLoading.classList.toggle("d-none", !loading);
+    }
+
+    btn.addEventListener("click", function () {
+      if (promptTextarea) promptTextarea.value = DEFAULT_PROMPT;
+      if (modalErrorEl) modalErrorEl.classList.add("d-none");
+      var modal = getModal();
+      if (modal) modal.show();
+    });
+
+    confirmBtn.addEventListener("click", async function () {
+      var prompt = promptTextarea ? promptTextarea.value.trim() : DEFAULT_PROMPT;
+      if (!prompt) {
+        if (modalErrorEl) {
+          modalErrorEl.textContent = "Informe a instrucao para a IA.";
+          modalErrorEl.classList.remove("d-none");
+        }
+        return;
+      }
+      setLoading(true);
+      if (modalErrorEl) modalErrorEl.classList.add("d-none");
       try {
         var response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
           credentials: "same-origin",
-          body: JSON.stringify({})
+          body: JSON.stringify({ prompt: prompt })
         });
         var payload = await response.json().catch(function () { return {}; });
         if (!response.ok || !payload.ok) {
           throw new Error(payload.message || "Falha ao gerar conclusao.");
         }
-
-        if (statusEl) statusEl.classList.add("d-none");
+        var modal = getModal();
+        if (modal) modal.hide();
         if (successEl) successEl.classList.remove("d-none");
-        btn.disabled = false;
+        if (errorEl) errorEl.classList.add("d-none");
         setTimeout(function () { window.location.reload(); }, 1500);
       } catch (err) {
-        if (statusEl) statusEl.classList.add("d-none");
-        if (errorEl) {
-          errorEl.textContent = err.message || "Falha ao gerar conclusao com IA.";
-          errorEl.classList.remove("d-none");
+        setLoading(false);
+        if (modalErrorEl) {
+          modalErrorEl.textContent = err.message || "Falha ao gerar conclusao com IA.";
+          modalErrorEl.classList.remove("d-none");
         }
-        btn.disabled = false;
       }
     });
-  })();
+
+    var modalEl = document.getElementById("generateConclusionModal");
+    if (modalEl) {
+      modalEl.addEventListener("hidden.bs.modal", function () {
+        setLoading(false);
+        if (modalErrorEl) modalErrorEl.classList.add("d-none");
+      });
+    }
+
+    // ── Modal: Revisar com IA — Log Diário ───────────────────────────────────
+    (function () {
+      var dlConfirmBtn = document.getElementById("aiReviseConfirmBtn");
+      var dlPromptTextarea = document.getElementById("aiRevisePromptTextarea");
+      var dlModalError = document.getElementById("aiReviseModalError");
+      var dlModalEl = document.getElementById("aiReviseModal");
+      if (!dlConfirmBtn) return;
+
+      function setDlLoading(loading) {
+        var labelDefault = dlConfirmBtn.querySelector(".dlrm-label-default");
+        var labelLoading = dlConfirmBtn.querySelector(".dlrm-label-loading");
+        var cancelBtn = document.getElementById("aiReviseModalCancelBtn");
+        dlConfirmBtn.disabled = loading;
+        if (cancelBtn) cancelBtn.disabled = loading;
+        if (labelDefault) labelDefault.classList.toggle("d-none", loading);
+        if (labelLoading) labelLoading.classList.toggle("d-none", !loading);
+      }
+
+      dlConfirmBtn.addEventListener("click", async function () {
+        var prompt = dlPromptTextarea ? dlPromptTextarea.value.trim() : "";
+        if (!prompt) {
+          if (dlModalError) { dlModalError.textContent = "Informe a instrucao para a IA."; dlModalError.classList.remove("d-none"); }
+          return;
+        }
+        var p = window._dlRevisePayload;
+        if (!p) return;
+        setDlLoading(true);
+        if (dlModalError) dlModalError.classList.add("d-none");
+        try {
+          var response = await fetch("/admin/report-service/orders/<%= order.id %>/daily-logs/revise-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": p.csrfToken },
+            credentials: "same-origin",
+            body: JSON.stringify({ text: p.sourceText, html: p.sourceHtml, prompt: prompt, preserveFormatting: true })
+          });
+          var data = await response.json().catch(function () { return {}; });
+          if (!response.ok || !data.ok) throw new Error(data && data.message ? data.message : "Falha ao revisar.");
+          var revisedHtml = String(data.revisedHtml || "").trim();
+          if (revisedHtml) {
+            p.quill.setText("");
+            p.quill.clipboard.dangerouslyPasteHTML(revisedHtml);
+          } else {
+            var revisedText = String(data.revisedText || "").trim();
+            if (!revisedText) throw new Error("A IA nao retornou texto.");
+            p.quill.setText(revisedText);
+          }
+          if (dlModalEl && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(dlModalEl).hide();
+          if (p.aiStatus) p.aiStatus.textContent = "Texto revisado com IA.";
+        } catch (err) {
+          setDlLoading(false);
+          if (dlModalError) { dlModalError.textContent = err.message || "Falha ao revisar."; dlModalError.classList.remove("d-none"); }
+        }
+      });
+
+      if (dlModalEl) {
+        dlModalEl.addEventListener("hidden.bs.modal", function () {
+          setDlLoading(false);
+          if (dlModalError) dlModalError.classList.add("d-none");
+        });
+      }
+    })();
+  });
 </script>
 <script>
   (function () {
@@ -876,59 +980,20 @@
     }
 
     if (aiReviseBtn) {
-      aiReviseBtn.addEventListener("click", async function () {
+      aiReviseBtn.addEventListener("click", function () {
         var sourceText = quill.getText().replace(/\s+/g, " ").trim();
         var sourceHtml = String(quill.root && quill.root.innerHTML ? quill.root.innerHTML : "").trim();
         if (!sourceText) {
           if (aiStatus) aiStatus.textContent = "Digite um texto no editor para revisar com IA.";
           return;
         }
-
-        var defaultPrompt = "Revise o texto abaixo sem mudar muitas palavras";
-        var userPrompt = window.prompt("Informe o prompt para enviar a IA:", defaultPrompt);
-        if (userPrompt === null) {
-          if (aiStatus) aiStatus.textContent = "Revisao com IA cancelada.";
-          return;
-        }
-        userPrompt = String(userPrompt || "").trim() || defaultPrompt;
-
-        aiReviseBtn.disabled = true;
-        if (aiStatus) aiStatus.textContent = "Revisando texto com IA...";
-        try {
-          var response = await fetch("/admin/report-service/orders/<%= order.id %>/daily-logs/revise-text", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRF-Token": csrfToken
-            },
-            credentials: "same-origin",
-            body: JSON.stringify({
-              text: sourceText,
-              html: sourceHtml,
-              prompt: userPrompt,
-              preserveFormatting: true
-            })
-          });
-          var payload = await response.json().catch(function () { return {}; });
-          if (!response.ok || !payload || !payload.ok) {
-            throw new Error(payload && payload.message ? payload.message : "Falha ao revisar texto com IA.");
-          }
-          var revisedHtml = String(payload.revisedHtml || "").trim();
-          if (revisedHtml) {
-            quill.setText("");
-            quill.clipboard.dangerouslyPasteHTML(revisedHtml);
-            if (aiStatus) aiStatus.textContent = "Texto revisado com IA mantendo formatacao.";
-          } else {
-            var revisedText = String(payload.revisedText || "").trim();
-            if (!revisedText) throw new Error("A IA nao retornou texto revisado.");
-            quill.setText(revisedText);
-            if (aiStatus) aiStatus.textContent = "Texto revisado com IA.";
-          }
-        } catch (err) {
-          if (aiStatus) aiStatus.textContent = err && err.message ? err.message : "Falha ao revisar texto com IA.";
-        } finally {
-          aiReviseBtn.disabled = false;
-        }
+        window._dlRevisePayload = { sourceText: sourceText, sourceHtml: sourceHtml, quill: quill, aiStatus: aiStatus, csrfToken: csrfToken };
+        var promptEl = document.getElementById("aiRevisePromptTextarea");
+        if (promptEl) promptEl.value = "Revise o texto abaixo sem mudar muitas palavras";
+        var errEl = document.getElementById("aiReviseModalError");
+        if (errEl) errEl.classList.add("d-none");
+        var modalEl = document.getElementById("aiReviseModal");
+        if (modalEl && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
       });
     }
 
@@ -1130,4 +1195,133 @@
   loadAttachments();
 })();
 </script>
+<!-- ── Modal: Revisar com IA — Log Diário ─────────────────────────────────── -->
+<div class="modal fade" id="aiReviseModal" tabindex="-1" aria-labelledby="aiReviseModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.12);">
+      <div class="modal-header border-0 pb-0 pt-4 px-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+               style="width:44px;height:44px;background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1px solid #bbf7d0;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#16a34a" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/>
+            </svg>
+          </div>
+          <div>
+            <h6 class="modal-title mb-0 fw-semibold" id="aiReviseModalLabel" style="font-size:1rem;">Revisar Texto com IA</h6>
+            <p class="text-muted mb-0 mt-1" style="font-size:0.78rem;line-height:1.3;">O conteudo atual do editor sera enviado para revisao</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:-4px;"></button>
+      </div>
+      <div class="modal-body px-4 pt-3 pb-2">
+        <div class="mb-3">
+          <label class="form-label fw-semibold mb-1" for="aiRevisePromptTextarea" style="font-size:0.8125rem;color:#374151;">
+            Instrucao para a IA
+          </label>
+          <textarea
+            class="form-control"
+            id="aiRevisePromptTextarea"
+            rows="3"
+            style="font-size:0.875rem;resize:vertical;line-height:1.65;border-color:#d1d5db;border-radius:8px;"
+            placeholder="Ex: Revise o texto mantendo o tom tecnico..."
+          ></textarea>
+          <div class="form-text mt-1" style="font-size:0.78rem;">O texto do editor sera enviado junto com esta instrucao. A formatacao sera preservada.</div>
+        </div>
+        <div class="d-flex gap-3 align-items-start rounded-3 p-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="#64748b" viewBox="0 0 16 16" class="flex-shrink-0 mt-1" aria-hidden="true">
+            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+          </svg>
+          <div style="font-size:0.8125rem;">
+            <span class="fw-semibold d-block mb-1" style="color:#475569;">Comportamento da revisao</span>
+            <span class="text-muted">O texto revisado substituira o conteudo atual do editor. A IA mantem a formatacao (negrito, italico, listas). A acao nao pode ser desfeita automaticamente.</span>
+          </div>
+        </div>
+        <div class="alert alert-danger d-none mt-3 mb-0 py-2" id="aiReviseModalError" style="font-size:0.875rem;border-radius:8px;"></div>
+      </div>
+      <div class="modal-footer border-top px-4 py-3" style="border-color:#f1f5f9;">
+        <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal" id="aiReviseModalCancelBtn">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm px-4" id="aiReviseConfirmBtn" style="min-width:136px;">
+          <span class="dlrm-label-default d-flex align-items-center justify-content-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/>
+            </svg>
+            Revisar Texto
+          </span>
+          <span class="dlrm-label-loading d-none d-flex align-items-center justify-content-center gap-1">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;border-width:2px;"></span>
+            Revisando...
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Gerar Conclusão com IA ──────────────────────────────────────── -->
+<div class="modal fade" id="generateConclusionModal" tabindex="-1" aria-labelledby="generateConclusionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.12);">
+      <div class="modal-header border-0 pb-0 pt-4 px-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+               style="width:44px;height:44px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #bfdbfe;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#2563eb" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
+            </svg>
+          </div>
+          <div>
+            <h6 class="modal-title mb-0 fw-semibold" id="generateConclusionModalLabel" style="font-size:1rem;">Gerar Conclusao com IA</h6>
+            <p class="text-muted mb-0 mt-1" style="font-size:0.78rem;line-height:1.3;">Baseado nos logs diarios desta ordem de servico</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:-4px;"></button>
+      </div>
+
+      <div class="modal-body px-4 pt-3 pb-2">
+        <div class="mb-3">
+          <label class="form-label fw-semibold mb-1" for="conclusionPromptTextarea" style="font-size:0.8125rem;color:#374151;">
+            Instrucao para a IA
+          </label>
+          <textarea
+            class="form-control"
+            id="conclusionPromptTextarea"
+            rows="4"
+            style="font-size:0.875rem;resize:vertical;line-height:1.65;border-color:#d1d5db;border-radius:8px;"
+            placeholder="Descreva como a IA deve redigir a conclusao..."
+          ></textarea>
+          <div class="form-text mt-1" style="font-size:0.78rem;">Personalize o estilo e o foco da conclusao. O conteudo dos logs sera enviado como contexto automaticamente.</div>
+        </div>
+
+        <div class="d-flex gap-3 align-items-start rounded-3 p-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="#64748b" viewBox="0 0 16 16" class="flex-shrink-0 mt-1" aria-hidden="true">
+            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+          </svg>
+          <div style="font-size:0.8125rem;">
+            <span class="fw-semibold d-block mb-1" style="color:#475569;">Contexto enviado para a IA</span>
+            <span class="text-muted">Todos os logs diarios desta OS serao incluidos, formatados com data e titulo. A conclusao anterior (se existir) e excluida para evitar repeticao.</span>
+          </div>
+        </div>
+
+        <div class="alert alert-danger d-none mt-3 mb-0 py-2" id="generateConclusionModalError" style="font-size:0.875rem;border-radius:8px;"></div>
+      </div>
+
+      <div class="modal-footer border-top px-4 py-3" style="border-color:#f1f5f9;">
+        <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal" id="generateConclusionCancelBtn">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm px-4" id="generateConclusionConfirmBtn" style="min-width:148px;">
+          <span class="gcm-label-default d-flex align-items-center justify-content-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
+            </svg>
+            Gerar Conclusao
+          </span>
+          <span class="gcm-label-loading d-none d-flex align-items-center justify-content-center gap-1">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;border-width:2px;"></span>
+            Gerando...
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 <%- include("../partials/footer") %>

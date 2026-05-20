@@ -2290,6 +2290,10 @@ function createReportWebController(deps) {
       if (typeof reviseTextWithAi !== "function") {
         return res.status(500).json({ ok: false, message: "Servico de IA indisponivel." });
       }
+      const DEFAULT_CONCLUSION_PROMPT = "Crie um resumo de todas as atividades para servir como uma conclusao tecnica. Escreva em paragrafos claros, objetivos e resumidos, em portugues. Nao repita datas, sintetize o que foi feito. Separe cada paragrafo com uma linha em branco.";
+      const rawPrompt = String(req.body.prompt || "").trim();
+      const conclusionPrompt = rawPrompt.length >= 10 ? rawPrompt : DEFAULT_CONCLUSION_PROMPT;
+
       const orderId = Number(req.params.id);
       if (!await ensureOrderEditable(req, res, orderId, { json: true })) return;
       const [order, dailyLogs] = await Promise.all([
@@ -2323,7 +2327,7 @@ function createReportWebController(deps) {
         const result = await reviseTextWithAi({
           text: combinedText,
           html: "",
-          prompt: "Crie um resumo de todas as atividades para servir como uma conclusao tecnica. Escreva em paragrafos claros e objetivos, em portugues. Nao repita datas, sintetize o que foi feito. Separe cada paragrafo com uma linha em branco.",
+          prompt: conclusionPrompt,
           preserveFormatting: false
         });
 

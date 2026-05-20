@@ -30,7 +30,13 @@
       "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
       "Bash(xargs grep -l \"sanitize-html\")",
       "Bash(node -e ' *)",
-      "Bash(grep -r \"sig\\\\\\\\.signature_data\\\\|sig\\\\\\\\.signatureData\\\\|item\\\\\\\\.signature_data\" --include=\"*.js\" --include=\"*.ejs\" .)"
+      "Bash(grep -r \"sig\\\\\\\\.signature_data\\\\|sig\\\\\\\\.signatureData\\\\|item\\\\\\\\.signature_data\" --include=\"*.js\" --include=\"*.ejs\" .)",
+      "Bash(git --version)",
+      "Bash(xargs grep -l \"Grid\")",
+      "Bash(xargs grep -l \"paginat\\\\|page-break\\\\|chapter\")",
+      "Bash(xargs grep -l \"page-break\\\\|avoid-break\")",
+      "Bash(xargs grep -l \"grid\\\\|Grid\")",
+      "Bash(xargs ls -lh)"
     ]
   }
 }

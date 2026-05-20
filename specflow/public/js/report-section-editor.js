@@ -344,29 +344,58 @@
         }
 
         var defaultPrompt = "Revise o texto abaixo sem mudar muitas palavras";
+
+        if (typeof window.openAiReviseModal === "function") {
+          window.openAiReviseModal({
+            defaultPrompt: defaultPrompt,
+            onConfirm: async function (prompt, ctrl) {
+              ctrl.setLoading(true);
+              try {
+                var response = await fetch(sectionReviseEndpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+                  credentials: "same-origin",
+                  body: JSON.stringify({ text: sourceText, html: sourceHtml, prompt: prompt, preserveFormatting: true })
+                });
+                var payload = await response.json().catch(function () { return {}; });
+                if (!response.ok || !payload || !payload.ok) {
+                  throw new Error(payload && payload.message ? payload.message : "Falha ao revisar texto com IA.");
+                }
+                var revisedHtml = String(payload.revisedHtml || "").trim();
+                if (revisedHtml) {
+                  targetQuill.setText("");
+                  targetQuill.clipboard.dangerouslyPasteHTML(revisedHtml);
+                } else {
+                  var revisedText = String(payload.revisedText || "").trim();
+                  if (!revisedText) throw new Error("A IA nao retornou texto revisado.");
+                  targetQuill.setText(revisedText);
+                }
+                ctrl.hide();
+                if (aiStatus) aiStatus.textContent = "Texto revisado com IA.";
+              } catch (err) {
+                ctrl.setLoading(false);
+                ctrl.setError(err && err.message ? err.message : "Falha ao revisar texto com IA.");
+              }
+            }
+          });
+          return;
+        }
+
+        // fallback: native prompt (caso modal nao esteja disponivel)
         var userPrompt = window.prompt("Informe o prompt para enviar a IA:", defaultPrompt);
         if (userPrompt === null) {
           if (aiStatus) aiStatus.textContent = "Revisao com IA cancelada.";
           return;
         }
         userPrompt = String(userPrompt || "").trim() || defaultPrompt;
-
         aiReviseBtn.disabled = true;
         if (aiStatus) aiStatus.textContent = "Revisando texto com IA...";
         try {
           var response = await fetch(sectionReviseEndpoint, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRF-Token": csrfToken
-            },
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
             credentials: "same-origin",
-            body: JSON.stringify({
-              text: sourceText,
-              html: sourceHtml,
-              prompt: userPrompt,
-              preserveFormatting: true
-            })
+            body: JSON.stringify({ text: sourceText, html: sourceHtml, prompt: userPrompt, preserveFormatting: true })
           });
           var payload = await response.json().catch(function () { return {}; });
           if (!response.ok || !payload || !payload.ok) {
