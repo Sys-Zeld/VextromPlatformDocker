@@ -328,6 +328,81 @@ function createReportApiController(deps) {
       const reportConfig = await getReportConfigSettings();
       const templateKey = normalizeReportTemplateKey(req.query.template_key || reportConfig.templateKey);
       return ok(res, buildPreviewModel(aggregate, { reportConfig, templateKey }));
+    },
+
+    // ── Daily Logs ────────────────────────────────────────────────────────────
+    async listDailyLogs(req, res) {
+      const orderId = Number(req.params.id);
+      return ok(res, await repo.listDailyLogsByOrder(orderId));
+    },
+
+    async createDailyLog(req, res) {
+      const orderId = Number(req.params.id);
+      const created = await repo.createDailyLog({
+        serviceOrderId: orderId,
+        activityDate: sanitizeInput(req.body.activityDate),
+        title: sanitizeInput(req.body.title),
+        content: sanitizeInput(req.body.content),
+        notes: sanitizeInput(req.body.notes),
+        sortOrder: req.body.sortOrder ? Number(req.body.sortOrder) : 0
+      });
+      return ok(res, created, 201);
+    },
+
+    async updateDailyLog(req, res) {
+      const orderId = Number(req.params.id);
+      const logId = Number(req.params.logId);
+      const updated = await repo.updateDailyLogByOrderAndId(orderId, logId, {
+        activityDate: sanitizeInput(req.body.activityDate),
+        title: sanitizeInput(req.body.title),
+        content: sanitizeInput(req.body.content),
+        notes: sanitizeInput(req.body.notes),
+        sortOrder: req.body.sortOrder ? Number(req.body.sortOrder) : 0
+      });
+      if (!updated) return res.status(404).json({ error: "Log nao encontrado.", errorCode: "DAILY_LOG_NOT_FOUND", details: null });
+      return ok(res, updated);
+    },
+
+    async deleteDailyLog(req, res) {
+      const orderId = Number(req.params.id);
+      const logId = Number(req.params.logId);
+      const deleted = await repo.deleteDailyLogByOrderAndId(orderId, logId);
+      if (!deleted) return res.status(404).json({ error: "Log nao encontrado.", errorCode: "DAILY_LOG_NOT_FOUND", details: null });
+      return res.status(204).send();
+    },
+
+    // ── Imagens por OS ────────────────────────────────────────────────────────
+    async listOrderImages(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS nao encontrada.", errorCode: "ORDER_NOT_FOUND", details: null });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      return ok(res, await repo.listImages(report.id));
+    },
+
+    async uploadOrderImage(req, res) {
+      const crypto = require("crypto");
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS nao encontrada.", errorCode: "ORDER_NOT_FOUND", details: null });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      let fileNameRaw = "imagem";
+      try { fileNameRaw = decodeURIComponent(String(req.headers["x-file-name"] || "imagem")); } catch (_) { fileNameRaw = String(req.headers["x-file-name"] || "imagem"); }
+      fileNameRaw = sanitizeInput(fileNameRaw);
+      const fileNameBase = path.basename(fileNameRaw).replace(/[^a-zA-Z0-9._-]/g, "") || "imagem";
+      const extFromName = path.extname(fileNameBase).toLowerCase();
+      const mime = String(req.headers["content-type"] || "").toLowerCase().split(";")[0].trim();
+      const extFromMime = mime.includes("png") ? ".png" : mime.includes("jpeg") || mime.includes("jpg") ? ".jpg" : mime.includes("webp") ? ".webp" : mime.includes("gif") ? ".gif" : "";
+      const ext = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extFromName) ? extFromName : extFromMime;
+      const buffer = Buffer.isBuffer(req.body) ? req.body : (req.body instanceof Uint8Array ? Buffer.from(req.body) : Buffer.from([]));
+      if (!ext || !buffer.length) return res.status(400).json({ ok: false, error: "Arquivo de imagem invalido." });
+      let captionRaw = "";
+      try { captionRaw = decodeURIComponent(String(req.headers["x-caption"] || "")); } catch (_) { captionRaw = String(req.headers["x-caption"] || ""); }
+      const fileSafeBase = path.basename(fileNameBase, extFromName).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
+      const finalName = `${Date.now()}-${fileSafeBase}-${crypto.randomBytes(6).toString("hex")}${ext === ".jpeg" ? ".jpg" : ext}`;
+      await objectStorage.putObject(path.join("dados", "report-img", finalName), buffer, { contentType: mime || "application/octet-stream" });
+      const created = await repo.createImage({ serviceReportId: report.id, sectionKey: "__tag__", filePath: finalName, caption: sanitizeInput(captionRaw), sortOrder: 0 });
+      return res.status(201).json({ ok: true, data: { id: created.ref_id, filePath: finalName, sizeBytes: buffer.length } });
     }
   };
 }

@@ -1,0 +1,28 @@
+<%- include('_head') %>
+<style>
+  body.m-shell { padding-bottom: 0; }
+  #previewContainer {
+    background: #fff;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    min-height: calc(100vh - 52px);
+  }
+  #previewContainer img { max-width: 100%; height: auto; }
+  @media print { .m-header { display: none !important; } }
+</style>
+
+<%
+  const display = order.service_order_display || ('#' + order.id);
+%>
+
+<div class="m-header">
+  <a href="<%= BASE %>/orders/<%= order.id %>?tab=details" class="m-header-back">
+    <i class="bi bi-arrow-left-short" style="font-size:1.2rem;"></i> Voltar
+  </a>
+  <img src="/public/img/logo-vextrom.svg" alt="Vextrom" class="m-header-logo" />
+  <h1 class="m-header-title"><%= display %></h1>
+</div>
+
+<div id="previewContainer"><%- previewHtml %></div>
+
+<%- include('_foot') %>

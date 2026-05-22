@@ -58,6 +58,14 @@ function createReportServiceApiRouter(deps) {
   router.post("/reports/:id/generate-pdf", writeAccess, asyncHandler(controller.generatePdf));
   router.get("/status/:id", readAccess, asyncHandler(controller.getStatus));
 
+  router.get("/orders/:id/daily-logs", readAccess, asyncHandler(controller.listDailyLogs));
+  router.post("/orders/:id/daily-logs", writeAccess, asyncHandler(controller.createDailyLog));
+  router.put("/orders/:id/daily-logs/:logId", writeAccess, asyncHandler(controller.updateDailyLog));
+  router.delete("/orders/:id/daily-logs/:logId", writeAccess, asyncHandler(controller.deleteDailyLog));
+
+  router.get("/orders/:id/images", readAccess, asyncHandler(controller.listOrderImages));
+  router.post("/orders/:id/images", writeAccess, asyncHandler(controller.uploadOrderImage));
+
   return router;
 }
 

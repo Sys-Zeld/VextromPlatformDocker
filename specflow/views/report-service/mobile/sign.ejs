@@ -1,0 +1,272 @@
+<%- include('_head') %>
+<style>
+  .m-sign-canvas-wrap {
+    border: 2px solid var(--input-border);
+    border-radius: 12px;
+    background: #fff;
+    position: relative;
+    overflow: hidden;
+    height: 200px;
+  }
+  #signatureCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .m-sign-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--muted-text);
+    font-size: 0.85rem;
+    pointer-events: none;
+    user-select: none;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .m-sign-clear {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 0.78rem;
+    color: var(--muted-text);
+    background: rgba(255,255,255,0.85);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 3px 10px;
+    font-family: var(--app-font-family);
+    backdrop-filter: blur(4px);
+  }
+  .m-sign-clear:active { background: var(--surface-2); }
+  .m-sig-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .m-sig-item:last-child { border-bottom: none; }
+  .m-sig-info { flex: 1; min-width: 0; }
+  .m-sig-name { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+  .m-sig-meta { font-size: 0.73rem; color: var(--muted-text); margin-top: 2px; }
+</style>
+
+<%
+  const display = order.service_order_display || ('#' + order.id);
+%>
+
+<div class="m-header">
+  <a href="<%= BASE %>/orders/<%= order.id %>?tab=details" class="m-header-back">
+    <i class="bi bi-arrow-left-short" style="font-size:1.2rem;"></i> OS
+  </a>
+  <img src="/public/img/logo-vextrom.svg" alt="Vextrom" class="m-header-logo" />
+  <h1 class="m-header-title">Assinar — <%= display %></h1>
+</div>
+
+<div class="m-content">
+  <% if (flash) { %>
+    <div class="m-alert m-alert-<%= flashType %>">
+      <i class="bi bi-<%= flashType === 'danger' ? 'exclamation-circle-fill' : 'check-circle-fill' %>"></i>
+      <%= flash %>
+    </div>
+  <% } %>
+
+  <!-- ── Formulário de assinatura ──────────────────────────────────────── -->
+  <div class="m-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="m-section-title" style="margin-bottom:0;">Nova Assinatura</div>
+      <span class="m-badge m-badge-valid">Técnico Vextrom</span>
+    </div>
+
+    <form method="POST" id="signForm" action="<%= BASE %>/orders/<%= order.id %>/sign">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <% if (technicians && technicians.length > 0) { %>
+        <div class="m-form-group">
+          <label class="m-label">Técnicos da OS</label>
+          <select class="m-input" id="linkedTechnicianSelect">
+            <option value="">Selecionar técnico...</option>
+            <% technicians.forEach(function(tech) { %>
+              <option
+                value="<%= tech.name || '' %>"
+                data-role="<%= tech.role || '' %>"
+                data-company="<%= tech.company || '' %>">
+                <%= tech.name || '-' %><% if (tech.role) { %> · <%= tech.role %><% } %>
+              </option>
+            <% }); %>
+          </select>
+        </div>
+      <% } %>
+
+      <div class="m-form-group">
+        <label class="m-label">Nome *</label>
+        <input type="text" name="signer_name" id="signerNameInput" class="m-input"
+          placeholder="Nome completo do técnico" required autocomplete="off" />
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Cargo / Função</label>
+        <input type="text" name="signer_role" id="signerRoleInput" class="m-input"
+          placeholder="Ex: Técnico de Campo" autocomplete="off" />
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Empresa</label>
+        <input type="text" name="signer_company" id="signerCompanyInput" class="m-input"
+          value="Vextrom" autocomplete="off" />
+      </div>
+
+      <div class="m-form-group">
+        <label class="m-label">Assinatura — desenhe abaixo</label>
+        <div class="m-sign-canvas-wrap">
+          <canvas id="signatureCanvas"></canvas>
+          <span class="m-sign-hint" id="canvasHint">
+            <i class="bi bi-pen" style="font-size:1rem;opacity:0.5;"></i> Assine aqui com o dedo
+          </span>
+          <button type="button" class="m-sign-clear" id="clearCanvas">Limpar</button>
+        </div>
+        <input type="hidden" name="signature_data" id="signatureDataInput" />
+      </div>
+
+      <button type="submit" class="m-btn-primary">
+        Confirmar Assinatura
+      </button>
+    </form>
+  </div>
+
+  <!-- ── Assinaturas registradas ─────────────────────────────────────────── -->
+  <div class="m-card">
+    <div class="m-section-title">Assinaturas Registradas (<%= signatures.length %>)</div>
+    <% if (signatures && signatures.length > 0) { %>
+      <% signatures.forEach(function(sig) { %>
+        <div class="m-sig-item">
+          <div class="m-sig-info">
+            <div class="m-sig-name"><%= sig.signer_name || '-' %></div>
+            <div class="m-sig-meta">
+              <% if (sig.signer_role) { %><%= sig.signer_role %><% if (sig.signed_at) { %> · <% } %><% } %>
+              <% if (sig.signed_at) { %><%= new Date(sig.signed_at).toLocaleString('pt-BR') %><% } %>
+            </div>
+          </div>
+          <% if (sig.signature_data) { %>
+            <img src="<%= sig.signature_data %>" alt="assinatura"
+              style="height:40px;width:80px;object-fit:contain;border:1px solid var(--border);border-radius:6px;background:#fff;flex-shrink:0;" />
+          <% } %>
+          <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/sign/<%= sig.id %>/delete" style="display:flex;flex-shrink:0;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+              onclick="return confirm('Excluir esta assinatura?')" title="Excluir">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </div>
+      <% }); %>
+    <% } else { %>
+      <div class="m-empty" style="padding:20px 0;">
+        <i class="bi bi-pen"></i>
+        <span>Nenhuma assinatura registrada.</span>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<script>
+(function() {
+  var canvas   = document.getElementById('signatureCanvas');
+  var output   = document.getElementById('signatureDataInput');
+  var hint     = document.getElementById('canvasHint');
+  var clearBtn = document.getElementById('clearCanvas');
+  var form     = document.getElementById('signForm');
+  var techSel  = document.getElementById('linkedTechnicianSelect');
+  var nameIn   = document.getElementById('signerNameInput');
+  var roleIn   = document.getElementById('signerRoleInput');
+  var compIn   = document.getElementById('signerCompanyInput');
+  if (!canvas) return;
+
+  var ctx = canvas.getContext('2d');
+  var drawing = false;
+  var hasDrawn = false;
+
+  function resize() {
+    var wrap = canvas.parentElement;
+    var dpr  = window.devicePixelRatio || 1;
+    var w = wrap.clientWidth;
+    var h = wrap.clientHeight;
+    canvas.width  = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+  }
+
+  function pos(e) {
+    var r   = canvas.getBoundingClientRect();
+    var src = (e.touches && e.touches[0]) ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  }
+
+  function start(e) {
+    drawing = true;
+    var p = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    if (hint) hint.style.display = 'none';
+    hasDrawn = true;
+    e.preventDefault();
+  }
+
+  function move(e) {
+    if (!drawing) return;
+    var p = pos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    e.preventDefault();
+  }
+
+  function end(e) { drawing = false; }
+
+  canvas.addEventListener('mousedown',  start);
+  canvas.addEventListener('mousemove',  move);
+  canvas.addEventListener('mouseup',    end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove',  move,  { passive: false });
+  canvas.addEventListener('touchend',   end,   { passive: false });
+
+  clearBtn.addEventListener('click', function() {
+    var dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    hasDrawn = false;
+    if (hint) hint.style.display = '';
+    output.value = '';
+  });
+
+  form.addEventListener('submit', function() {
+    output.value = hasDrawn ? canvas.toDataURL('image/png') : '';
+  });
+
+  if (techSel && nameIn) {
+    techSel.addEventListener('change', function() {
+      var opt = techSel.options[techSel.selectedIndex];
+      if (!opt || !opt.value) return;
+      nameIn.value = opt.value;
+      if (roleIn && opt.getAttribute('data-role')) roleIn.value = opt.getAttribute('data-role');
+      if (compIn && opt.getAttribute('data-company') && opt.getAttribute('data-company') !== 'undefined')
+        compIn.value = opt.getAttribute('data-company') || compIn.value;
+    });
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+})();
+</script>
+
+<%- include('_foot') %>

@@ -1,0 +1,82 @@
+<%- include('_head') %>
+
+<div class="m-header">
+  <img src="/public/img/logo-vextrom.svg" alt="Vextrom" class="m-header-logo" />
+  <h1 class="m-header-title">Ordens de Serviço</h1>
+</div>
+
+<div class="m-content">
+  <% if (flash) { %>
+    <div class="m-alert m-alert-success">
+      <i class="bi bi-check-circle-fill"></i><%= flash %>
+    </div>
+  <% } %>
+
+  <div style="position:relative;margin-bottom:14px;">
+    <i class="bi bi-search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted-text);font-size:0.88rem;pointer-events:none;"></i>
+    <input type="search" id="searchInput" class="m-input" placeholder="Buscar OS, cliente..." autocomplete="off" style="padding-left:38px;" />
+  </div>
+
+  <div id="orderList">
+    <% if (!orders || orders.length === 0) { %>
+      <div class="m-empty">
+        <i class="bi bi-clipboard-x"></i>
+        <span>Nenhuma ordem de serviço encontrada.</span>
+      </div>
+    <% } else { %>
+      <% orders.forEach(function(order) {
+        const status = order.status || 'draft';
+        const badgeClass = status === 'approved' ? 'm-badge-approved' : status === 'valid' ? 'm-badge-valid' : status === 'draft' ? 'm-badge-draft' : 'm-badge-default';
+        const statusLabel = STATUS_LABELS[status] || status;
+        const display = order.service_order_display || ('#' + order.id);
+        const client = order.customer_name || '';
+        const dateStr = fmt(order.opening_date || order.created_at);
+      %>
+        <a href="<%= BASE %>/orders/<%= order.id %>"
+          class="m-card m-card-link m-card-<%= status %>"
+          data-search="<%= (display + ' ' + client).toLowerCase() %>">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:0.92rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= display %></div>
+              <% if (client) { %>
+                <div style="font-size:0.8rem;color:var(--muted-text);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= client %></div>
+              <% } %>
+              <% if (dateStr && dateStr !== '-') { %>
+                <div style="font-size:0.72rem;color:var(--muted-text);margin-top:5px;display:flex;align-items:center;gap:4px;">
+                  <i class="bi bi-calendar3" style="font-size:0.68rem;"></i> <%= dateStr %>
+                </div>
+              <% } %>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
+              <span class="m-badge <%= badgeClass %>"><%= statusLabel %></span>
+              <i class="bi bi-chevron-right" style="font-size:0.78rem;color:var(--muted-text);opacity:0.45;"></i>
+            </div>
+          </div>
+        </a>
+      <% }); %>
+    <% } %>
+  </div>
+
+  <div id="emptySearch" class="m-empty" style="display:none;">
+    <i class="bi bi-search"></i>
+    <span>Nenhum resultado para a busca.</span>
+  </div>
+</div>
+
+<script>
+  var searchInput = document.getElementById('searchInput');
+  var emptySearch = document.getElementById('emptySearch');
+  searchInput.addEventListener('input', function() {
+    var q = this.value.toLowerCase().trim();
+    var items = document.querySelectorAll('#orderList [data-search]');
+    var visible = 0;
+    items.forEach(function(el) {
+      var show = !q || el.dataset.search.includes(q);
+      el.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    emptySearch.style.display = (q && visible === 0) ? '' : 'none';
+  });
+</script>
+
+<%- include('_foot') %>

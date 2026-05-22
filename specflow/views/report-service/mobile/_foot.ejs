@@ -1,0 +1,13 @@
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  (function () {
+    function persistThemeCookie(theme) {
+      document.cookie = "app_theme=" + encodeURIComponent(theme) + "; Path=/; Max-Age=" + (365 * 24 * 3600) + "; SameSite=Lax";
+    }
+    var current = document.documentElement.getAttribute("data-theme") || "vextrom";
+    persistThemeCookie(current);
+    try { localStorage.setItem("app_theme", current); } catch (_) {}
+  })();
+</script>
+</body>
+</html>

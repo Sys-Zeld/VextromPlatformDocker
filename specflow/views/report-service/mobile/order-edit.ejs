@@ -1,0 +1,1260 @@
+<%- include('_head') %>
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet" />
+<style>
+  /* Fix: inputs/grids dentro de cards não ultrapassam o container */
+  .m-card { overflow: hidden; }
+  .m-input { box-sizing: border-box; max-width: 100%; }
+  .m-ts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .m-ts-grid .m-form-group { margin-bottom: 0; min-width: 0; }
+  .m-ts-grid .m-input { width: 100%; }
+
+  /* Modal de edição / IA */
+  .m-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    z-index: 300; display: flex; align-items: flex-end;
+  }
+  .m-modal-sheet {
+    background: var(--surface); width: 100%;
+    border-radius: 16px 16px 0 0; padding: 20px 16px 32px;
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
+  }
+  .m-modal-title {
+    font-size: 1rem; font-weight: 700; color: var(--text);
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .m-modal-close {
+    margin-left: auto; background: none; border: none;
+    font-size: 1.2rem; color: var(--muted-text); cursor: pointer; line-height: 1;
+  }
+
+  /* Botão IA dentro do form */
+  .m-btn-ai {
+    background: none; border: 1.5px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    color: var(--primary); border-radius: var(--radius-sm);
+    padding: 8px 14px; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer; font-family: var(--app-font-family);
+    display: flex; align-items: center; gap: 5px;
+    width: 100%; justify-content: center; margin-top: 6px;
+    transition: background .15s;
+  }
+  .m-btn-ai:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+  .m-btn-ai:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  /* ── Botão menu sanduíche ────────────────────────────────────────────────── */
+  .m-header-menu-btn {
+    background: none; border: none;
+    color: rgba(255,255,255,0.85); font-size: 1.55rem;
+    cursor: pointer; padding: 2px 4px; line-height: 1;
+    flex-shrink: 0; display: flex; align-items: center;
+  }
+  .m-header-menu-btn:active { color: #fff; }
+
+  /* ── Drawer (slide da direita) ───────────────────────────────────────────── */
+  .m-drawer-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.48); z-index: 200;
+    display: none;
+  }
+  .m-drawer-overlay.open { display: block; }
+  .m-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(290px, 86vw);
+    background: var(--surface);
+    z-index: 201;
+    display: flex; flex-direction: column;
+    box-shadow: -4px 0 28px rgba(0,0,0,0.24);
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  }
+  .m-drawer.open { transform: translateX(0); }
+  .m-drawer-head {
+    background: color-mix(in srgb, var(--section-header-bg) 40%, #000 60%);
+    color: #fff; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .m-drawer-head-title { flex: 1; font-size: 0.92rem; font-weight: 700; }
+  .m-drawer-close-btn {
+    background: none; border: none; color: rgba(255,255,255,0.8);
+    font-size: 1.25rem; cursor: pointer; padding: 4px; line-height: 1; display: flex;
+  }
+  .m-drawer-body { flex: 1; overflow-y: auto; padding: 6px 0; }
+  .m-drawer-group {
+    padding: 10px 14px 3px;
+    font-size: 0.65rem; font-weight: 700;
+    color: var(--muted-text); text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .m-drawer-item {
+    display: flex; align-items: center; gap: 13px;
+    padding: 13px 16px;
+    font-size: 0.9rem; font-weight: 500; color: var(--text);
+    text-decoration: none; border: none; background: none;
+    width: 100%; text-align: left; cursor: pointer;
+    font-family: var(--app-font-family); transition: background .12s;
+  }
+  .m-drawer-item:hover, .m-drawer-item:active { background: var(--surface-2); }
+  .m-drawer-item i { font-size: 1.15rem; width: 22px; text-align: center; flex-shrink: 0; color: var(--primary); }
+  .m-drawer-item.m-drawer-danger i { color: var(--danger); }
+  .m-drawer-item small { display: block; font-size: 0.71rem; color: var(--muted-text); font-weight: 400; margin-top: 1px; }
+  .m-drawer-hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* ── Equipamentos ────────────────────────────────────────────────────────── */
+  .m-equip-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 0; border-bottom: 1px solid var(--surface-2);
+  }
+  .m-equip-row:last-child { border-bottom: none; }
+  .m-equip-info { flex: 1; min-width: 0; }
+  .m-equip-label { font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .m-equip-detail { font-size: 0.72rem; color: var(--muted-text); margin-top: 1px; }
+  .m-equip-add-btn {
+    background: none;
+    border: 1.5px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    color: var(--primary); border-radius: 6px;
+    padding: 5px 11px; font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; font-family: var(--app-font-family); flex-shrink: 0;
+    transition: background .12s;
+  }
+  .m-equip-add-btn:active { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+  .m-equip-empty { text-align: center; padding: 10px 0; font-size: 0.82rem; color: var(--muted-text); }
+
+  /* ID badge sobre a imagem */
+  .m-img-id {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+  .m-img-card { position: relative; }
+
+  /* Ações por imagem */
+  .m-img-actions {
+    padding: 5px 7px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-top: 1px solid var(--border);
+    min-width: 0;
+  }
+  .m-img-caption-text {
+    flex: 1;
+    font-size: 0.68rem;
+    color: var(--muted-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: italic;
+  }
+  .m-img-btn-icon {
+    background: none;
+    border: none;
+    padding: 5px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    color: var(--muted-text);
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+  .m-img-btn-icon:active { background: var(--surface-2); }
+  .m-img-btn-danger { color: var(--danger) !important; }
+
+  /* ── Diário: leitura ─────────────────────────────────────────────────────── */
+  .m-log-preview {
+    font-size: 0.9rem !important;
+    line-height: 1.65 !important;
+    -webkit-line-clamp: 3 !important;
+  }
+  #aiLogPrompt {
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+
+  /* ── Quill Editor mobile ─────────────────────────────────────────────────── */
+  .m-quill-wrap {
+    border: 1.5px solid var(--input-border);
+    border-radius: 10px;
+    background: var(--input-bg);
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .m-quill-wrap:focus-within {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+  .m-quill-wrap .ql-toolbar.ql-snow {
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .m-quill-wrap .ql-toolbar.ql-snow .ql-formats { margin-right: 4px; display: flex; gap: 2px; }
+  .m-quill-wrap .ql-toolbar.ql-snow button {
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; padding: 0; float: none;
+  }
+  .m-quill-wrap .ql-toolbar.ql-snow button:active,
+  .m-quill-wrap .ql-toolbar.ql-snow button.ql-active {
+    background: color-mix(in srgb, var(--primary) 15%, transparent);
+  }
+  .m-quill-wrap .ql-toolbar.ql-snow button svg { width: 16px; height: 16px; }
+  .m-quill-wrap .ql-toolbar.ql-snow .ql-picker { color: var(--text); }
+  .m-quill-wrap .ql-container.ql-snow { border: none; font-family: var(--app-font-family); }
+  .m-quill-wrap .ql-editor {
+    font-size: 1rem;
+    line-height: 1.72;
+    min-height: 130px;
+    padding: 12px 13px;
+    color: var(--input-text);
+  }
+  .m-quill-wrap .ql-editor.ql-blank::before {
+    color: var(--input-placeholder);
+    font-style: normal;
+    font-size: 1rem;
+    left: 13px;
+  }
+  .m-quill-wrap .ql-editor p { margin: 0 0 0.2em; }
+  .m-quill-wrap .ql-editor ul,
+  .m-quill-wrap .ql-editor ol { padding-left: 1.5em; }
+  /* Adapta ícones ao tema */
+  .m-quill-wrap .ql-snow .ql-stroke { stroke: var(--text); }
+  .m-quill-wrap .ql-snow .ql-fill  { fill: var(--text); }
+  .m-quill-wrap .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--primary); }
+  .m-quill-wrap .ql-snow.ql-toolbar button.ql-active .ql-fill  { fill: var(--primary); }
+
+  /* ── Componentes ─────────────────────────────────────────────────────────── */
+  .m-comp-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--surface-2);
+  }
+  .m-comp-row:last-child { border-bottom: none; }
+  .m-comp-info { flex: 1; min-width: 0; }
+  .m-comp-desc { font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .m-comp-meta { font-size: 0.72rem; color: var(--muted-text); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .m-comp-cat {
+    display: inline-block; font-size: 0.65rem; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    border-radius: 999px; padding: 1px 7px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+  }
+  .m-comp-cat-troca  { background: color-mix(in srgb, #f59e0b 14%, transparent); color: #b45309; }
+  .m-comp-cat-subst  { background: color-mix(in srgb, #10b981 12%, transparent); color: #047857; }
+  .m-comp-cat-recom  { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+  .m-drawer-badge {
+    margin-left: auto; background: var(--primary); color: #fff;
+    border-radius: 999px; font-size: 0.65rem; font-weight: 700;
+    padding: 1px 7px; line-height: 1.5; flex-shrink: 0;
+  }
+
+  /* ── Spare parts no modal de componentes ─────────────────────────────────── */
+  .m-spare-section {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .m-spare-section.visible { display: block; }
+  .m-spare-header {
+    background: var(--surface-2);
+    padding: 6px 11px;
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted-text);
+    border-bottom: 1px solid var(--border);
+  }
+  .m-spare-list { max-height: 180px; overflow-y: auto; }
+  .m-spare-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 11px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  }
+  .m-spare-item:last-child { border-bottom: none; }
+  .m-spare-info { flex: 1; min-width: 0; }
+  .m-spare-desc { font-size: 0.82rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-spare-pn   { font-size: 0.68rem; color: var(--muted-text); margin-top: 1px; }
+  .m-spare-use-btn {
+    background: none;
+    border: 1.5px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    color: var(--primary); border-radius: 6px;
+    padding: 4px 10px; font-size: 0.75rem; font-weight: 700;
+    cursor: pointer; font-family: var(--app-font-family); flex-shrink: 0;
+    transition: background .12s;
+  }
+  .m-spare-use-btn:active { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+</style>
+
+<%
+  const status = order.status || 'draft';
+  const badgeClass = status === 'approved' ? 'm-badge-approved' : status === 'valid' ? 'm-badge-valid' : status === 'draft' ? 'm-badge-draft' : 'm-badge-default';
+  const statusLabel = STATUS_LABELS[status] || status;
+  const display = order.service_order_display || ('#' + order.id);
+  const orderEquipmentsJson = JSON.stringify((orderEquipments || []).map(function(e) {
+    return {
+      equipmentId: String(e.equipment_id),
+      refId: e.ref_id,
+      label: [e.type, e.tag_number].filter(Boolean).join(' · ') || 'Equipamento',
+      detail: [e.serial_number, e.manufacturer].filter(Boolean).join(' — '),
+    };
+  }));
+  const availableEquipmentsJson = JSON.stringify((availableEquipments || []).map(function(e) {
+    return {
+      id: String(e.id),
+      label: [e.type, e.tag_number].filter(Boolean).join(' · ') || 'Equipamento',
+      detail: [e.serial_number, e.manufacturer].filter(Boolean).join(' — '),
+    };
+  }));
+  const logsJson = JSON.stringify((dailyLogs || []).map(function(l) {
+    return {
+      id:            String(l.id),
+      activity_date: l.activity_date ? String(l.activity_date).slice(0, 10) : '',
+      title:         l.title || '',
+      content:       l.content || '',
+    };
+  }));
+  const CATEGORY_LABELS = { substituidos: 'Substituídos', Para_troca: 'Para Troca', recomendados: 'Recomendados' };
+  const componentsJson = JSON.stringify((components || []).map(function(c) {
+    return {
+      id:          String(c.id),
+      category:    c.category || '',
+      description: c.description || '',
+      quantity:    c.quantity || 1,
+      partNumber:  c.part_number || '',
+      equipLabel:  [c.equip_type, c.tag_number].filter(Boolean).join(' · ') || '',
+    };
+  }));
+  const sparesByEquipId = (orderSpares || []).reduce(function(acc, s) {
+    var key = String(s.equipment_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push({
+      id:          String(s.id),
+      description: s.description || '',
+      partNumber:  s.part_number || '',
+      quantity:    s.quantity || 1,
+    });
+    return acc;
+  }, {});
+  const sparesByEquipIdJson = JSON.stringify(sparesByEquipId);
+%>
+
+<div class="m-header">
+  <a href="<%= BASE %>" class="m-header-back"><i class="bi bi-arrow-left-short" style="font-size:1.2rem;"></i> OS</a>
+  <img src="/public/img/logo-vextrom.svg" alt="Vextrom" class="m-header-logo" />
+  <h1 class="m-header-title"><%= display %></h1>
+  <button class="m-header-menu-btn" id="menuBtn" aria-label="Menu"><i class="bi bi-list"></i></button>
+</div>
+
+<nav class="m-tabs">
+  <a href="?tab=details"   class="m-tab <%= tab === 'details'   ? 'active' : '' %>"><i class="bi bi-clipboard-text"></i> Detalhes</a>
+  <a href="?tab=timesheet" class="m-tab <%= tab === 'timesheet' ? 'active' : '' %>"><i class="bi bi-clock-history"></i> Timesheet</a>
+  <a href="?tab=logs"      class="m-tab <%= tab === 'logs'      ? 'active' : '' %>"><i class="bi bi-journal-text"></i> Diário</a>
+  <a href="?tab=images"    class="m-tab <%= tab === 'images'    ? 'active' : '' %>"><i class="bi bi-images"></i> Imagens</a>
+</nav>
+
+<div class="m-content">
+  <% if (flash) { %>
+    <div class="m-alert m-alert-<%= flashType === 'danger' ? 'danger' : 'success' %>"><%= flash %></div>
+  <% } %>
+
+  <!-- ── DETALHES ─────────────────────────────────────────────────────────── -->
+  <% if (tab === 'details') { %>
+    <div class="m-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="m-section-title" style="margin-bottom:0;">Informações</div>
+        <span class="m-badge <%= badgeClass %>"><%= statusLabel %></span>
+      </div>
+      <% const fields = [
+        ['OS', order.service_order_number || '-'],
+        ['Título', order.title || '-'],
+        ['Cliente', order.customer_name || '-'],
+        ['Site', order.site_name || '-'],
+        ['Abertura', fmt(order.opening_date || order.created_at)],
+        ['Fechamento', fmt(order.closing_date)],
+      ]; %>
+      <% fields.forEach(function(f) { %>
+        <div class="m-field">
+          <span class="m-field-label"><%= f[0] %></span>
+          <span class="m-field-value"><%= f[1] %></span>
+        </div>
+      <% }); %>
+    </div>
+    <% if (order.description) { %>
+      <div class="m-card">
+        <div class="m-section-title">Descrição</div>
+        <div style="font-size:0.875rem;color:var(--text);line-height:1.6;"><%= stripHtml(order.description) %></div>
+      </div>
+    <% } %>
+
+  <!-- ── TIMESHEET ─────────────────────────────────────────────────────────── -->
+  <% } else if (tab === 'timesheet') { %>
+    <% if (timesheet && timesheet.length > 0) { %>
+      <% timesheet.forEach(function(entry) { %>
+        <div class="m-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+            <div>
+              <div style="font-weight:700;font-size:0.9rem;color:var(--text);display:flex;align-items:center;gap:5px;">
+                <i class="bi bi-calendar3" style="font-size:0.78rem;color:var(--muted-text);"></i>
+                <%= fmt(entry.activity_date) %>
+              </div>
+              <% if (entry.technician_name) { %>
+                <div style="font-size:0.75rem;color:var(--muted-text);margin-top:2px;display:flex;align-items:center;gap:4px;">
+                  <i class="bi bi-person" style="font-size:0.72rem;"></i> <%= entry.technician_name %>
+                </div>
+              <% } %>
+            </div>
+            <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/timesheet/<%= entry.id %>/delete">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+                onclick="return confirm('Remover esta entrada?')" title="Remover entrada">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+          <div class="m-ts-times">
+            <div class="m-ts-cell"><div class="m-ts-cell-lbl">Saída base</div><div class="m-ts-cell-val"><%= entry.check_in_base || '—' %></div></div>
+            <div class="m-ts-cell"><div class="m-ts-cell-lbl">Chegada cliente</div><div class="m-ts-cell-val"><%= entry.check_in_client || '—' %></div></div>
+            <div class="m-ts-cell"><div class="m-ts-cell-lbl">Saída cliente</div><div class="m-ts-cell-val"><%= entry.check_out_client || '—' %></div></div>
+            <div class="m-ts-cell"><div class="m-ts-cell-lbl">Chegada base</div><div class="m-ts-cell-val"><%= entry.check_out_base || '—' %></div></div>
+          </div>
+          <% if (entry.notes) { %>
+            <div style="font-size:0.8rem;color:var(--muted-text);margin-top:8px;padding-top:8px;border-top:1px solid color-mix(in srgb, var(--border) 50%, transparent);"><%= entry.notes %></div>
+          <% } %>
+        </div>
+      <% }); %>
+    <% } else { %>
+      <div class="m-empty">
+        <i class="bi bi-clock-history"></i>
+        <span>Nenhum registro de timesheet.</span>
+      </div>
+    <% } %>
+
+    <div class="m-card" style="margin-top:16px;">
+      <div class="m-section-title">Nova Entrada</div>
+      <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/timesheet">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="m-form-group">
+          <label class="m-label">Data *</label>
+          <input type="date" name="activityDate" class="m-input" required />
+        </div>
+        <div class="m-form-group">
+          <label class="m-label">Técnico</label>
+          <input type="text" name="technicianName" class="m-input" placeholder="Nome do técnico" autocomplete="off" />
+        </div>
+        <div class="m-ts-grid">
+          <div class="m-form-group">
+            <label class="m-label">Saída base</label>
+            <input type="time" name="checkInBase" class="m-input" />
+          </div>
+          <div class="m-form-group">
+            <label class="m-label">Chegada cliente</label>
+            <input type="time" name="checkInClient" class="m-input" />
+          </div>
+          <div class="m-form-group">
+            <label class="m-label">Saída cliente</label>
+            <input type="time" name="checkOutClient" class="m-input" />
+          </div>
+          <div class="m-form-group">
+            <label class="m-label">Chegada base</label>
+            <input type="time" name="checkOutBase" class="m-input" />
+          </div>
+        </div>
+        <div class="m-form-group" style="margin-top:10px;">
+          <label class="m-label">Observações</label>
+          <textarea name="notes" class="m-input m-textarea" placeholder="Observações opcionais..."></textarea>
+        </div>
+        <button type="submit" class="m-btn-primary">Adicionar Entrada</button>
+      </form>
+    </div>
+
+  <!-- ── DIÁRIO ─────────────────────────────────────────────────────────────── -->
+  <% } else if (tab === 'logs') { %>
+    <% if (dailyLogs && dailyLogs.length > 0) { %>
+      <% dailyLogs.forEach(function(log) { %>
+        <div class="m-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:700;font-size:1rem;color:var(--text);">
+                <% if (log.title) { %><%= log.title %><% } else { %><%= fmt(log.activity_date) %><% } %>
+              </div>
+              <% if (log.title) { %>
+                <div style="font-size:0.78rem;color:var(--muted-text);margin-top:3px;display:flex;align-items:center;gap:3px;">
+                  <i class="bi bi-calendar3" style="font-size:0.72rem;"></i> <%= fmt(log.activity_date) %>
+                </div>
+              <% } %>
+            </div>
+            <div style="display:flex;gap:2px;flex-shrink:0;">
+              <button type="button" class="m-img-btn-icon"
+                data-log-edit="<%= log.id %>" title="Editar registro">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/daily-logs/<%= log.id %>/delete">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+                  onclick="return confirm('Remover este log?')" title="Remover registro">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          <% if (log.content) { %>
+            <div class="m-log-preview"><%= stripHtml(log.content) %></div>
+          <% } %>
+        </div>
+      <% }); %>
+    <% } else { %>
+      <div class="m-empty">
+        <i class="bi bi-journal-text"></i>
+        <span>Nenhum registro no diário.</span>
+      </div>
+    <% } %>
+
+    <!-- Formulário novo log -->
+    <div class="m-card" style="margin-top:16px;">
+      <div class="m-section-title">Novo Registro</div>
+      <form method="POST" id="newLogForm" action="<%= BASE %>/orders/<%= order.id %>/daily-logs">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="m-form-group">
+          <label class="m-label">Data *</label>
+          <input type="date" name="activityDate" class="m-input" required />
+        </div>
+        <div class="m-form-group">
+          <label class="m-label">Título</label>
+          <input type="text" name="title" class="m-input" placeholder="Título opcional" autocomplete="off" />
+        </div>
+        <div class="m-form-group">
+          <label class="m-label">Descrição *</label>
+          <div class="m-quill-wrap">
+            <div id="newLogEditor"></div>
+          </div>
+          <input type="hidden" name="content" id="newLogContent" />
+        </div>
+        <button type="button" class="m-btn-ai" id="newLogAiBtn">
+          ✨ Revisar com IA
+        </button>
+        <div style="margin-top:12px;">
+          <button type="submit" class="m-btn-primary">Adicionar Registro</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ── Modal: editar log ─────────────────────────────────────────────────── -->
+    <div id="editLogOverlay" class="m-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+      <div class="m-modal-sheet">
+        <div class="m-modal-title">
+          Editar Registro
+          <button class="m-modal-close" id="editLogClose" aria-label="Fechar">✕</button>
+        </div>
+        <form method="POST" id="editLogForm" action="">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="m-form-group">
+            <label class="m-label">Data *</label>
+            <input type="date" name="activityDate" id="editLogDate" class="m-input" required />
+          </div>
+          <div class="m-form-group">
+            <label class="m-label">Título</label>
+            <input type="text" name="title" id="editLogTitle" class="m-input" placeholder="Título opcional" autocomplete="off" />
+          </div>
+          <div class="m-form-group">
+            <label class="m-label">Descrição *</label>
+            <div class="m-quill-wrap">
+              <div id="editLogEditor"></div>
+            </div>
+            <input type="hidden" name="content" id="editLogContent" />
+          </div>
+          <button type="button" class="m-btn-ai" id="editLogAiBtn">
+            ✨ Revisar com IA
+          </button>
+          <div style="display:flex;gap:10px;margin-top:14px;">
+            <button type="button" class="m-btn-outline" style="flex:1;" id="editLogCancel">Cancelar</button>
+            <button type="submit" class="m-btn-primary" style="flex:2;">Salvar Alterações</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Modal: revisão por IA ─────────────────────────────────────────────── -->
+    <div id="aiLogOverlay" class="m-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+      <div class="m-modal-sheet">
+        <div class="m-modal-title">
+          ✨ Revisar com IA
+          <button class="m-modal-close" id="aiLogClose" aria-label="Fechar">✕</button>
+        </div>
+        <div class="m-form-group">
+          <label class="m-label">Instrução para a IA</label>
+          <textarea id="aiLogPrompt" class="m-input m-textarea" style="min-height:80px;">Revise o texto mantendo o contexto técnico, corrija erros gramaticais e melhore a clareza sem alterar o sentido original.</textarea>
+        </div>
+        <div id="aiLogMsg" style="font-size:0.82rem;color:var(--danger);margin-bottom:8px;display:none;"></div>
+        <button type="button" id="aiLogConfirm" class="m-btn-primary">
+          <span class="m-spinner" id="aiLogSpinner" style="display:none;"></span>
+          <span id="aiLogBtnLabel">Aplicar Revisão</span>
+        </button>
+      </div>
+    </div>
+
+  <!-- ── IMAGENS ─────────────────────────────────────────────────────────────── -->
+  <% } else if (tab === 'images') { %>
+    <% if (images && images.length > 0) { %>
+
+      <div class="m-img-grid">
+        <% images.forEach(function(img) { %>
+          <div class="m-img-card">
+            <img src="/docs/report/img/<%= encodeURIComponent(img.file_path) %>" alt="<%= img.caption || '' %>" loading="lazy" />
+            <span class="m-img-id">#<%= img.ref_id %></span>
+            <div class="m-img-actions">
+              <span class="m-img-caption-text"><%= img.caption || '' %></span>
+              <button type="button" class="m-img-btn-icon"
+                data-img-edit="<%= img.ref_id %>"
+                data-img-caption="<%= img.caption || '' %>"
+                title="Editar legenda">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/images/<%= img.ref_id %>/delete" style="display:flex;">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+                  onclick="return confirm('Remover esta imagem?')" title="Remover">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <div class="m-empty">
+        <i class="bi bi-images"></i>
+        <span>Nenhuma imagem anexada.</span>
+      </div>
+    <% } %>
+
+    <div class="m-card" style="margin-top:16px;">
+      <div class="m-section-title">Adicionar Imagem</div>
+      <div class="m-upload-area" id="uploadArea">
+        <i class="bi bi-camera" style="font-size:2.25rem;display:block;margin-bottom:8px;color:var(--muted-text);opacity:0.7;"></i>
+        <div style="font-weight:600;">Toque para selecionar uma imagem</div>
+        <div style="font-size:0.75rem;margin-top:4px;">JPG, PNG ou WEBP · máx. 10 MB</div>
+        <input type="file" id="imgFile" accept="image/jpeg,image/png,image/webp" />
+      </div>
+      <img id="imgPreview" class="m-upload-preview" style="display:none;" alt="preview" />
+      <div class="m-form-group" style="margin-top:10px;display:none;" id="captionGroup">
+        <label class="m-label">Legenda (opcional)</label>
+        <input type="text" id="imgCaption" class="m-input" placeholder="Descreva a imagem..." autocomplete="off" />
+      </div>
+      <div id="uploadMsg" style="font-size:0.8rem;margin:6px 0;color:var(--muted-text);"></div>
+      <button type="button" id="uploadBtn" class="m-btn-primary" style="display:none;">
+        <span class="m-spinner" id="uploadSpinner" style="display:none;"></span>
+        <span id="uploadBtnLabel">Enviar Imagem</span>
+      </button>
+    </div>
+
+    <!-- Modal: editar legenda ──────────────────────────────────────────────── -->
+    <div id="editCaptionOverlay" class="m-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+      <div class="m-modal-sheet">
+        <div class="m-modal-title">
+          <i class="bi bi-pencil" style="font-size:1rem;"></i> Editar Legenda
+          <button class="m-modal-close" id="editCaptionClose" aria-label="Fechar">✕</button>
+        </div>
+        <form method="POST" id="editCaptionForm" action="">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="m-form-group">
+            <label class="m-label">Legenda</label>
+            <input type="text" name="caption" id="editCaptionInput" class="m-input"
+              placeholder="Descreva a imagem..." autocomplete="off" />
+          </div>
+          <div style="display:flex;gap:10px;margin-top:14px;">
+            <button type="button" class="m-btn-outline" style="flex:1;" id="editCaptionCancel">Cancelar</button>
+            <button type="submit" class="m-btn-primary" style="flex:2;">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<!-- ── Drawer overlay ──────────────────────────────────────────────────────── -->
+<div id="drawerOverlay" class="m-drawer-overlay" aria-hidden="true"></div>
+
+<!-- ── Drawer ─────────────────────────────────────────────────────────────── -->
+<div id="drawer" class="m-drawer" role="dialog" aria-label="Menu da OS">
+  <div class="m-drawer-head">
+    <i class="bi bi-grid" style="font-size:1rem;opacity:.85;"></i>
+    <span class="m-drawer-head-title">Recursos da OS</span>
+    <button class="m-drawer-close-btn" id="drawerClose" aria-label="Fechar"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <div class="m-drawer-body">
+
+    <div class="m-drawer-group">Equipamentos</div>
+    <button type="button" class="m-drawer-item" id="menuEquipments">
+      <i class="bi bi-cpu"></i>
+      <span>Equipamentos<small>Associar / remover da OS</small></span>
+    </button>
+    <button type="button" class="m-drawer-item" id="menuComponents">
+      <i class="bi bi-tools"></i>
+      <span>Componentes<small>Peças substituídas / recomendadas</small></span>
+      <% if ((components || []).length > 0) { %><span class="m-drawer-badge"><%= components.length %></span><% } %>
+    </button>
+
+    <hr class="m-drawer-hr" />
+    <div class="m-drawer-group">Relatório</div>
+    <a href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" class="m-drawer-item">
+      <i class="bi bi-file-earmark-text"></i>
+      <span>Preview A4<small>Abre o relatório em formato A4</small></span>
+    </a>
+    <% if (order.status === 'valid' || order.status === 'approved') { %>
+    <a href="<%= BASE %>/orders/<%= order.id %>/sign" class="m-drawer-item">
+      <i class="bi bi-pen"></i>
+      <span>Assinar<small>Assinar o relatório técnico</small></span>
+    </a>
+    <% } %>
+
+    <% if (order.status === 'draft') { %>
+    <hr class="m-drawer-hr" />
+    <div class="m-drawer-group">Ações</div>
+    <button type="button" class="m-drawer-item" id="menuValidate">
+      <i class="bi bi-patch-check"></i>
+      <span>Validar OS<small>Alterar status para Validada</small></span>
+    </button>
+    <% } %>
+
+    <hr class="m-drawer-hr" />
+    <div class="m-drawer-group">Navegação</div>
+    <a href="<%= BASE %>" class="m-drawer-item">
+      <i class="bi bi-arrow-left-circle"></i>
+      <span>Ordens de Serviço<small>Voltar à lista</small></span>
+    </a>
+  </div>
+</div>
+
+<!-- ── Modal: Equipamentos ────────────────────────────────────────────────── -->
+<div id="equipOverlay" class="m-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="m-modal-sheet">
+    <div class="m-modal-title">
+      <i class="bi bi-cpu" style="font-size:1rem;"></i> Equipamentos
+      <button class="m-modal-close" id="equipClose" aria-label="Fechar">✕</button>
+    </div>
+
+    <div class="m-section-title" style="margin-bottom:8px;">Associados (<%= (orderEquipments||[]).length %>)</div>
+    <div id="equipLinkedList">
+      <% if (orderEquipments && orderEquipments.length > 0) { %>
+        <% orderEquipments.forEach(function(e) { %>
+          <div class="m-equip-row">
+            <div class="m-equip-info">
+              <div class="m-equip-label">#<%= e.ref_id %> <%= [e.type, e.tag_number].filter(Boolean).join(' · ') || 'Equipamento' %></div>
+              <div class="m-equip-detail"><%= [e.serial_number, e.manufacturer].filter(Boolean).join(' — ') %></div>
+            </div>
+            <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/equipments/<%= e.equipment_id %>/detach" style="display:flex;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+                onclick="return confirm('Remover este equipamento da OS?')" title="Remover">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+        <% }); %>
+      <% } else { %>
+        <div class="m-equip-empty">Nenhum equipamento associado.</div>
+      <% } %>
+    </div>
+
+    <hr class="m-divider" style="margin:12px 0;" />
+    <div class="m-section-title" style="margin-bottom:8px;">Adicionar</div>
+    <input type="search" id="equipSearch" class="m-input" placeholder="Buscar por tipo, tag, série..." autocomplete="off" style="margin-bottom:10px;" />
+    <div id="equipAvailList" style="max-height:220px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- ── Modal: Componentes ─────────────────────────────────────────────────── -->
+<div id="compOverlay" class="m-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="m-modal-sheet">
+    <div class="m-modal-title">
+      <i class="bi bi-tools" style="font-size:1rem;"></i> Componentes
+      <button class="m-modal-close" id="compClose" aria-label="Fechar">✕</button>
+    </div>
+
+    <!-- Lista de componentes já adicionados -->
+    <div id="compLinkedList">
+      <% if ((components || []).length > 0) { %>
+        <% components.forEach(function(c) {
+          const catKey = c.category || '';
+          const catLabel = { substituidos: 'Substituídos', Para_troca: 'Para Troca', recomendados: 'Recomendados' }[catKey] || catKey;
+          const catCls = catKey === 'Para_troca' ? 'm-comp-cat-troca' : catKey === 'substituidos' ? 'm-comp-cat-subst' : 'm-comp-cat-recom';
+        %>
+          <div class="m-comp-row">
+            <div class="m-comp-info">
+              <div class="m-comp-desc"><%= c.description || '-' %></div>
+              <div class="m-comp-meta">
+                <span class="m-comp-cat <%= catCls %>"><%= catLabel %></span>
+                <% if (c.quantity && c.quantity > 1) { %><span>Qtd: <%= c.quantity %></span><% } %>
+                <% if (c.part_number) { %><span>P/N: <%= c.part_number %></span><% } %>
+              </div>
+            </div>
+            <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/components/<%= c.id %>/delete" style="display:flex;flex-shrink:0;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button type="submit" class="m-img-btn-icon m-img-btn-danger"
+                onclick="return confirm('Remover este componente?')" title="Remover">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+        <% }); %>
+      <% } else { %>
+        <div class="m-equip-empty" id="compEmpty">Nenhum componente adicionado.</div>
+      <% } %>
+    </div>
+
+    <hr class="m-divider" style="margin:14px 0;" />
+    <div class="m-section-title" style="margin-bottom:10px;">Adicionar Componente</div>
+    <form method="POST" action="<%= BASE %>/orders/<%= order.id %>/components" id="compForm">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="m-form-group">
+        <label class="m-label">Categoria *</label>
+        <select name="category" class="m-input" required>
+          <option value="">Selecionar...</option>
+          <option value="substituidos">Substituídos</option>
+          <option value="Para_troca">Para Troca</option>
+          <option value="recomendados">Recomendados</option>
+        </select>
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Descrição *</label>
+        <input type="text" name="description" class="m-input" placeholder="Ex: Filtro de óleo" required autocomplete="off" />
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Quantidade</label>
+        <input type="number" name="quantity" class="m-input" value="1" min="1" max="9999" />
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Nº de Peça / P/N</label>
+        <input type="text" name="partNumber" class="m-input" placeholder="Opcional" autocomplete="off" />
+      </div>
+      <% if ((orderEquipments || []).length > 0) { %>
+      <div class="m-form-group">
+        <label class="m-label">Equipamento relacionado</label>
+        <select name="equipmentId" class="m-input" id="compEquipSelect">
+          <option value="">Nenhum</option>
+          <% orderEquipments.forEach(function(e) { %>
+            <option value="<%= e.equipment_id %>">
+              <%= [e.type, e.tag_number].filter(Boolean).join(' · ') || ('Equip. #' + e.equipment_id) %>
+            </option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="m-spare-section" id="compSpareSection">
+        <div class="m-spare-header">Peças do equipamento — toque para preencher</div>
+        <div class="m-spare-list" id="compSpareList"></div>
+      </div>
+      <% } %>
+      <button type="submit" class="m-btn-primary" style="margin-top:12px;">Adicionar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Form oculto: validar OS -->
+<form id="validateForm" method="POST" action="<%= BASE %>/orders/<%= order.id %>/validate" style="display:none;">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+(function() {
+  var TAB = '<%= tab %>';
+  var CSRF = '<%= csrfToken %>';
+  var ORDER_ID = '<%= order.id %>';
+  var BASE = '<%= BASE %>';
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     DRAWER (menu sanduíche)
+     ══════════════════════════════════════════════════════════════════════════ */
+  var drawer        = document.getElementById('drawer');
+  var drawerOverlay = document.getElementById('drawerOverlay');
+  var menuBtn       = document.getElementById('menuBtn');
+  var drawerClose   = document.getElementById('drawerClose');
+
+  function openDrawer()  { drawer.classList.add('open'); drawerOverlay.classList.add('open'); document.body.style.overflow = 'hidden'; }
+  function closeDrawer() { drawer.classList.remove('open'); drawerOverlay.classList.remove('open'); document.body.style.overflow = ''; }
+
+  menuBtn.addEventListener('click', openDrawer);
+  drawerClose.addEventListener('click', closeDrawer);
+  drawerOverlay.addEventListener('click', closeDrawer);
+
+  /* ── Validar OS ────────────────────────────────────────────────────────── */
+  var menuValidate = document.getElementById('menuValidate');
+  if (menuValidate) {
+    menuValidate.addEventListener('click', function() {
+      closeDrawer();
+      if (confirm('Validar esta OS? O status será alterado para Validada.')) {
+        document.getElementById('validateForm').submit();
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     EQUIPAMENTOS
+     ══════════════════════════════════════════════════════════════════════════ */
+  var ORDER_EQUIPS = <%- orderEquipmentsJson %>;
+  var AVAIL_EQUIPS = <%- availableEquipmentsJson %>;
+
+  var equipOverlay   = document.getElementById('equipOverlay');
+  var equipClose     = document.getElementById('equipClose');
+  var equipSearch    = document.getElementById('equipSearch');
+  var equipAvailList = document.getElementById('equipAvailList');
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function isLinked(id) {
+    return ORDER_EQUIPS.some(function(e) { return e.equipmentId === String(id); });
+  }
+
+  function renderAvail(q) {
+    q = (q || '').toLowerCase().trim();
+    var items = AVAIL_EQUIPS.filter(function(e) {
+      if (isLinked(e.id)) return false;
+      if (!q) return true;
+      return (e.label + ' ' + e.detail).toLowerCase().includes(q);
+    });
+    if (!items.length) {
+      equipAvailList.innerHTML = '<div class="m-equip-empty">' + (q ? 'Nenhum resultado.' : 'Todos já associados ou nenhum disponível.') + '</div>';
+      return;
+    }
+    equipAvailList.innerHTML = items.map(function(e) {
+      return '<div class="m-equip-row">' +
+        '<div class="m-equip-info">' +
+          '<div class="m-equip-label">' + esc(e.label) + '</div>' +
+          '<div class="m-equip-detail">' + esc(e.detail) + '</div>' +
+        '</div>' +
+        '<form method="POST" action="' + BASE + '/orders/' + ORDER_ID + '/equipments" style="display:flex;">' +
+          '<input type="hidden" name="_csrf" value="' + esc(CSRF) + '" />' +
+          '<input type="hidden" name="equipmentId" value="' + esc(e.id) + '" />' +
+          '<button type="submit" class="m-equip-add-btn">+ Associar</button>' +
+        '</form>' +
+      '</div>';
+    }).join('');
+  }
+
+  var menuEquipments = document.getElementById('menuEquipments');
+  menuEquipments.addEventListener('click', function() {
+    closeDrawer();
+    equipSearch.value = '';
+    renderAvail('');
+    equipOverlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  });
+
+  function closeEquip() { equipOverlay.style.display = 'none'; document.body.style.overflow = ''; }
+  equipClose.addEventListener('click', closeEquip);
+  equipOverlay.addEventListener('click', function(e) { if (e.target === equipOverlay) closeEquip(); });
+  equipSearch.addEventListener('input', function() { renderAvail(this.value); });
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     COMPONENTES
+     ══════════════════════════════════════════════════════════════════════════ */
+  var compOverlay = document.getElementById('compOverlay');
+  var compClose   = document.getElementById('compClose');
+  var menuComponents = document.getElementById('menuComponents');
+
+  menuComponents.addEventListener('click', function() {
+    closeDrawer();
+    compOverlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  });
+
+  function closeComp() { compOverlay.style.display = 'none'; document.body.style.overflow = ''; }
+  compClose.addEventListener('click', closeComp);
+  compOverlay.addEventListener('click', function(e) { if (e.target === compOverlay) closeComp(); });
+
+  /* ── Spare parts por equipamento ────────────────────────────────────────── */
+  var SPARES_BY_EQUIP = <%- sparesByEquipIdJson %>;
+
+  var compEquipSel   = document.getElementById('compEquipSelect');
+  var compSpareSection = document.getElementById('compSpareSection');
+  var compSpareList    = document.getElementById('compSpareList');
+  var compDescInput    = document.querySelector('#compForm [name="description"]');
+  var compPnInput      = document.querySelector('#compForm [name="partNumber"]');
+  var compQtyInput     = document.querySelector('#compForm [name="quantity"]');
+
+  function renderSpares(equipId) {
+    if (!compSpareSection || !compSpareList) return;
+    var spares = equipId ? (SPARES_BY_EQUIP[String(equipId)] || []) : [];
+    if (!spares.length) {
+      compSpareSection.classList.remove('visible');
+      return;
+    }
+    compSpareSection.classList.add('visible');
+    compSpareList.innerHTML = spares.map(function(s) {
+      return '<div class="m-spare-item">' +
+        '<div class="m-spare-info">' +
+          '<div class="m-spare-desc">' + esc(s.description) + '</div>' +
+          (s.partNumber ? '<div class="m-spare-pn">P/N: ' + esc(s.partNumber) + '</div>' : '') +
+        '</div>' +
+        '<button type="button" class="m-spare-use-btn"' +
+          ' data-desc="' + esc(s.description) + '"' +
+          ' data-pn="'   + esc(s.partNumber)  + '"' +
+          ' data-qty="'  + Number(s.quantity)  + '">' +
+          'Usar' +
+        '</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  if (compEquipSel) {
+    compEquipSel.addEventListener('change', function() {
+      renderSpares(this.value);
+    });
+  }
+
+  if (compSpareList) {
+    compSpareList.addEventListener('click', function(e) {
+      var btn = e.target.closest('.m-spare-use-btn');
+      if (!btn) return;
+      if (compDescInput) compDescInput.value = btn.getAttribute('data-desc') || '';
+      if (compPnInput)   compPnInput.value   = btn.getAttribute('data-pn')   || '';
+      if (compQtyInput)  compQtyInput.value  = btn.getAttribute('data-qty')  || '1';
+      if (compDescInput) compDescInput.focus();
+    });
+  }
+
+  /* ── Upload de imagens ──────────────────────────────────────────────────── */
+  if (TAB === 'images') {
+    var uploadArea = document.getElementById('uploadArea');
+    var imgFile    = document.getElementById('imgFile');
+    var imgPreview = document.getElementById('imgPreview');
+    var captionGrp = document.getElementById('captionGroup');
+    var uploadBtn  = document.getElementById('uploadBtn');
+    var uploadMsg  = document.getElementById('uploadMsg');
+    var spinner    = document.getElementById('uploadSpinner');
+    var btnLabel   = document.getElementById('uploadBtnLabel');
+    var selectedFile = null;
+
+    uploadArea.addEventListener('click', function() { imgFile.click(); });
+
+    imgFile.addEventListener('change', function() {
+      selectedFile = imgFile.files[0] || null;
+      if (!selectedFile) return;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        imgPreview.src = e.target.result;
+        imgPreview.style.display = 'block';
+        captionGrp.style.display = 'block';
+        uploadBtn.style.display  = 'block';
+        uploadMsg.textContent    = '';
+      };
+      reader.readAsDataURL(selectedFile);
+    });
+
+    uploadBtn.addEventListener('click', async function() {
+      if (!selectedFile) return;
+      spinner.style.display = 'inline-block';
+      btnLabel.textContent = 'Enviando...';
+      uploadBtn.disabled = true;
+      try {
+        var caption = document.getElementById('imgCaption').value.trim();
+        var buf = await selectedFile.arrayBuffer();
+        var resp = await fetch(BASE + '/orders/' + ORDER_ID + '/images', {
+          method: 'POST',
+          headers: {
+            'Content-Type': selectedFile.type,
+            'X-File-Name':  encodeURIComponent(selectedFile.name),
+            'X-Caption':    encodeURIComponent(caption),
+            'X-CSRF-Token': CSRF,
+          },
+          body: buf,
+          credentials: 'same-origin',
+        });
+        var data = await resp.json();
+        if (data.ok) {
+          window.location.href = BASE + '/orders/' + ORDER_ID + '?tab=images&flash=Imagem+adicionada.';
+        } else {
+          uploadMsg.textContent = data.error || 'Falha ao enviar.';
+          uploadMsg.style.color = 'var(--danger)';
+          spinner.style.display = 'none';
+          btnLabel.textContent = 'Enviar Imagem';
+          uploadBtn.disabled = false;
+        }
+      } catch(e) {
+        uploadMsg.textContent = 'Erro de rede. Tente novamente.';
+        uploadMsg.style.color = 'var(--danger)';
+        spinner.style.display = 'none';
+        btnLabel.textContent = 'Enviar Imagem';
+        uploadBtn.disabled = false;
+      }
+    });
+
+    /* ── Modal: editar legenda ──────────────────────────────────────────────── */
+    var editCaptionOverlay = document.getElementById('editCaptionOverlay');
+    var editCaptionForm    = document.getElementById('editCaptionForm');
+    var editCaptionInput   = document.getElementById('editCaptionInput');
+    var editCaptionClose   = document.getElementById('editCaptionClose');
+    var editCaptionCancel  = document.getElementById('editCaptionCancel');
+
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-img-edit]');
+      if (!btn) return;
+      editCaptionForm.action = BASE + '/orders/' + ORDER_ID + '/images/' + btn.getAttribute('data-img-edit') + '/caption';
+      editCaptionInput.value = btn.getAttribute('data-img-caption') || '';
+      editCaptionOverlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      setTimeout(function() { editCaptionInput.focus(); }, 150);
+    });
+
+    function closeCaptionEdit() {
+      editCaptionOverlay.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+    editCaptionClose.addEventListener('click', closeCaptionEdit);
+    editCaptionCancel.addEventListener('click', closeCaptionEdit);
+    editCaptionOverlay.addEventListener('click', function(e) {
+      if (e.target === editCaptionOverlay) closeCaptionEdit();
+    });
+
+    return;
+  }
+
+  /* ── Diário: Quill + edição + IA ────────────────────────────────────────── */
+  if (TAB !== 'logs') return;
+
+  var LOGS = <%- logsJson %>;
+
+  var TOOLBAR = [
+    ['bold', 'italic', 'underline'],
+    [{ list: 'bullet' }, { list: 'ordered' }],
+    ['clean'],
+  ];
+
+  var quillNew  = new Quill('#newLogEditor',  { theme: 'snow', placeholder: 'Descreva as atividades do dia...', modules: { toolbar: TOOLBAR } });
+  var quillEdit = new Quill('#editLogEditor', { theme: 'snow', placeholder: 'Descrição do registro...', modules: { toolbar: TOOLBAR } });
+
+  /* Popula hidden inputs antes de submeter */
+  document.getElementById('newLogForm').addEventListener('submit', function() {
+    document.getElementById('newLogContent').value = quillNew.root.innerHTML;
+  });
+  document.getElementById('editLogForm').addEventListener('submit', function() {
+    document.getElementById('editLogContent').value = quillEdit.root.innerHTML;
+  });
+
+  var editOverlay = document.getElementById('editLogOverlay');
+  var editForm    = document.getElementById('editLogForm');
+  var editDate    = document.getElementById('editLogDate');
+  var editTitle   = document.getElementById('editLogTitle');
+  var editClose   = document.getElementById('editLogClose');
+  var editCancel  = document.getElementById('editLogCancel');
+  var editAiBtn   = document.getElementById('editLogAiBtn');
+  var newAiBtn    = document.getElementById('newLogAiBtn');
+
+  var aiOverlay   = document.getElementById('aiLogOverlay');
+  var aiClose     = document.getElementById('aiLogClose');
+  var aiPrompt    = document.getElementById('aiLogPrompt');
+  var aiConfirm   = document.getElementById('aiLogConfirm');
+  var aiSpinner   = document.getElementById('aiLogSpinner');
+  var aiBtnLabel  = document.getElementById('aiLogBtnLabel');
+  var aiMsg       = document.getElementById('aiLogMsg');
+
+  var activeQuill = null; /* qual instância Quill a IA vai preencher */
+
+  /* Abre modal de edição */
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-log-edit]');
+    if (!btn) return;
+    var logId = btn.getAttribute('data-log-edit');
+    var log = LOGS.find(function(l) { return l.id === logId; });
+    if (!log) return;
+    editForm.action = BASE + '/orders/' + ORDER_ID + '/daily-logs/' + logId + '/edit';
+    editDate.value  = log.activity_date;
+    editTitle.value = log.title;
+    quillEdit.root.innerHTML = log.content || '';
+    editOverlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    setTimeout(function() { quillEdit.focus(); }, 200);
+  });
+
+  function closeEdit() {
+    editOverlay.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  editClose.addEventListener('click', closeEdit);
+  editCancel.addEventListener('click', closeEdit);
+  editOverlay.addEventListener('click', function(e) { if (e.target === editOverlay) closeEdit(); });
+
+  /* Abre modal de IA */
+  editAiBtn.addEventListener('click', function() { activeQuill = quillEdit; openAiModal(); });
+  newAiBtn.addEventListener('click',  function() { activeQuill = quillNew;  openAiModal(); });
+
+  function openAiModal() {
+    aiMsg.style.display = 'none';
+    aiMsg.textContent = '';
+    aiBtnLabel.textContent = 'Aplicar Revisão';
+    aiSpinner.style.display = 'none';
+    aiConfirm.disabled = false;
+    aiOverlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeAi() {
+    aiOverlay.style.display = 'none';
+    document.body.style.overflow = editOverlay.style.display === 'flex' ? 'hidden' : '';
+  }
+  aiClose.addEventListener('click', closeAi);
+  aiOverlay.addEventListener('click', function(e) { if (e.target === aiOverlay) closeAi(); });
+
+  /* Chama endpoint de revisão */
+  aiConfirm.addEventListener('click', async function() {
+    if (!activeQuill) return;
+    var text = activeQuill.getText().trim();
+    if (!text) { closeAi(); return; }
+    var prompt = aiPrompt.value.trim() || 'Revise o texto mantendo o contexto técnico.';
+
+    aiSpinner.style.display = 'inline-block';
+    aiBtnLabel.textContent = 'Revisando...';
+    aiConfirm.disabled = true;
+    aiMsg.style.display = 'none';
+
+    try {
+      var resp = await fetch('/admin/report-service/orders/' + ORDER_ID + '/daily-logs/revise-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+        body: JSON.stringify({ text: text, html: activeQuill.root.innerHTML, prompt: prompt, preserveFormatting: true }),
+        credentials: 'same-origin',
+      });
+      var data = await resp.json();
+      if (data.ok && data.revisedText) {
+        /* Reconstrói HTML a partir do texto revisado preservando parágrafos */
+        var revised = data.revisedText.trim();
+        var html = revised.startsWith('<')
+          ? revised
+          : '<p>' + revised.replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+        activeQuill.root.innerHTML = html;
+        closeAi();
+      } else {
+        aiMsg.textContent = data.message || 'Falha na revisão.';
+        aiMsg.style.display = 'block';
+        aiSpinner.style.display = 'none';
+        aiBtnLabel.textContent = 'Aplicar Revisão';
+        aiConfirm.disabled = false;
+      }
+    } catch(e) {
+      aiMsg.textContent = 'Erro de rede. Tente novamente.';
+      aiMsg.style.display = 'block';
+      aiSpinner.style.display = 'none';
+      aiBtnLabel.textContent = 'Aplicar Revisão';
+      aiConfirm.disabled = false;
+    }
+  });
+})();
+</script>
+
+<%- include('_foot') %>
