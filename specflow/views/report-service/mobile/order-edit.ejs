@@ -320,9 +320,21 @@
     };
   }));
   const logsJson = JSON.stringify((dailyLogs || []).map(function(l) {
+    const v = l.activity_date;
+    let actDate = '';
+    if (v) {
+      if (v instanceof Date) {
+        const y = v.getUTCFullYear();
+        const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(v.getUTCDate()).padStart(2, '0');
+        actDate = `${y}-${m}-${d}`;
+      } else {
+        actDate = String(v).slice(0, 10);
+      }
+    }
     return {
       id:            String(l.id),
-      activity_date: l.activity_date ? String(l.activity_date).slice(0, 10) : '',
+      activity_date: actDate,
       title:         l.title || '',
       content:       l.content || '',
     };
@@ -1174,12 +1186,16 @@
     var log = LOGS.find(function(l) { return l.id === logId; });
     if (!log) return;
     editForm.action = BASE + '/orders/' + ORDER_ID + '/daily-logs/' + logId + '/edit';
-    editDate.value  = log.activity_date;
     editTitle.value = log.title;
     quillEdit.root.innerHTML = log.content || '';
     editOverlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
-    setTimeout(function() { quillEdit.focus(); }, 200);
+    /* input[type=date] em mobile precisa estar visível para refletir .value */
+    editDate.value = log.activity_date;
+    setTimeout(function() {
+      editDate.value = log.activity_date;
+      quillEdit.focus();
+    }, 150);
   });
 
   function closeEdit() {
