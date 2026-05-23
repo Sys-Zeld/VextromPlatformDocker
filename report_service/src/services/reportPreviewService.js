@@ -418,7 +418,43 @@ function normalizeMeasurementList(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function renderMeasurementsInlineTable(measurementTables, requestedId) {
+const MEAS_CSS_DEFAULTS = {
+  headerBg: "#5d8f3d",
+  headerText: "#ffffff",
+  borderColor: "#87b86a",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  altRowBg: "#f0f5e8",
+  titleFontSize: "16px",
+  titleFontWeight: "700",
+  thFontSize: "11px",
+  thFontWeight: "600",
+  thFontStyle: "normal",
+  thTextAlign: "left",
+  tdFontSize: "12px",
+  tdFontWeight: "normal",
+  tdFontStyle: "normal",
+  tdTextAlign: "left",
+  cellPadding: "5px 9px",
+  thPadding: "6px 9px",
+  titlePadding: "7px 9px"
+};
+
+function generateDefaultCss(tableId) {
+  const v = MEAS_CSS_DEFAULTS;
+  const s = `[data-table-id="${tableId}"]`;
+  const border = `${v.borderWidth} ${v.borderStyle} ${v.borderColor}`;
+  const tdBase = `border:${border};padding:${v.cellPadding};height:22px;vertical-align:top;font-size:${v.tdFontSize};font-weight:${v.tdFontWeight};font-style:${v.tdFontStyle};text-align:${v.tdTextAlign};`;
+  return [
+    `${s} .meas-title{border:${border};background:${v.headerBg};color:${v.headerText};padding:${v.titlePadding};font-weight:${v.titleFontWeight};font-size:${v.titleFontSize};letter-spacing:0.01em;}`,
+    `${s} .meas-th{border:${border};background:${v.headerBg};color:${v.headerText};padding:${v.thPadding};text-align:${v.thTextAlign};font-weight:${v.thFontWeight};font-style:${v.thFontStyle};font-size:${v.thFontSize};letter-spacing:0.04em;}`,
+    `${s} .meas-td{${tdBase}}`,
+    `${s} .meas-td-alt{${tdBase}background:${v.altRowBg};}`,
+    `${s} .meas-notes{font-size:18px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;}`
+  ].join("\n");
+}
+
+function renderMeasurementsInlineTable(measurementTables, requestedId, styleConfig) {
   const id = Number(requestedId);
   const table = normalizeMeasurementList(measurementTables)
     .find((item) => Number(item && item.id) === id);
@@ -430,36 +466,51 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
   const safeColumns = columns.length ? columns : ["Teste", "Valor", "Observacoes"];
   const rows = normalizeMeasurementList(table.rows_json);
 
-  const borderColor = "#87b86a";
-  const thStyle = `border:1px solid ${borderColor};background:#5d8f3d;color:#ffffff;padding:6px 9px;text-align:left;font-weight:600;font-size:11px;letter-spacing:0.04em;`;
-  const tdBase = `border:1px solid ${borderColor};padding:5px 9px;height:22px;vertical-align:top;font-size:12px;`;
-  const tdAlt = `${tdBase}background:#f0f5e8;`;
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
+    : (table.style_config && typeof table.style_config === "object") ? table.style_config
+    : {};
+
+  const extraColumns = Array.isArray(sc.extraColumns) ? sc.extraColumns : [];
+  const totalColCount = safeColumns.length + extraColumns.length;
+  const css = (sc.customCss && typeof sc.customCss === "string") ? sc.customCss : generateDefaultCss(id);
+
+  const extraColHeaders = extraColumns.map((ec, i) => {
+    const colIdx = safeColumns.length + i;
+    return `<th class="meas-th meas-col-${colIdx}"${ec.width ? ` width="${ec.width}"` : ""}>${safeText(ec.header || "")}</th>`;
+  }).join("");
 
   const bodyRows = rows.length
     ? rows.map((row, rowIndex) => {
       const source = Array.isArray(row) ? row : [];
-      const tdStyle = rowIndex % 2 === 0 ? tdBase : tdAlt;
-      const cells = safeColumns.map((_, index) => `<td style="${tdStyle}">${safeText(source[index] || "")}</td>`).join("");
-      return `<tr>${cells}</tr>`;
+      const tdClass = rowIndex % 2 === 0 ? "meas-td" : "meas-td-alt";
+      const cells = safeColumns.map((_, index) =>
+        `<td class="${tdClass} meas-col-${index}">${safeText(source[index] || "")}</td>`
+      ).join("");
+      const extraCells = extraColumns.map((ec, i) => {
+        const colIdx = safeColumns.length + i;
+        return `<td class="${tdClass} meas-col-${colIdx}">${safeText(String(ec.value || ""))}</td>`;
+      }).join("");
+      return `<tr>${cells}${extraCells}</tr>`;
     }).join("")
-    : `<tr><td colspan="${safeColumns.length}" style="${tdBase}color:#6b7280;">Sem medicoes cadastradas.</td></tr>`;
+    : `<tr><td colspan="${totalColCount}" class="meas-td" style="color:#6b7280;">Sem medições cadastradas.</td></tr>`;
 
   const title = decodeHtmlEntities(String(table.title || "")).trim();
   const notes = decodeHtmlEntities(String(table.notes || "")).trim();
   const titleTheadRow = title
-    ? `<tr><th colspan="${safeColumns.length}" style="border:1px solid ${borderColor};background:#5d8f3d;color:#ffffff;padding:7px 9px;font-weight:700;font-size:16px;letter-spacing:0.01em;">${escapeHtml(title)}</th></tr>`
+    ? `<tr><th colspan="${totalColCount}" class="meas-title">${escapeHtml(title)}</th></tr>`
     : "";
   const notesHtml = notes
-    ? `<div class="report-inline-meas-notes" style="font-size:18px;line-height:1.4;margin-top:6px;white-space:pre-wrap;color:#374151;"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
+    ? `<div class="meas-notes"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
     : "";
 
   return `
-    <div class="report-inline-measurements-wrap avoid-break" data-table-title="${escapeHtml(title)}" style="margin:8px 0 14px 0;break-inside:avoid;page-break-inside:avoid;">
+    <div class="report-inline-measurements-wrap avoid-break" data-table-id="${id}" data-table-title="${escapeHtml(title)}" style="margin:8px 0 14px 0;break-inside:avoid;page-break-inside:avoid;">
+      <style>${css}</style>
       <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
         <thead>
           ${titleTheadRow}
           <tr>
-            ${safeColumns.map((column) => `<th style="${thStyle}">${safeText(column)}</th>`).join("")}
+            ${safeColumns.map((column, index) => `<th class="meas-th meas-col-${index}">${safeText(column)}</th>`).join("")}${extraColHeaders}
           </tr>
         </thead>
         <tbody>${bodyRows}</tbody>
@@ -469,29 +520,58 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
   `;
 }
 
-function renderAlberLeituraTable(alberLeituras, requestedId) {
+function generateDefaultAlberCss(leituraId) {
+  const s = `[data-alber-id="${leituraId}"]`;
+  return [
+    `${s} .alber-info-cell{padding:5px 12px;white-space:nowrap;border-right:1px solid #4a7a30;background:#5d8f3d;}`,
+    `${s} .alber-info-label{font-size:9.5px;color:#d4e6c3;margin-right:4px;}`,
+    `${s} .alber-info-value{font-size:11px;color:#ffffff;font-weight:700;}`,
+    `${s} .alber-stat-cell{padding:7px 12px;border-right:1px solid #e2e8f0;background:#ffffff;}`,
+    `${s} .alber-stat-label{font-size:9.5px;color:#64748b;margin-bottom:1px;}`,
+    `${s} .alber-stat-value{font-size:15px;font-weight:700;color:#1e293b;line-height:1.1;}`,
+    `${s} .alber-stat-unit{font-size:10px;font-weight:400;color:#94a3b8;margin-left:2px;}`,
+    `${s} .alber-title-th{border:1px solid #87b86a;background:#5d8f3d;color:#ffffff;padding:7px 8px;font-size:13px;font-weight:600;letter-spacing:0.03em;}`,
+    `${s} .alber-th{border:1px solid #87b86a;background:#5d8f3d;color:#ffffff;padding:6px 8px;font-size:11px;font-weight:600;letter-spacing:0.03em;}`,
+    `${s} .alber-td{border:1px solid #87b86a;padding:5px 8px;font-size:11px;vertical-align:middle;}`,
+    `${s} .alber-td-alt{border:1px solid #87b86a;padding:5px 8px;font-size:11px;vertical-align:middle;background:#f0f5e8;}`,
+    `${s} .alber-overall-th{border:1px solid #87b86a;background:#5d8f3d;color:#ffffff;padding:6px 8px;font-size:11px;font-weight:600;}`,
+    `${s} .alber-overall-td{border:1px solid #87b86a;padding:5px 8px;font-size:11px;vertical-align:middle;}`
+  ].join("\n");
+}
+
+function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
   const id = Number(requestedId);
   const leitura = (Array.isArray(alberLeituras) ? alberLeituras : [])
     .find((item) => Number(item && item.id) === id);
   if (!leitura) return "";
 
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
+    : (leitura.style_config && typeof leitura.style_config === "object") ? leitura.style_config
+    : {};
+  const css = (sc.customCss && typeof sc.customCss === "string") ? sc.customCss : generateDefaultAlberCss(id);
+
   const celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
   const stringLabels = leitura.string_labels && typeof leitura.string_labels === "object"
-    ? leitura.string_labels
-    : {};
+    ? leitura.string_labels : {};
+  const displayConfig = leitura.display_config && typeof leitura.display_config === "object"
+    ? leitura.display_config : {};
+  const hidden = Array.isArray(displayConfig.hiddenColumns) ? displayConfig.hiddenColumns : [];
+  const configuredRanges = displayConfig.ranges && typeof displayConfig.ranges === "object"
+    ? displayConfig.ranges : displayConfig;
 
-  // Group cells by string_num
+  const ALL_COLS = [
+    { key: "string_num", label: "Nº String" },
+    { key: "celula_num", label: "Nº Célula" },
+    { key: "voltagem", label: "Voltagem (V)" },
+    { key: "resistencia_interna", label: "Resist. Interna (mΩ)" }
+  ];
+  const visCols = ALL_COLS.filter((c) => !hidden.includes(c.key));
+  const colCount = visCols.length;
+  const showV = !hidden.includes("voltagem");
+  const showIr = !hidden.includes("resistencia_interna");
+
   const stringNums = [...new Set(celulas.map((c) => Number(c.string_num)))].sort((a, b) => a - b);
 
-  // Palette
-  const borderColor = "#1e5fa8";
-  const thBg = "#1e5fa8";
-  const thColor = "#ffffff";
-  const tdBase = `border:1px solid ${borderColor};padding:5px 8px;font-size:11px;vertical-align:middle;`;
-  const tdAlt = `${tdBase}background:#e8f0fb;`;
-  const thStyle = `border:1px solid ${borderColor};background:${thBg};color:${thColor};padding:6px 8px;font-size:11px;font-weight:600;letter-spacing:0.03em;`;
-
-  // Stats helper (only active cells)
   function statsForCells(cells) {
     const active = cells.filter((c) => c.ativa !== false);
     if (!active.length) return null;
@@ -500,26 +580,87 @@ function renderAlberLeituraTable(alberLeituras, requestedId) {
     const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
     return {
       vMin: Math.min(...volts), vMed: avg(volts), vMax: Math.max(...volts),
-      irMin: Math.min(...irs), irMed: avg(irs), irMax: Math.max(...irs),
-      ativas: active.length, total: cells.length
+      irMin: Math.min(...irs), irMed: avg(irs), irMax: Math.max(...irs)
     };
   }
 
   function fmtV(v) { return v == null ? "-" : Number(v).toFixed(3); }
   function fmtIr(v) { return v == null ? "-" : Math.round(Number(v)).toString(); }
   function fmtAvg(v) { return v == null ? "-" : Number(v).toFixed(2); }
+  function toFiniteNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  function firstFiniteValue(keys) {
+    for (const key of keys) {
+      const value = toFiniteNumber(configuredRanges[key]);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+  function isOutsideRange(value, min, max) {
+    const num = toFiniteNumber(value);
+    if (num === null) return true;
+    if (min !== null && num < min) return true;
+    if (max !== null && num > max) return true;
+    return false;
+  }
+
+  const voltageRange = {
+    min: firstFiniteValue(["voltageMin", "voltagemMin", "tensaoMin", "tensao_min", "minVoltage", "min_voltagem"]),
+    max: firstFiniteValue(["voltageMax", "voltagemMax", "tensaoMax", "tensao_max", "maxVoltage", "max_voltagem"])
+  };
+  const resistanceRange = {
+    min: firstFiniteValue(["resistanceMin", "resistenciaMin", "resistencia_min", "irMin", "ir_min", "minResistance"]),
+    max: firstFiniteValue(["resistanceMax", "resistenciaMax", "resistencia_max", "irMax", "ir_max", "maxResistance"])
+  };
+  const hasConfiguredVoltageRange = voltageRange.min !== null || voltageRange.max !== null;
+  const hasConfiguredResistanceRange = resistanceRange.min !== null || resistanceRange.max !== null;
+  const outOfRangeStyle = ' style="color:#b91c1c;font-weight:700;background:#fee2e2;"';
+
+  const allActive = celulas.filter((c) => c.ativa !== false);
+  const overallStats = statsForCells(allActive);
+  const hTensaoMedia = allActive.length
+    ? (allActive.reduce((s, c) => s + Number(c.voltagem), 0) / allActive.length).toFixed(3) : "-";
+  const hResistMedia = allActive.length
+    ? Math.round(allActive.reduce((s, c) => s + Number(c.resistencia_interna), 0) / allActive.length) : "-";
+  const hTensaoMin = voltageRange.min !== null ? fmtV(voltageRange.min) : (overallStats ? fmtV(overallStats.vMin) : "-");
+  const hTensaoMax = voltageRange.max !== null ? fmtV(voltageRange.max) : (overallStats ? fmtV(overallStats.vMax) : "-");
+  const hResistMin = resistanceRange.min !== null ? fmtIr(resistanceRange.min) : (overallStats ? fmtIr(overallStats.irMin) : "-");
+  const hResistMax = resistanceRange.max !== null ? fmtIr(resistanceRange.max) : (overallStats ? fmtIr(overallStats.irMax) : "-");
+  const effectiveVoltageRange = {
+    min: hasConfiguredVoltageRange ? voltageRange.min : (overallStats ? overallStats.vMin : null),
+    max: hasConfiguredVoltageRange ? voltageRange.max : (overallStats ? overallStats.vMax : null)
+  };
+  const effectiveResistanceRange = {
+    min: hasConfiguredResistanceRange ? resistanceRange.min : (overallStats ? overallStats.irMin : null),
+    max: hasConfiguredResistanceRange ? resistanceRange.max : (overallStats ? overallStats.irMax : null)
+  };
+  const hasVoltageRange = effectiveVoltageRange.min !== null || effectiveVoltageRange.max !== null;
+  const hasResistanceRange = effectiveResistanceRange.min !== null || effectiveResistanceRange.max !== null;
+
+  const infoCell = (label, value) =>
+    `<td class="alber-info-cell"><span class="alber-info-label">${label}</span><strong class="alber-info-value">${value}</strong></td>`;
 
   const headerHtml = `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11px;page-break-inside:avoid;break-inside:avoid;">
-      <tr style="page-break-inside:avoid;break-inside:avoid;">
-        <td style="${tdBase}font-weight:600;">Local:</td>
-        <td style="${tdBase}">${escapeHtml(leitura.location_name || "-")}</td>
-        <td style="${tdBase}font-weight:600;">Banco de Baterias:</td>
-        <td style="${tdBase}">${escapeHtml(leitura.battery_name || "-")}</td>
-        <td style="${tdBase}font-weight:600;">Modelo:</td>
-        <td style="${tdBase}">${escapeHtml(leitura.model_number || "-")}</td>
-        <td style="${tdBase}font-weight:600;">Instalação:</td>
-        <td style="${tdBase}">${escapeHtml(leitura.install_date || "-")}</td>
+    <table data-alber-id="${id}" style="width:100%;border-collapse:collapse;margin-bottom:0;page-break-inside:avoid;break-inside:avoid;">
+      <tr>
+        ${infoCell("Local", escapeHtml(leitura.location_name || "-"))}
+        ${infoCell("Banco", escapeHtml(leitura.battery_name || "-"))}
+        ${leitura.model_number ? infoCell("Modelo", escapeHtml(leitura.model_number)) : ""}
+        ${infoCell("Instalação", escapeHtml(leitura.install_date || "-"))}
+        ${leitura.manufacture_date ? infoCell("Fab. bateria", escapeHtml(leitura.manufacture_date)) : ""}
+      </tr>
+    </table>
+    <table data-alber-id="${id}" style="width:100%;border-collapse:collapse;margin-bottom:0;page-break-inside:avoid;break-inside:avoid;">
+      <tr>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Tensão média</div><div class="alber-stat-value">${escapeHtml(hTensaoMedia)}<span class="alber-stat-unit">V</span></div></td>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Resist. média</div><div class="alber-stat-value">${escapeHtml(String(hResistMedia))}<span class="alber-stat-unit">mΩ</span></div></td>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Tensão mínima</div><div class="alber-stat-value">${escapeHtml(hTensaoMin)}<span class="alber-stat-unit">V</span></div></td>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Tensão máxima</div><div class="alber-stat-value">${escapeHtml(hTensaoMax)}<span class="alber-stat-unit">V</span></div></td>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Resistência mínima</div><div class="alber-stat-value">${escapeHtml(hResistMin)}<span class="alber-stat-unit">mΩ</span></div></td>
+        <td class="alber-stat-cell"><div class="alber-stat-label">Resistência máxima</div><div class="alber-stat-value">${escapeHtml(hResistMax)}<span class="alber-stat-unit">mΩ</span></div></td>
+        <td class="alber-stat-cell" style="border-right:none;"><div class="alber-stat-label">Células ativas</div><div class="alber-stat-value">${allActive.length}<span class="alber-stat-unit">/ ${celulas.length}</span></div></td>
       </tr>
     </table>`;
 
@@ -528,101 +669,79 @@ function renderAlberLeituraTable(alberLeituras, requestedId) {
     const strCells = celulas.filter((c) => Number(c.string_num) === sNum);
     const label = String(stringLabels[String(sNum)] || `Banco ${sNum}`);
     const stats = statsForCells(strCells);
-    if (stats) allStats.push({ label, stats, cells: strCells });
-    const irHighThreshold = stats ? stats.irMed * 1.5 : Infinity;
+    if (stats) allStats.push({ label, stats });
+    const irHighThreshold = stats && showIr ? stats.irMed * 1.5 : Infinity;
 
     const rows = strCells.map((c, idx) => {
-      const tdStyle = idx % 2 === 0 ? tdBase : tdAlt;
-      const isHighIr = c.ativa !== false && Number(c.resistencia_interna) > irHighThreshold;
-      const irStyle = isHighIr
-        ? `${tdStyle}color:#b91c1c;font-weight:700;`
-        : tdStyle;
+      const tdClass = idx % 2 === 0 ? "alber-td" : "alber-td-alt";
+      const voltageOutOfRange = showV && hasVoltageRange && isOutsideRange(c.voltagem, effectiveVoltageRange.min, effectiveVoltageRange.max);
+      const resistanceOutOfRange = showIr && (
+        hasConfiguredResistanceRange
+          ? isOutsideRange(c.resistencia_interna, effectiveResistanceRange.min, effectiveResistanceRange.max)
+          : hasResistanceRange && c.ativa === false
+            ? isOutsideRange(c.resistencia_interna, effectiveResistanceRange.min, effectiveResistanceRange.max)
+          : c.ativa !== false && Number(c.resistencia_interna) > irHighThreshold
+      );
+      const vExtra = voltageOutOfRange ? outOfRangeStyle : "";
+      const irExtra = resistanceOutOfRange ? outOfRangeStyle : "";
       const inativo = c.ativa === false ? `<span style="color:#9ca3af;font-style:italic;"> (inativa)</span>` : "";
-      // page-break-inside:avoid on each row keeps the row intact but lets the table break between rows
-      return `<tr style="page-break-inside:avoid;break-inside:avoid;">
-        <td style="${tdStyle}">${escapeHtml(String(c.string_num))}</td>
-        <td style="${tdStyle}">${escapeHtml(String(c.celula_num))}${inativo}</td>
-        <td style="${tdStyle}">${escapeHtml(fmtV(c.voltagem))}</td>
-        <td style="${irStyle}">${escapeHtml(fmtIr(c.resistencia_interna))}</td>
-      </tr>`;
+      const cells = [
+        !hidden.includes("string_num") ? `<td class="${tdClass}">${escapeHtml(String(c.string_num))}</td>` : "",
+        !hidden.includes("celula_num") ? `<td class="${tdClass}">${escapeHtml(String(c.celula_num))}${inativo}</td>` : "",
+        showV ? `<td class="${tdClass}"${vExtra}>${escapeHtml(fmtV(c.voltagem))}</td>` : "",
+        showIr ? `<td class="${tdClass}"${irExtra}>${escapeHtml(fmtIr(c.resistencia_interna))}</td>` : ""
+      ].join("");
+      return `<tr style="page-break-inside:avoid;break-inside:avoid;">${cells}</tr>`;
     }).join("");
 
-    const statsRow = stats ? `
-      <tr style="background:#dbeafe;page-break-inside:avoid;break-inside:avoid;">
-        <td colspan="2" style="${tdBase}font-weight:700;">Estatísticas ${label}</td>
-        <td style="${tdBase}font-size:10px;">V: ${escapeHtml(fmtV(stats.vMin))} / ${escapeHtml(fmtAvg(stats.vMed))} / ${escapeHtml(fmtV(stats.vMax))}</td>
-        <td style="${tdBase}font-size:10px;">iR: ${escapeHtml(fmtIr(stats.irMin))} / ${escapeHtml(fmtAvg(stats.irMed))} / ${escapeHtml(fmtIr(stats.irMax))}</td>
-      </tr>` : "";
-
-    // No avoid-break on the container — let long tables break across pages.
-    // thead with display:table-header-group repeats the header on every new page.
     return `
-      <div class="alber-string-block" style="margin-bottom:16px;">
-        <table style="width:100%;border-collapse:collapse;font-size:11px;line-height:1.3;page-break-inside:auto;">
+      <div class="alber-string-block" data-alber-id="${id}" style="margin-bottom:16px;">
+        <table style="width:100%;border-collapse:collapse;line-height:1.3;page-break-inside:auto;">
           <thead style="display:table-header-group;">
             <tr style="page-break-inside:avoid;break-inside:avoid;">
-              <th colspan="4" style="${thStyle}font-size:13px;padding:7px 8px;">${escapeHtml(label)}</th>
+              <th colspan="${colCount}" class="alber-title-th">${escapeHtml(label)}</th>
             </tr>
             <tr style="page-break-inside:avoid;break-inside:avoid;">
-              <th style="${thStyle}">Nº String</th>
-              <th style="${thStyle}">Nº Célula</th>
-              <th style="${thStyle}">Voltagem (V)</th>
-              <th style="${thStyle}">Resist. Interna (mΩ)</th>
+              ${visCols.map((col) => `<th class="alber-th">${col.label}</th>`).join("")}
             </tr>
           </thead>
-          <tbody>
-            ${rows}
-            ${statsRow}
-          </tbody>
+          <tbody>${rows}</tbody>
         </table>
       </div>`;
   }).join("");
 
-  // Overall statistics footer
   let overallHtml = "";
-  if (allStats.length > 1) {
-    const allActive = celulas.filter((c) => c.ativa !== false);
+  if (allStats.length > 1 && (showV || showIr)) {
     const oStats = statsForCells(allActive);
     if (oStats) {
+      const overallCols = [
+        "Seção",
+        ...(showV ? ["V mín", "V méd", "V máx"] : []),
+        ...(showIr ? ["iR mín", "iR méd", "iR máx"] : [])
+      ];
       overallHtml = `
-        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
+        <table data-alber-id="${id}" style="width:100%;border-collapse:collapse;margin-top:4px;">
           <thead>
-            <tr><th colspan="7" style="${thStyle}font-size:12px;padding:7px 8px;">Estatísticas Gerais</th></tr>
-            <tr>
-              <th style="${thStyle}">Seção</th>
-              <th style="${thStyle}">V mín</th><th style="${thStyle}">V méd</th><th style="${thStyle}">V máx</th>
-              <th style="${thStyle}">iR mín</th><th style="${thStyle}">iR méd</th><th style="${thStyle}">iR máx</th>
-            </tr>
+            <tr><th colspan="${overallCols.length}" class="alber-overall-th" style="font-size:12px;padding:7px 8px;">Estatísticas Gerais</th></tr>
+            <tr>${overallCols.map((c) => `<th class="alber-overall-th">${c}</th>`).join("")}</tr>
           </thead>
           <tbody>
             ${allStats.map(({ label, stats }, i) => {
-    const td = i % 2 === 0 ? tdBase : tdAlt;
+    const cls = i % 2 === 0 ? "alber-overall-td" : "alber-overall-td alber-td-alt";
     return `<tr>
-                <td style="${td}font-weight:600;">${escapeHtml(label)}</td>
-                <td style="${td}">${escapeHtml(fmtV(stats.vMin))}</td>
-                <td style="${td}">${escapeHtml(fmtAvg(stats.vMed))}</td>
-                <td style="${td}">${escapeHtml(fmtV(stats.vMax))}</td>
-                <td style="${td}">${escapeHtml(fmtIr(stats.irMin))}</td>
-                <td style="${td}">${escapeHtml(fmtAvg(stats.irMed))}</td>
-                <td style="${td}">${escapeHtml(fmtIr(stats.irMax))}</td>
+                <td class="${cls}" style="font-weight:600;">${escapeHtml(label)}</td>
+                ${showV ? `<td class="${cls}">${escapeHtml(fmtV(stats.vMin))}</td><td class="${cls}">${escapeHtml(fmtAvg(stats.vMed))}</td><td class="${cls}">${escapeHtml(fmtV(stats.vMax))}</td>` : ""}
+                ${showIr ? `<td class="${cls}">${escapeHtml(fmtIr(stats.irMin))}</td><td class="${cls}">${escapeHtml(fmtAvg(stats.irMed))}</td><td class="${cls}">${escapeHtml(fmtIr(stats.irMax))}</td>` : ""}
               </tr>`;
   }).join("")}
-            <tr style="background:#bfdbfe;font-weight:700;">
-              <td style="${tdBase}">Geral</td>
-              <td style="${tdBase}">${escapeHtml(fmtV(oStats.vMin))}</td>
-              <td style="${tdBase}">${escapeHtml(fmtAvg(oStats.vMed))}</td>
-              <td style="${tdBase}">${escapeHtml(fmtV(oStats.vMax))}</td>
-              <td style="${tdBase}">${escapeHtml(fmtIr(oStats.irMin))}</td>
-              <td style="${tdBase}">${escapeHtml(fmtAvg(oStats.irMed))}</td>
-              <td style="${tdBase}">${escapeHtml(fmtIr(oStats.irMax))}</td>
-            </tr>
           </tbody>
         </table>`;
     }
   }
 
   return `
-    <div class="report-inline-alber-wrap" data-alber-id="${escapeHtml(String(id))}" style="margin:8px 0 16px 0;">
+    <div class="report-inline-alber-wrap" data-alber-id="${id}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;">
+      <style>${css}</style>
       ${headerHtml}
       ${stringsHtml}
       ${overallHtml}
@@ -1386,5 +1505,9 @@ function buildPreviewModel(payload, options = {}) {
 }
 
 module.exports = {
-  buildPreviewModel
+  buildPreviewModel,
+  renderMeasurementsInlineTable,
+  generateDefaultCss,
+  renderAlberLeituraTable,
+  generateDefaultAlberCss
 };

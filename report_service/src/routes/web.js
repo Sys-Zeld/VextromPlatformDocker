@@ -30,6 +30,9 @@ function createReportServiceWebRouter(deps) {
   );
   router.post("/orders/:id/alber/:leituraId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateAlberLeitura));
   router.post("/orders/:id/alber/:leituraId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteAlberLeitura));
+  router.post("/orders/:id/alber/:leituraId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleAi));
+  router.post("/orders/:id/alber/:leituraId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleDefault));
+  router.post("/orders/:id/alber/:leituraId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleReset));
   router.get("/orders/:id/report-editor", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportOrderEditor));
   router.get("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReportPage));
   router.post("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReport));
@@ -71,6 +74,8 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/components/:componentId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteComponent));
   router.post("/orders/:id/measurements", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveMeasurementTable));
   router.post("/orders/:id/measurements/:measurementId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteMeasurementTable));
+  router.post("/orders/:id/measurements/:measurementId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleAi));
+  router.post("/orders/:id/measurements/:measurementId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleReset));
   router.post("/orders/:id/signatures", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.addSignature));
   router.post("/orders/:id/signatures/:signatureId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSignature));
   router.post("/orders/:id/sign-requests", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createSignRequest));

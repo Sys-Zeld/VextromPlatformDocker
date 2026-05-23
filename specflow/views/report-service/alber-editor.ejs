@@ -19,6 +19,93 @@
   }
 %>
 
+<style>
+  .alber-info-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px 6px 0 0;
+    border-bottom: none;
+    padding: 10px 16px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .alber-info-pair {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 20px;
+  }
+  .alber-info-pair + .alber-info-pair {
+    border-left: 1px solid #e2e8f0;
+    padding-left: 20px;
+  }
+  .alber-info-label { color: #64748b; font-size: 12px; }
+  .alber-info-value { font-weight: 600; color: #1e293b; }
+
+  .alber-stats-row {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-bottom: none;
+    flex-wrap: wrap;
+  }
+  .alber-stat-card {
+    flex: 1;
+    min-width: 120px;
+    max-width: 200px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .alber-stat-label { font-size: 11px; color: #64748b; margin-bottom: 2px; }
+  .alber-stat-value { font-size: 20px; font-weight: 700; color: #1e293b; letter-spacing: -0.02em; }
+  .alber-stat-unit { font-size: 13px; font-weight: 400; color: #64748b; margin-left: 2px; }
+
+  .alber-table-wrap {
+    border: 1px solid #e2e8f0;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+  }
+  .alber-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .alber-table thead th {
+    background: #5d8f3d;
+    color: #fff;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #87b86a;
+    letter-spacing: 0.03em;
+  }
+  .alber-table thead th.alber-th-title {
+    font-size: 13px;
+    padding: 7px 12px;
+    letter-spacing: 0.01em;
+  }
+  .alber-table tbody td {
+    padding: 6px 12px;
+    border: 1px solid #87b86a;
+    color: #1e293b;
+    vertical-align: middle;
+  }
+  .alber-table tbody tr:nth-child(even) td { background: #f0f5e8; }
+  .alber-table tbody tr.alber-stats-tr td {
+    background: #d4e6c3;
+    font-weight: 600;
+    font-size: 11px;
+  }
+</style>
+
 <section class="token-console">
   <div class="card app-card token-hero-card">
     <div class="card-body token-hero-body">
@@ -58,7 +145,7 @@
     </div>
   </div>
 
-  <!-- Leituras list + inline editor -->
+  <!-- Leituras list -->
   <div class="card app-card">
     <div class="card-body p-0">
       <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
@@ -73,40 +160,210 @@
         var celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
         var stringLabels = (leitura.string_labels && typeof leitura.string_labels === 'object') ? leitura.string_labels : {};
         var stringNums = [...new Set(celulas.map(function(c){ return Number(c.string_num); }))].sort(function(a,b){return a-b;});
-        var totalAtivas = celulas.filter(function(c){ return c.ativa !== false; }).length;
+        var ativasCelulas = celulas.filter(function(c){ return c.ativa !== false; });
+        var _dc = (leitura.display_config && typeof leitura.display_config === 'object') ? leitura.display_config : {};
+        var hiddenCols = Array.isArray(_dc.hiddenColumns) ? _dc.hiddenColumns : [];
+        var _ranges = (_dc.ranges && typeof _dc.ranges === 'object') ? _dc.ranges : {};
+        function rangeValue(name, fallback) {
+          var value = _ranges[name];
+          if (value === undefined || value === null || value === '') return fallback;
+          var num = Number(value);
+          return Number.isFinite(num) ? num : fallback;
+        }
+
+        var tensaoMedia = ativasCelulas.length
+          ? (ativasCelulas.reduce(function(s,c){return s+Number(c.voltagem);},0) / ativasCelulas.length).toFixed(3)
+          : "-";
+        var resistMedia = ativasCelulas.length
+          ? Math.round(ativasCelulas.reduce(function(s,c){return s+Number(c.resistencia_interna);},0) / ativasCelulas.length)
+          : "-";
+        var tensoesAtivas = ativasCelulas.map(function(c){ return Number(c.voltagem); });
+        var resistenciasAtivas = ativasCelulas.map(function(c){ return Number(c.resistencia_interna); });
+        var tensaoMin = tensoesAtivas.length ? Math.min.apply(null, tensoesAtivas).toFixed(3) : "-";
+        var tensaoMax = tensoesAtivas.length ? Math.max.apply(null, tensoesAtivas).toFixed(3) : "-";
+        var resistMin = resistenciasAtivas.length ? Math.round(Math.min.apply(null, resistenciasAtivas)) : "-";
+        var resistMax = resistenciasAtivas.length ? Math.round(Math.max.apply(null, resistenciasAtivas)) : "-";
+        var editVoltageMin = rangeValue('voltageMin', '');
+        var editVoltageMax = rangeValue('voltageMax', '');
+        var editResistanceMin = rangeValue('resistanceMin', '');
+        var editResistanceMax = rangeValue('resistanceMax', '');
+        var displayTensaoMin = editVoltageMin !== '' ? Number(editVoltageMin).toFixed(3) : tensaoMin;
+        var displayTensaoMax = editVoltageMax !== '' ? Number(editVoltageMax).toFixed(3) : tensaoMax;
+        var displayResistMin = editResistanceMin !== '' ? Math.round(Number(editResistanceMin)) : resistMin;
+        var displayResistMax = editResistanceMax !== '' ? Math.round(Number(editResistanceMax)) : resistMax;
       %>
-      <div class="border-bottom">
-        <!-- Summary row -->
-        <div class="p-3 d-flex align-items-start gap-3 flex-wrap" style="cursor:pointer;" onclick="toggleAlberEditor(<%= leitura.id %>)">
-          <div class="flex-grow-1">
-            <div class="fw-semibold"><%= leitura.battery_name || leitura.location_name || "-" %> &mdash; <span class="text-muted small"><%= leitura.nome_arquivo || "-" %></span></div>
-            <div class="text-muted small mt-1">
-              Local: <strong><%= leitura.location_name || "-" %></strong> &nbsp;|&nbsp;
-              Modelo: <strong><%= leitura.model_number || "-" %></strong> &nbsp;|&nbsp;
-              Instalação: <strong><%= leitura.install_date || "-" %></strong> &nbsp;|&nbsp;
-              Strings: <strong><%= stringNums.length %></strong> &nbsp;|&nbsp;
-              Células ativas: <strong><%= totalAtivas %></strong> &nbsp;|&nbsp;
-              Importado: <strong><%= formatDateTime(leitura.importado_em) %></strong>
-            </div>
-            <div class="mt-1"><code class="small text-primary">@alber=<%= leitura.id %></code></div>
+      <div class="border-bottom p-3">
+
+        <!-- Info bar -->
+        <div class="alber-info-bar">
+          <div class="alber-info-pair">
+            <span class="alber-info-label">Local</span>
+            <span class="alber-info-value"><%= leitura.location_name || "-" %></span>
           </div>
-          <div class="d-flex gap-2 align-items-center flex-shrink-0">
-            <span class="text-muted small" id="alberEditorChevron_<%= leitura.id %>">▼ Editar</span>
+          <div class="alber-info-pair">
+            <span class="alber-info-label">Banco</span>
+            <span class="alber-info-value"><%= leitura.battery_name || "-" %></span>
+          </div>
+          <% if (leitura.model_number) { %>
+          <div class="alber-info-pair">
+            <span class="alber-info-label">Modelo</span>
+            <span class="alber-info-value"><%= leitura.model_number %></span>
+          </div>
+          <% } %>
+          <div class="alber-info-pair">
+            <span class="alber-info-label">Instalação</span>
+            <span class="alber-info-value"><%= leitura.install_date || "-" %></span>
+          </div>
+          <% if (leitura.manufacture_date) { %>
+          <div class="alber-info-pair">
+            <span class="alber-info-label">Fab. bateria</span>
+            <span class="alber-info-value"><%= leitura.manufacture_date %></span>
+          </div>
+          <% } %>
+          <div class="ms-auto d-flex gap-2 align-items-center">
+            <code class="small text-primary">@alber=<%= leitura.id %></code>
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="alberViewBtn_<%= leitura.id %>" onclick="toggleAlberData(<%= leitura.id %>)">Ver dados</button>
+            <button class="btn btn-outline-success btn-sm alber-style-btn"
+              data-leitura-id="<%= leitura.id %>"
+              data-order-id="<%= order.id %>"
+              data-leitura-name="<%= (leitura.battery_name || ('Leitura #' + leitura.id)).replace(/"/g, '&quot;') %>"
+              data-has-style="<%= leitura.style_config && !leitura._uses_default_alber_style ? '1' : '0' %>">
+              🎨 Visual<% if (leitura.style_config && leitura._uses_default_alber_style) { %> <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span><% } else if (leitura.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="toggleAlberEditor(<%= leitura.id %>)">
+              <span id="alberEditorChevron_<%= leitura.id %>">✏️ Editar</span>
+            </button>
             <form method="post" action="/admin/report-service/orders/<%= order.id %>/alber/<%= leitura.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta leitura Alber e todas as suas células?');">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-              <button class="btn btn-outline-danger btn-sm" type="submit" onclick="event.stopPropagation();">Excluir</button>
+              <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
             </form>
           </div>
         </div>
 
-        <!-- Inline editor (collapsed by default) -->
-        <div id="alberEditor_<%= leitura.id %>" class="d-none border-top bg-light p-3">
+        <!-- Summary cards + data table (ocultos por padrão) -->
+        <div id="alberData_<%= leitura.id %>" class="d-none">
+
+        <!-- Summary cards -->
+        <div class="alber-stats-row">
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Tensão média</div>
+            <div class="alber-stat-value"><%= tensaoMedia %><span class="alber-stat-unit">V</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Resist. média</div>
+            <div class="alber-stat-value"><%= resistMedia %><span class="alber-stat-unit">mΩ</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Tensão mínima</div>
+            <div class="alber-stat-value"><%= displayTensaoMin %><span class="alber-stat-unit">V</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Tensão máxima</div>
+            <div class="alber-stat-value"><%= displayTensaoMax %><span class="alber-stat-unit">V</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Resistência mínima</div>
+            <div class="alber-stat-value"><%= displayResistMin %><span class="alber-stat-unit">mΩ</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Resistência máxima</div>
+            <div class="alber-stat-value"><%= displayResistMax %><span class="alber-stat-unit">mΩ</span></div>
+          </div>
+          <div class="alber-stat-card">
+            <div class="alber-stat-label">Células ativas</div>
+            <div class="alber-stat-value"><%= ativasCelulas.length %><span class="alber-stat-unit">/ <%= celulas.length %></span></div>
+          </div>
+        </div>
+
+        <!-- Data table(s) per string -->
+        <%
+          var allColDefs = [
+            { key: 'string_num',         label: 'String',               width: '90px' },
+            { key: 'celula_num',         label: 'Célula',               width: '90px' },
+            { key: 'voltagem',           label: 'Tensão (V)',           width: '130px' },
+            { key: 'resistencia_interna',label: 'Resist. Interna (mΩ)', width: null }
+          ];
+          var visColDefs = allColDefs.filter(function(col){ return hiddenCols.indexOf(col.key) === -1; });
+          var visCount = visColDefs.length;
+          var showVoltagem = hiddenCols.indexOf('voltagem') === -1;
+          var showResist  = hiddenCols.indexOf('resistencia_interna') === -1;
+          var idColCount2 = visColDefs.filter(function(c){ return c.key === 'string_num' || c.key === 'celula_num'; }).length;
+        %>
+        <div class="alber-table-wrap" id="alberPreview_<%= leitura.id %>">
+          <% stringNums.forEach(function(sNum) {
+            var strCells = celulas.filter(function(c){ return Number(c.string_num) === sNum; });
+            var strAtivas = strCells.filter(function(c){ return c.ativa !== false; });
+            var label = stringLabels[String(sNum)] || ('Banco ' + sNum);
+            var vMedia = strAtivas.length && showVoltagem ? (strAtivas.reduce(function(s,c){return s+Number(c.voltagem);},0)/strAtivas.length).toFixed(3) : null;
+            var irMedia = strAtivas.length && showResist ? Math.round(strAtivas.reduce(function(s,c){return s+Number(c.resistencia_interna);},0)/strAtivas.length) : null;
+          %>
+          <table class="alber-table">
+            <thead>
+              <tr>
+                <th colspan="<%= visCount %>" class="alber-th-title"><%= label %></th>
+              </tr>
+              <tr>
+                <% visColDefs.forEach(function(col) { %>
+                <th<%= col.width ? ' style="width:' + col.width + '"' : '' %>><%= col.label %></th>
+                <% }); %>
+              </tr>
+            </thead>
+            <tbody>
+              <% strCells.forEach(function(c) {
+                var inativo = c.ativa === false;
+              %>
+              <tr<%= inativo ? ' style="opacity:0.45;"' : '' %>>
+                <% if (hiddenCols.indexOf('string_num') === -1) { %><td><%= c.string_num %></td><% } %>
+                <% if (hiddenCols.indexOf('celula_num') === -1) { %><td><%= c.celula_num %><% if (inativo) { %> <span class="text-muted" style="font-size:10px;">(inativa)</span><% } %></td><% } %>
+                <% if (showVoltagem) { %><td><%= Number(c.voltagem).toFixed(3) %></td><% } %>
+                <% if (showResist)  { %><td><%= Number(c.resistencia_interna) %></td><% } %>
+              </tr>
+              <% }); %>
+              <% if (strAtivas.length > 0 && (vMedia !== null || irMedia !== null)) { %>
+              <tr class="alber-stats-tr">
+                <% if (idColCount2 > 0) { %><td colspan="<%= idColCount2 %>">Média — <%= label %></td><% } %>
+                <% if (vMedia  !== null) { %><td><%= vMedia %></td><% } %>
+                <% if (irMedia !== null) { %><td><%= irMedia %></td><% } %>
+              </tr>
+              <% } %>
+            </tbody>
+          </table>
+          <% }); %>
+        </div>
+
+        </div><!-- /alberData -->
+
+        <!-- Inline editor (collapsed) -->
+        <div id="alberEditor_<%= leitura.id %>" class="d-none mt-3 border rounded bg-light p-3">
           <form method="post" action="/admin/report-service/orders/<%= order.id %>/alber/<%= leitura.id %>/update">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <input type="hidden" name="celulas_json" id="celulasJson_<%= leitura.id %>" value="" />
             <input type="hidden" name="string_labels" id="stringLabelsJson_<%= leitura.id %>" value="<%= JSON.stringify(stringLabels).replace(/"/g, '&quot;') %>" />
+            <input type="hidden" name="display_config" id="displayConfigJson_<%= leitura.id %>" value="<%= JSON.stringify(leitura.display_config || {}).replace(/"/g, '&quot;') %>" />
 
-            <!-- Header fields -->
+            <!-- Colunas visíveis -->
+            <div class="mb-3">
+              <label class="form-label form-label-sm fw-semibold mb-1">Colunas visíveis na tabela</label>
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input alber-col-toggle" type="checkbox" id="col_string_<%= leitura.id %>" data-leitura-id="<%= leitura.id %>" data-col="string_num" <%= hiddenCols.indexOf('string_num') === -1 ? 'checked' : '' %> />
+                  <label class="form-check-label small" for="col_string_<%= leitura.id %>">Nº String</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input alber-col-toggle" type="checkbox" id="col_celula_<%= leitura.id %>" data-leitura-id="<%= leitura.id %>" data-col="celula_num" <%= hiddenCols.indexOf('celula_num') === -1 ? 'checked' : '' %> />
+                  <label class="form-check-label small" for="col_celula_<%= leitura.id %>">Nº Célula</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input alber-col-toggle" type="checkbox" id="col_voltagem_<%= leitura.id %>" data-leitura-id="<%= leitura.id %>" data-col="voltagem" <%= hiddenCols.indexOf('voltagem') === -1 ? 'checked' : '' %> />
+                  <label class="form-check-label small" for="col_voltagem_<%= leitura.id %>">Tensão (V)</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input alber-col-toggle" type="checkbox" id="col_resist_<%= leitura.id %>" data-leitura-id="<%= leitura.id %>" data-col="resistencia_interna" <%= hiddenCols.indexOf('resistencia_interna') === -1 ? 'checked' : '' %> />
+                  <label class="form-check-label small" for="col_resist_<%= leitura.id %>">Resist. Interna (mΩ)</label>
+                </div>
+              </div>
+            </div>
+
             <div class="row g-2 mb-3">
               <div class="col-12 col-md-3">
                 <label class="form-label form-label-sm mb-1">Local (Location Name)</label>
@@ -124,9 +381,34 @@
                 <label class="form-label form-label-sm mb-1">Data de Instalação</label>
                 <input class="form-control form-control-sm" name="install_date" value="<%= leitura.install_date || '' %>" />
               </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1">Data de Fabricação da Bateria</label>
+                <input class="form-control form-control-sm" name="manufacture_date" value="<%= leitura.manufacture_date || '' %>" />
+              </div>
             </div>
 
-            <!-- String sections -->
+            <div class="mb-3 border rounded bg-white p-3">
+              <label class="form-label form-label-sm fw-semibold mb-2">Faixas para destaque em vermelho</label>
+              <div class="row g-2">
+                <div class="col-12 col-md-3">
+                  <label class="form-label form-label-sm mb-1">Tensão mínima (V)</label>
+                  <input type="number" step="0.001" class="form-control form-control-sm alber-range-input" data-leitura-id="<%= leitura.id %>" data-range="voltageMin" value="<%= editVoltageMin %>" placeholder="<%= tensaoMin %>" />
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label form-label-sm mb-1">Tensão máxima (V)</label>
+                  <input type="number" step="0.001" class="form-control form-control-sm alber-range-input" data-leitura-id="<%= leitura.id %>" data-range="voltageMax" value="<%= editVoltageMax %>" placeholder="<%= tensaoMax %>" />
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label form-label-sm mb-1">Resistência mínima (mΩ)</label>
+                  <input type="number" step="1" class="form-control form-control-sm alber-range-input" data-leitura-id="<%= leitura.id %>" data-range="resistanceMin" value="<%= editResistanceMin %>" placeholder="<%= resistMin %>" />
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label form-label-sm mb-1">Resistência máxima (mΩ)</label>
+                  <input type="number" step="1" class="form-control form-control-sm alber-range-input" data-leitura-id="<%= leitura.id %>" data-range="resistanceMax" value="<%= editResistanceMax %>" placeholder="<%= resistMax %>" />
+                </div>
+              </div>
+            </div>
+
             <% stringNums.forEach(function(sNum) {
               var strCells = celulas.filter(function(c){ return Number(c.string_num) === sNum; });
               var defaultLabel = 'Banco ' + sNum;
@@ -170,16 +452,416 @@
             <% }); %>
 
             <div class="d-flex justify-content-end gap-2 mt-2">
-              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleAlberEditor(<%= leitura.id %>)">Cancelar</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cancelAlberEditor(<%= leitura.id %>)">Cancelar</button>
               <button type="submit" class="btn btn-primary btn-sm" onclick="syncAlberEditor(<%= leitura.id %>)">Salvar alterações</button>
             </div>
           </form>
         </div>
+
       </div>
       <% }); %>
     </div>
   </div>
 </section>
+
+<style>
+  #aStyleModal .msm-header {
+    background: linear-gradient(135deg, #1e4620 0%, #2d6a2e 100%);
+    color: #fff;
+    padding: 14px 18px 12px;
+    border-radius: 12px 12px 0 0;
+  }
+  #aStyleModal .msm-preview-panel {
+    flex: 1;
+    min-width: 0;
+    background: #f1f5f9;
+    padding: 18px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  #aStyleModal .msm-paper {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.10);
+    padding: 22px 24px;
+    flex: 1;
+    position: relative;
+    min-height: 180px;
+  }
+  #aStyleModal .msm-paper-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    z-index: 5;
+    gap: 8px;
+  }
+  #aStyleModal .msm-ai-panel {
+    width: 310px;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e2e8f0;
+    background: #fff;
+  }
+  #aStyleModal .msm-ai-header {
+    padding: 9px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.02em;
+  }
+  #aStyleModal .msm-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+  #aStyleModal .msm-bubble {
+    max-width: 88%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  #aStyleModal .msm-bubble.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 3px; }
+  #aStyleModal .msm-bubble.ai { align-self: flex-start; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+  #aStyleModal .msm-bubble.err { align-self: flex-start; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-bottom-left-radius: 3px; }
+  #aStyleModal .msm-typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; margin: 0 2px; animation: asmPulse 1.2s ease-in-out infinite; }
+  #aStyleModal .msm-typing span:nth-child(2) { animation-delay: 0.2s; }
+  #aStyleModal .msm-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes asmPulse { 0%,60%,100% { transform:translateY(0);opacity:.4; } 30% { transform:translateY(-5px);opacity:1; } }
+  #aStyleModal .msm-chips { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #f1f5f9; }
+  #aStyleModal .msm-chip { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; user-select: none; }
+  #aStyleModal .msm-chip:hover { background: #e2e8f0; border-color: #94a3b8; color: #1e293b; }
+  #aStyleModal .msm-input-area { padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+  #aStyleModal .msm-unsaved { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,.15); border-radius: 20px; padding: 1px 8px; }
+  #aStyleModal .msm-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; flex-shrink: 0; }
+</style>
+
+<div class="modal fade" id="aStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:12px;overflow:hidden;">
+
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="opacity:.85;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — Tabela Alber</span>
+            <span id="asmUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div id="asmLeituraName" style="font-size:12px;opacity:.6;padding-left:22px;">—</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="asmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="asmOverlay">
+              <div class="spinner-border text-success" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="asmPreviewContent"></div>
+          </div>
+        </div>
+
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 20 20" style="color:#6366f1;flex-shrink:0;"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            Assistente de Design IA
+          </div>
+          <div class="msm-chat-area" id="asmChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Cabeçalho cinza escuro, texto branco">Cabeçalho cinza</span>
+            <span class="msm-chip" data-s="Aumentar fonte das células para 12px">Fonte maior</span>
+            <span class="msm-chip" data-s="Remover o fundo alternado nas linhas, deixar todas brancas">Sem zebra</span>
+            <span class="msm-chip" data-s="Borda preta mais grossa 2px sólida">Borda grossa</span>
+            <span class="msm-chip" data-s="Barra de informações preta com texto branco">Info bar preta</span>
+            <span class="msm-chip" data-s="Cards de estatísticas com fundo verde claro">Stats verde</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="asmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-success btn-sm d-flex align-items-center justify-content-center" id="asmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto d-flex align-items-center gap-1" id="asmResetBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Restaurar padrão
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" id="asmDefaultBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v14H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 9h6M9 13h6"/></svg>
+          Salvar como padrão
+        </button>
+        <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1" id="asmSaveBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          Salvar visual
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var aModal = document.getElementById("aStyleModal");
+    if (!aModal) return;
+    var bsAModal = null;
+    function getAModal() { if (!bsAModal) bsAModal = new bootstrap.Modal(aModal); return bsAModal; }
+
+    var previewContent = document.getElementById("asmPreviewContent");
+    var chatArea      = document.getElementById("asmChatArea");
+    var overlay       = document.getElementById("asmOverlay");
+    var inputEl       = document.getElementById("asmInput");
+    var sendBtn       = document.getElementById("asmSendBtn");
+    var saveBtn       = document.getElementById("asmSaveBtn");
+    var defaultBtn    = document.getElementById("asmDefaultBtn");
+    var resetBtn      = document.getElementById("asmResetBtn");
+    var unsavedBadge  = document.getElementById("asmUnsavedBadge");
+    var leituraName   = document.getElementById("asmLeituraName");
+    var previewHint   = document.getElementById("asmPreviewHint");
+
+    var activeLeituraId = null, activeOrderId = null, pendingStyle = null;
+    var csrfToken = (document.querySelector('[name="_csrf"]') || {}).value || "";
+    var typingEl = null;
+
+    function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+    function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+    function setInputBusy(on) {
+      sendBtn.disabled = on;
+      inputEl.disabled = on;
+      resetBtn.disabled = on;
+      if (defaultBtn) defaultBtn.disabled = on;
+    }
+
+    function addBubble(type, text) {
+      removeTyping();
+      var div = document.createElement("div");
+      div.className = "msm-bubble " + type;
+      div.textContent = text;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return div;
+    }
+
+    function showTyping() {
+      removeTyping();
+      typingEl = document.createElement("div");
+      typingEl.className = "msm-bubble ai msm-typing";
+      typingEl.innerHTML = "<span></span><span></span><span></span>";
+      chatArea.appendChild(typingEl);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+    function updatePreview(html) { previewContent.innerHTML = html || ""; }
+
+    async function callAi(instruction, apply) {
+      var body = new URLSearchParams();
+      body.set("_csrf", csrfToken);
+      if (instruction) body.set("instruction", instruction);
+      if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+      if (apply) body.set("apply", "true");
+      var resp = await fetch(
+        "/admin/report-service/orders/" + activeOrderId + "/alber/" + activeLeituraId + "/style-ai",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+      );
+      if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro na requisição."); }
+      return resp.json();
+    }
+
+    async function callReset() {
+      var body = new URLSearchParams();
+      body.set("_csrf", csrfToken);
+      var resp = await fetch(
+        "/admin/report-service/orders/" + activeOrderId + "/alber/" + activeLeituraId + "/style-reset",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+      );
+      if (!resp.ok) throw new Error("Erro ao resetar.");
+      return resp.json();
+    }
+
+    async function callDefault() {
+      var body = new URLSearchParams();
+      body.set("_csrf", csrfToken);
+      if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+      var resp = await fetch(
+        "/admin/report-service/orders/" + activeOrderId + "/alber/" + activeLeituraId + "/style-default",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+      );
+      if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro ao salvar padrão."); }
+      return resp.json();
+    }
+
+    document.querySelectorAll(".alber-style-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        activeLeituraId = Number(btn.getAttribute("data-leitura-id") || 0);
+        activeOrderId   = btn.getAttribute("data-order-id") || "";
+        pendingStyle    = null;
+        chatArea.innerHTML = "";
+        inputEl.value = "";
+        previewHint.textContent = "";
+        setUnsaved(false);
+        saveBtn.disabled = true;
+        if (defaultBtn) defaultBtn.disabled = true;
+        leituraName.textContent = btn.getAttribute("data-leitura-name") || ("Leitura #" + activeLeituraId);
+        showOverlay(true);
+        getAModal().show();
+        callAi(null, false).then(function (r) {
+          showOverlay(false);
+          updatePreview(r.previewHtml);
+          pendingStyle = r.styleConfig || null;
+          if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+          previewHint.textContent = "Envie uma instrução para personalizar";
+          addBubble("ai", "Olá! Descreva o que deseja alterar: cores do cabeçalho, fontes, bordas, fundo das células, estatísticas. Use os atalhos abaixo ou escreva livremente.");
+        }).catch(function (err) {
+          showOverlay(false);
+          previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+        });
+      });
+    });
+
+    function sendInstruction() {
+      var instruction = (inputEl.value || "").trim();
+      if (!instruction || sendBtn.disabled) return;
+      setInputBusy(true);
+      addBubble("user", instruction);
+      inputEl.value = "";
+      showTyping();
+      previewHint.textContent = "Aplicando alterações...";
+      callAi(instruction, false).then(function (r) {
+        removeTyping();
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        setUnsaved(true);
+        saveBtn.disabled = false;
+        if (defaultBtn) defaultBtn.disabled = false;
+        previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+        addBubble("ai", "Feito! Verifique o preview ao lado. Você pode continuar ajustando ou salvar.");
+      }).catch(function (err) {
+        removeTyping();
+        addBubble("err", "Erro: " + (err.message || "Falha na IA."));
+        previewHint.textContent = "";
+      }).finally(function () {
+        setInputBusy(false);
+        inputEl.focus();
+      });
+    }
+
+    sendBtn.addEventListener("click", sendInstruction);
+    inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+
+    aModal.querySelectorAll(".msm-chip").forEach(function (chip) {
+      chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); });
+    });
+
+    saveBtn.addEventListener("click", function () {
+      if (!pendingStyle) return;
+      setInputBusy(true);
+      saveBtn.disabled = true;
+      callAi(null, true).then(function () {
+        var styleBtn = document.querySelector('.alber-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+        if (styleBtn) {
+          styleBtn.setAttribute("data-has-style", "1");
+          var badge = styleBtn.querySelector(".badge");
+          if (badge) badge.remove();
+          styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
+        }
+        setUnsaved(false);
+        getAModal().hide();
+      }).catch(function (err) {
+        addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente."));
+        saveBtn.disabled = false;
+      }).finally(function () {
+        setInputBusy(false);
+      });
+    });
+
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", function () {
+        if (!pendingStyle) return;
+        setInputBusy(true);
+        defaultBtn.disabled = true;
+        callDefault().then(function (r) {
+          updatePreview(r.previewHtml);
+          pendingStyle = r.styleConfig || pendingStyle;
+          var styleBtn = document.querySelector('.alber-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+          if (styleBtn) {
+            styleBtn.setAttribute("data-has-style", "1");
+            var badge = styleBtn.querySelector(".badge");
+            if (badge) badge.remove();
+            styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
+          }
+          setUnsaved(false);
+          saveBtn.disabled = true;
+          previewHint.textContent = "Estilo salvo como padrão para novas leituras";
+          addBubble("ai", "Este visual foi salvo como padrão. Outras leituras Alber sem estilo próprio usarão este visual automaticamente.");
+        }).catch(function (err) {
+          addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente."));
+        }).finally(function () {
+          setInputBusy(false);
+          defaultBtn.disabled = !pendingStyle;
+        });
+      });
+    }
+
+    resetBtn.addEventListener("click", function () {
+      if (!confirm("Restaurar o visual padrão desta leitura Alber?")) return;
+      setInputBusy(true);
+      callReset().then(function (r) {
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        chatArea.innerHTML = "";
+        setUnsaved(false);
+        saveBtn.disabled = true;
+        if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+        previewHint.textContent = "Visual padrão restaurado";
+        addBubble("ai", "Visual restaurado para o padrão. Envie novas instruções para personalizar novamente.");
+        var styleBtn = document.querySelector('.alber-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+        if (styleBtn) {
+          styleBtn.setAttribute("data-has-style", "0");
+          var badge = styleBtn.querySelector(".badge");
+          if (badge) badge.remove();
+          if (pendingStyle) {
+            styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span>');
+          }
+        }
+      }).catch(function (err) {
+        addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));
+      }).finally(function () {
+        setInputBusy(false);
+      });
+    });
+  })();
+</script>
 
 <script>
 (function () {
@@ -232,19 +914,79 @@
     });
   });
 
-  // ---- Inline editor toggle ----
-  window.toggleAlberEditor = function (leituraId) {
-    var el = document.getElementById("alberEditor_" + leituraId);
-    var ch = document.getElementById("alberEditorChevron_" + leituraId);
-    if (!el) return;
-    var isOpen = !el.classList.contains("d-none");
-    el.classList.toggle("d-none", isOpen);
-    if (ch) ch.textContent = isOpen ? "▼ Editar" : "▲ Fechar";
+  // ---- Toggle dados (cards + tabela) ----
+  window.toggleAlberData = function (leituraId) {
+    var dataEl   = document.getElementById("alberData_"   + leituraId);
+    var editorEl = document.getElementById("alberEditor_" + leituraId);
+    var viewBtn  = document.getElementById("alberViewBtn_" + leituraId);
+    if (!dataEl) return;
+    var showing = !dataEl.classList.contains("d-none");
+    if (!showing) {
+      // Fechar editor se estiver aberto
+      if (editorEl) {
+        editorEl.classList.add("d-none");
+        var ch = document.getElementById("alberEditorChevron_" + leituraId);
+        if (ch) ch.textContent = "✏️ Editar";
+      }
+      dataEl.classList.remove("d-none");
+      if (viewBtn) viewBtn.textContent = "Ocultar dados";
+    } else {
+      dataEl.classList.add("d-none");
+      if (viewBtn) viewBtn.textContent = "Ver dados";
+    }
   };
+
+  // ---- Toggle editor ----
+  window.toggleAlberEditor = function (leituraId) {
+    var editorEl = document.getElementById("alberEditor_" + leituraId);
+    var dataEl   = document.getElementById("alberData_"   + leituraId);
+    var viewBtn  = document.getElementById("alberViewBtn_" + leituraId);
+    var ch       = document.getElementById("alberEditorChevron_" + leituraId);
+    if (!editorEl) return;
+    var editorOpen = !editorEl.classList.contains("d-none");
+    if (!editorOpen) {
+      // Abrir editor: ocultar tabela de dados
+      if (dataEl) {
+        dataEl.classList.add("d-none");
+        if (viewBtn) viewBtn.textContent = "Ver dados";
+      }
+      editorEl.classList.remove("d-none");
+      if (ch) ch.textContent = "✖ Fechar editor";
+    } else {
+      editorEl.classList.add("d-none");
+      if (ch) ch.textContent = "✏️ Editar";
+    }
+  };
+
+  // ---- Cancelar editor: fecha editor e mostra dados ----
+  window.cancelAlberEditor = function (leituraId) {
+    var editorEl = document.getElementById("alberEditor_" + leituraId);
+    var dataEl   = document.getElementById("alberData_"   + leituraId);
+    var viewBtn  = document.getElementById("alberViewBtn_" + leituraId);
+    var ch       = document.getElementById("alberEditorChevron_" + leituraId);
+    if (editorEl) editorEl.classList.add("d-none");
+    if (ch)       ch.textContent = "✏️ Editar";
+    if (dataEl)   { dataEl.classList.remove("d-none"); }
+    if (viewBtn)  { viewBtn.textContent = "Ocultar dados"; }
+  };
+
+  // ---- Auto-expand após salvar ----
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var savedLid = params.get("lid");
+    if (params.get("saved") === "1" && savedLid) {
+      var dataEl  = document.getElementById("alberData_"    + savedLid);
+      var viewBtn = document.getElementById("alberViewBtn_" + savedLid);
+      if (dataEl)  { dataEl.classList.remove("d-none"); }
+      if (viewBtn) { viewBtn.textContent = "Ocultar dados"; }
+      // Scroll suave até o card
+      var card = dataEl && dataEl.closest(".border-bottom");
+      if (card) { setTimeout(function () { card.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }
+    }
+  })();
 
   // ---- Sync editor state to hidden JSON inputs before submit ----
   window.syncAlberEditor = function (leituraId) {
-    // Collect string labels
     var labels = {};
     document.querySelectorAll(".string-label-input[data-leitura-id='" + leituraId + "']").forEach(function (inp) {
       var sNum = inp.getAttribute("data-string-num");
@@ -253,7 +995,31 @@
     var labelsInput = document.getElementById("stringLabelsJson_" + leituraId);
     if (labelsInput) labelsInput.value = JSON.stringify(labels);
 
-    // Collect cell values
+    var hiddenColumns = [];
+    document.querySelectorAll(".alber-col-toggle[data-leitura-id='" + leituraId + "']").forEach(function (chk) {
+      if (!chk.checked) hiddenColumns.push(chk.getAttribute("data-col"));
+    });
+    var displayConfigInput = document.getElementById("displayConfigJson_" + leituraId);
+    if (displayConfigInput) {
+      var displayConfig = {};
+      try { displayConfig = JSON.parse(displayConfigInput.value || "{}") || {}; } catch (_err) { displayConfig = {}; }
+      if (hiddenColumns.length) displayConfig.hiddenColumns = hiddenColumns;
+      else delete displayConfig.hiddenColumns;
+
+      var ranges = {};
+      document.querySelectorAll(".alber-range-input[data-leitura-id='" + leituraId + "']").forEach(function (inp) {
+        var key = inp.getAttribute("data-range");
+        var raw = String(inp.value || "").trim();
+        if (!key || !raw) return;
+        var num = Number(raw);
+        if (Number.isFinite(num)) ranges[key] = num;
+      });
+      if (Object.keys(ranges).length) displayConfig.ranges = ranges;
+      else delete displayConfig.ranges;
+
+      displayConfigInput.value = JSON.stringify(displayConfig);
+    }
+
     var celulas = [];
     document.querySelectorAll("tr[data-leitura-id='" + leituraId + "'][data-string-num]").forEach(function (row) {
       var sNum = Number(row.getAttribute("data-string-num"));

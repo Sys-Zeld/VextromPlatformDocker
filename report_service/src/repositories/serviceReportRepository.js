@@ -1704,6 +1704,19 @@ async function updateMeasurementTable(id, serviceReportId, payload) {
   return result.rows[0] || null;
 }
 
+async function updateMeasurementStyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `
+      UPDATE service_report_measurement_tables
+      SET style_config = $3::jsonb, updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(styleConfig || null)]
+  );
+  return result.rows[0] || null;
+}
+
 async function deleteMeasurementTable(id, serviceReportId = null) {
   const values = [id];
   let query = "DELETE FROM service_report_measurement_tables WHERE id = $1";
@@ -2550,7 +2563,8 @@ async function updateLeituraAlber(id, serviceReportId, payload) {
     await client.query(
       `UPDATE leituras_alber
        SET location_name=$3, battery_name=$4, model_number=$5, install_date=$6,
-           total_strings=$7, string_labels=$8::jsonb
+           total_strings=$7, string_labels=$8::jsonb, display_config=$9::jsonb,
+           manufacture_date=$10
        WHERE id=$1 AND service_report_id=$2`,
       [
         id,
@@ -2560,7 +2574,9 @@ async function updateLeituraAlber(id, serviceReportId, payload) {
         payload.modelNumber || "",
         payload.installDate || "",
         payload.totalStrings || 0,
-        JSON.stringify(payload.stringLabels || {})
+        JSON.stringify(payload.stringLabels || {}),
+        JSON.stringify(payload.displayConfig || {}),
+        payload.manufactureDate || ""
       ]
     );
 
@@ -2586,6 +2602,19 @@ async function updateLeituraAlber(id, serviceReportId, payload) {
   }
 }
 
+async function updateLeituraAlberStyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `
+      UPDATE leituras_alber
+      SET style_config = $3::jsonb
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(styleConfig || null)]
+  );
+  return result.rows[0] || null;
+}
+
 async function deleteLeituraAlber(id, serviceReportId = null) {
   const values = [id];
   let query = "DELETE FROM leituras_alber WHERE id = $1";
@@ -2598,6 +2627,8 @@ async function deleteLeituraAlber(id, serviceReportId = null) {
 }
 
 module.exports = {
+  getAppSetting,
+  upsertAppSetting,
   toInt,
   getAppSetting,
   upsertAppSetting,
@@ -2670,6 +2701,7 @@ module.exports = {
   listMeasurementTables,
   createMeasurementTable,
   updateMeasurementTable,
+  updateMeasurementStyleConfig,
   deleteMeasurementTable,
   listSignatures,
   createSignature,
@@ -2724,6 +2756,7 @@ module.exports = {
   listLeiturasAlberByReport,
   getLeituraAlberById,
   updateLeituraAlber,
+  updateLeituraAlberStyleConfig,
   deleteLeituraAlber
 };
 

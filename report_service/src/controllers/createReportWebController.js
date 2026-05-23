@@ -15,6 +15,13 @@ const { getReportConfigSettings, saveReportConfigSettings } = require("../servic
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
 const { buildPreviewModel } = require("../services/reportPreviewService");
 const {
+  buildAlberStyleConfig,
+  getDefaultAlberStyleConfig,
+  saveDefaultAlberStyleConfig,
+  scopeAlberStyleConfig,
+  applyDefaultAlberStyle
+} = require("../services/measurementStyleService");
+const {
   renderReportPreviewHtml,
   getReportTemplateOptions,
   normalizeReportTemplateKey
@@ -567,6 +574,8 @@ function createReportWebController(deps) {
       acc[key].push(item);
       return acc;
     }, {});
+    const defaultAlberStyleConfig = await getDefaultAlberStyleConfig();
+    const styledAlberLeituras = applyDefaultAlberStyle(alberLeituras, defaultAlberStyleConfig);
 
     return {
       order,
@@ -580,7 +589,7 @@ function createReportWebController(deps) {
       sections,
       components,
       measurements,
-      alberLeituras,
+      alberLeituras: styledAlberLeituras,
       signatures,
       technicians,
       instruments,
@@ -1915,9 +1924,26 @@ function createReportWebController(deps) {
       const batteryName = sanitizeInput(String(body.battery_name || ""));
       const modelNumber = sanitizeInput(String(body.model_number || ""));
       const installDate = sanitizeInput(String(body.install_date || ""));
+      const manufactureDate = sanitizeInput(String(body.manufacture_date || ""));
 
       let stringLabels = {};
       try { stringLabels = JSON.parse(body.string_labels || "{}"); } catch (_e) { /* ignore */ }
+
+      let displayConfig = {};
+      try {
+        const raw = JSON.parse(body.display_config || "{}");
+        const hiddenCols = Array.isArray(raw.hiddenColumns)
+          ? raw.hiddenColumns.filter((c) => ["string_num", "celula_num", "voltagem", "resistencia_interna"].includes(c))
+          : [];
+        if (hiddenCols.length) displayConfig.hiddenColumns = hiddenCols;
+        const sourceRanges = raw.ranges && typeof raw.ranges === "object" ? raw.ranges : {};
+        const ranges = {};
+        ["voltageMin", "voltageMax", "resistanceMin", "resistanceMax"].forEach((key) => {
+          const value = Number(sourceRanges[key]);
+          if (Number.isFinite(value)) ranges[key] = value;
+        });
+        if (Object.keys(ranges).length) displayConfig.ranges = ranges;
+      } catch (_e) { /* ignore */ }
 
       let celulas = [];
       try { celulas = JSON.parse(body.celulas_json || "[]"); } catch (_e) { /* ignore */ }
@@ -1935,12 +1961,14 @@ function createReportWebController(deps) {
         batteryName,
         modelNumber,
         installDate,
+        manufactureDate,
         totalStrings: Object.keys(stringLabels).length || 0,
         stringLabels,
+        displayConfig,
         celulas: normalizedCelulas
       });
 
-      return res.redirect(`/admin/report-service/orders/${orderId}/alber?saved=1`);
+      return res.redirect(`/admin/report-service/orders/${orderId}/alber?saved=1&lid=${leituraId}`);
     },
 
     async deleteAlberLeitura(req, res) {
@@ -2748,6 +2776,156 @@ function createReportWebController(deps) {
         await repo.deleteMeasurementTable(measurementId, report.id);
       }
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async measurementStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const measurementId = Number(req.params.measurementId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(measurementId) || measurementId <= 0) {
+        return res.status(400).json({ error: "ID de ensaio inválido." });
+      }
+
+      const { buildPreviewHtml, applyStyleViaAi, buildStyleConfig, generateDefaultCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const rows = await repo.listMeasurementTables(report.id);
+      const table = rows.find((r) => Number(r.id) === measurementId);
+      if (!table) return res.status(404).json({ error: "Ensaio não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const activeStyle = parsedCurrentStyle || table.style_config || null;
+
+      // Sem instrução: retorna preview atual ou salva estilo pendente
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          const styleConfig = buildStyleConfig(parsedCurrentStyle);
+          await repo.updateMeasurementStyleConfig(measurementId, report.id, styleConfig);
+          const previewHtml = buildPreviewHtml(table, styleConfig);
+          return res.json({ previewHtml, styleConfig });
+        }
+        const styleConfig = buildStyleConfig(activeStyle);
+        const previewHtml = buildPreviewHtml(table, styleConfig);
+        return res.json({ previewHtml, styleConfig });
+      }
+
+      const columnNames = Array.isArray(table.columns_json) ? table.columns_json.map(String) : [];
+      const currentExtraColumns = Array.isArray(activeStyle && activeStyle.extraColumns) ? activeStyle.extraColumns : [];
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultCss(measurementId);
+
+      const newCss = await applyStyleViaAi(currentCss, measurementId, columnNames, String(instruction).trim(), reviseTextWithAi);
+
+      const newStyleConfig = buildStyleConfig({ customCss: newCss, extraColumns: currentExtraColumns });
+      const previewHtml = buildPreviewHtml(table, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateMeasurementStyleConfig(measurementId, report.id, newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async measurementStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const measurementId = Number(req.params.measurementId);
+      if (!Number.isInteger(measurementId) || measurementId <= 0) {
+        return res.status(400).json({ error: "ID de ensaio inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateMeasurementStyleConfig(measurementId, report.id, null);
+      const rows = await repo.listMeasurementTables(report.id);
+      const table = rows.find((r) => Number(r.id) === measurementId);
+      if (!table) return res.status(404).json({ error: "Ensaio não encontrado." });
+      const { buildPreviewHtml } = require("../services/measurementStyleService");
+      const previewHtml = buildPreviewHtml(table, null);
+      return res.json({ previewHtml, styleConfig: null });
+    },
+
+    async alberStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+
+      const { buildAlberPreviewHtml, applyAlberStyleViaAi, generateDefaultAlberCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const leitura = await repo.getLeituraAlberById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Alber não encontrada." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = scopeAlberStyleConfig(await getDefaultAlberStyleConfig(), leituraId);
+      const activeStyle = parsedCurrentStyle || leitura.style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          await repo.updateLeituraAlberStyleConfig(leituraId, report.id, parsedCurrentStyle);
+          const previewHtml = buildAlberPreviewHtml(leitura, parsedCurrentStyle);
+          return res.json({ previewHtml, styleConfig: parsedCurrentStyle });
+        }
+        const previewHtml = buildAlberPreviewHtml(leitura, activeStyle);
+        return res.json({ previewHtml, styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultAlberCss(leituraId);
+      const newCss = await applyAlberStyleViaAi(currentCss, leituraId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = buildAlberPreviewHtml(leitura, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateLeituraAlberStyleConfig(leituraId, report.id, newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async alberStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateLeituraAlberStyleConfig(leituraId, report.id, null);
+      const leitura = await repo.getLeituraAlberById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Alber não encontrada." });
+      const { buildAlberPreviewHtml } = require("../services/measurementStyleService");
+      const defaultStyle = scopeAlberStyleConfig(await getDefaultAlberStyleConfig(), leituraId);
+      const previewHtml = buildAlberPreviewHtml(leitura, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async alberStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const leitura = await repo.getLeituraAlberById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Alber não encontrada." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const { buildAlberPreviewHtml, generateDefaultAlberCss } = require("../services/measurementStyleService");
+      const styleConfig = buildAlberStyleConfig(parsedCurrentStyle || leitura.style_config || { customCss: generateDefaultAlberCss(leituraId) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultAlberStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeAlberStyleConfig(styleConfig, leituraId);
+      await repo.updateLeituraAlberStyleConfig(leituraId, report.id, scopedStyleConfig);
+      const previewHtml = buildAlberPreviewHtml(leitura, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
     },
 
     async createSignRequest(req, res) {

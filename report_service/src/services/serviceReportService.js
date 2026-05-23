@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const repo = require("../repositories/serviceReportRepository");
+const { getDefaultAlberStyleConfig, applyDefaultAlberStyle } = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
 const {
@@ -470,7 +471,11 @@ async function buildReportAggregate(serviceReportId) {
   const sections = await repo.listSections(serviceReportId);
   const components = await repo.listComponents(serviceReportId);
   const measurements = await repo.listMeasurementTables(serviceReportId);
-  const alberLeituras = await repo.listLeiturasAlberByReport(serviceReportId);
+  const [alberRows, defaultAlberStyleConfig] = await Promise.all([
+    repo.listLeiturasAlberByReport(serviceReportId),
+    getDefaultAlberStyleConfig()
+  ]);
+  const alberLeituras = applyDefaultAlberStyle(alberRows, defaultAlberStyleConfig);
   const signatures = await repo.listSignatures(serviceReportId);
   const instruments = await repo.listInstruments(serviceReportId);
   // Equipe tecnica no fluxo atual e vinculada a OS (order-level).
