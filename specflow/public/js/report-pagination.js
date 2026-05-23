@@ -543,6 +543,23 @@
 
     if (splitAt >= children.length) return pageEl;
 
+    // Se o primeiro filho não colocado contém uma tabela (sem avoid-break), tenta
+    // dividi-lo por linhas na página atual antes de criar uma nova página,
+    // evitando espaço desperdiçado (ex: header Alber na página N, strings na N+1).
+    var firstUnplacedIdx = splitAt;
+    while (firstUnplacedIdx < children.length && children[firstUnplacedIdx].nodeType !== Node.ELEMENT_NODE) {
+      firstUnplacedIdx++;
+    }
+    var firstUnplacedEl = firstUnplacedIdx < children.length ? children[firstUnplacedIdx] : null;
+    if (firstUnplacedEl && blockIsTable(firstUnplacedEl) && !blockIsImage(firstUnplacedEl) &&
+        !(firstUnplacedEl.classList && firstUnplacedEl.classList.contains("avoid-break"))) {
+      var afterTablePage = splitTableBlock(firstUnplacedEl.cloneNode(true), pageEl, reportDoc, sectionMeta);
+      if (firstUnplacedIdx + 1 >= children.length) return afterTablePage;
+      var tailRest = block.cloneNode(false);
+      for (var ti = firstUnplacedIdx + 1; ti < children.length; ti += 1) tailRest.appendChild(children[ti].cloneNode(true));
+      return appendBlockWithPagination(tailRest, afterTablePage, reportDoc, null, sectionMeta);
+    }
+
     var rest = block.cloneNode(false);
     for (var j = splitAt; j < children.length; j += 1) rest.appendChild(children[j].cloneNode(true));
     var nextPage = ensureNextPageForSection(pageEl, reportDoc, sectionMeta, true);
@@ -609,7 +626,13 @@
     removeFromFlow(block, currentPage);
 
     if ((block.classList && block.classList.contains("avoid-break")) || blockIsImage(block)) {
-      return moveWholeBlockToNextPage(block, currentPage, reportDoc, sectionMeta);
+      var movedPage = moveWholeBlockToNextPage(block, currentPage, reportDoc, sectionMeta);
+      var movedFlow = getFlow(movedPage);
+      if (blockIsTable(block) && movedFlow && (isFlowOverflowing(movedFlow, movedPage) || isPageOverflowing(movedPage))) {
+        removeFromFlow(block, movedPage);
+        return splitTableBlock(block, movedPage, reportDoc, sectionMeta);
+      }
+      return movedPage;
     }
     if (blockIsTable(block)) return splitTableBlock(block, currentPage, reportDoc, sectionMeta);
     if (blockIsList(block)) return splitListBlock(block, currentPage, reportDoc, sectionMeta);

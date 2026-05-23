@@ -580,6 +580,35 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE service_report_reports ADD COLUMN IF NOT EXISTS toc_tables_config JSONB;`);
   await db.query(`ALTER TABLE service_report_images ADD COLUMN IF NOT EXISTS rotation INTEGER NOT NULL DEFAULT 0;`);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS leituras_alber (
+      id                BIGSERIAL PRIMARY KEY,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      location_name     TEXT NOT NULL DEFAULT '',
+      battery_name      TEXT NOT NULL DEFAULT '',
+      model_number      TEXT NOT NULL DEFAULT '',
+      install_date      TEXT NOT NULL DEFAULT '',
+      total_strings     INT NOT NULL DEFAULT 0,
+      nome_arquivo      TEXT NOT NULL DEFAULT '',
+      string_labels     JSONB NOT NULL DEFAULT '{}',
+      importado_em      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_leituras_alber_report_id ON leituras_alber (service_report_id);`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS celulas_alber (
+      id                  BIGSERIAL PRIMARY KEY,
+      leitura_id          BIGINT NOT NULL REFERENCES leituras_alber(id) ON DELETE CASCADE,
+      string_num          INT NOT NULL,
+      celula_num          INT NOT NULL,
+      voltagem            DOUBLE PRECISION NOT NULL DEFAULT 0,
+      resistencia_interna INT NOT NULL DEFAULT 0,
+      ativa               BOOLEAN NOT NULL DEFAULT TRUE
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_celulas_alber_leitura_id ON celulas_alber (leitura_id);`);
+
   await seedServiceReportEquipment();
   await seedServiceReportSample();
 }

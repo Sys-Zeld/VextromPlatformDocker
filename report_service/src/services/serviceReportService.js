@@ -470,6 +470,7 @@ async function buildReportAggregate(serviceReportId) {
   const sections = await repo.listSections(serviceReportId);
   const components = await repo.listComponents(serviceReportId);
   const measurements = await repo.listMeasurementTables(serviceReportId);
+  const alberLeituras = await repo.listLeiturasAlberByReport(serviceReportId);
   const signatures = await repo.listSignatures(serviceReportId);
   const instruments = await repo.listInstruments(serviceReportId);
   // Equipe tecnica no fluxo atual e vinculada a OS (order-level).
@@ -492,6 +493,7 @@ async function buildReportAggregate(serviceReportId) {
     sections,
     components,
     measurements,
+    alberLeituras,
     signatures,
     instruments,
     technicians,

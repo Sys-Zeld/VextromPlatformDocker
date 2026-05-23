@@ -2441,6 +2441,162 @@ async function deletePdfHistoryEntry(id) {
   return result.rowCount > 0;
 }
 
+// ---- Leituras Alber ----
+
+async function createLeituraAlber(payload) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      `INSERT INTO leituras_alber
+         (service_report_id, location_name, battery_name, model_number, install_date,
+          total_strings, nome_arquivo, string_labels, importado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW())
+       RETURNING *`,
+      [
+        payload.serviceReportId,
+        payload.locationName || "",
+        payload.batteryName || "",
+        payload.modelNumber || "",
+        payload.installDate || "",
+        payload.totalStrings || 0,
+        payload.nomeArquivo || "",
+        JSON.stringify(payload.stringLabels || {})
+      ]
+    );
+    const leitura = res.rows[0];
+
+    const celulas = Array.isArray(payload.celulas) ? payload.celulas : [];
+    for (const c of celulas) {
+      // eslint-disable-next-line no-await-in-loop
+      await client.query(
+        `INSERT INTO celulas_alber (leitura_id, string_num, celula_num, voltagem, resistencia_interna, ativa)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [leitura.id, c.stringNum, c.celulaNum, c.voltagem, c.resistencia, Boolean(c.ativa !== false)]
+      );
+    }
+
+    await client.query("COMMIT");
+    return leitura;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function listLeiturasAlberByReport(serviceReportId) {
+  const result = await db.query(
+    `SELECT la.*,
+       COALESCE(
+         json_agg(
+           json_build_object(
+             'id', ca.id,
+             'string_num', ca.string_num,
+             'celula_num', ca.celula_num,
+             'voltagem', ca.voltagem,
+             'resistencia_interna', ca.resistencia_interna,
+             'ativa', ca.ativa
+           ) ORDER BY ca.string_num ASC, ca.celula_num ASC
+         ) FILTER (WHERE ca.id IS NOT NULL),
+         '[]'::json
+       ) AS celulas
+     FROM leituras_alber la
+     LEFT JOIN celulas_alber ca ON ca.leitura_id = la.id
+     WHERE la.service_report_id = $1
+     GROUP BY la.id
+     ORDER BY la.importado_em DESC`,
+    [serviceReportId]
+  );
+  return result.rows;
+}
+
+async function getLeituraAlberById(id, serviceReportId = null) {
+  const values = [id];
+  let where = "la.id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    where += " AND la.service_report_id = $2";
+  }
+  const result = await db.query(
+    `SELECT la.*,
+       COALESCE(
+         json_agg(
+           json_build_object(
+             'id', ca.id,
+             'string_num', ca.string_num,
+             'celula_num', ca.celula_num,
+             'voltagem', ca.voltagem,
+             'resistencia_interna', ca.resistencia_interna,
+             'ativa', ca.ativa
+           ) ORDER BY ca.string_num ASC, ca.celula_num ASC
+         ) FILTER (WHERE ca.id IS NOT NULL),
+         '[]'::json
+       ) AS celulas
+     FROM leituras_alber la
+     LEFT JOIN celulas_alber ca ON ca.leitura_id = la.id
+     WHERE ${where}
+     GROUP BY la.id`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+async function updateLeituraAlber(id, serviceReportId, payload) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE leituras_alber
+       SET location_name=$3, battery_name=$4, model_number=$5, install_date=$6,
+           total_strings=$7, string_labels=$8::jsonb
+       WHERE id=$1 AND service_report_id=$2`,
+      [
+        id,
+        serviceReportId,
+        payload.locationName || "",
+        payload.batteryName || "",
+        payload.modelNumber || "",
+        payload.installDate || "",
+        payload.totalStrings || 0,
+        JSON.stringify(payload.stringLabels || {})
+      ]
+    );
+
+    // Replace all celulas
+    await client.query(`DELETE FROM celulas_alber WHERE leitura_id = $1`, [id]);
+    const celulas = Array.isArray(payload.celulas) ? payload.celulas : [];
+    for (const c of celulas) {
+      // eslint-disable-next-line no-await-in-loop
+      await client.query(
+        `INSERT INTO celulas_alber (leitura_id, string_num, celula_num, voltagem, resistencia_interna, ativa)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [id, c.stringNum, c.celulaNum, c.voltagem, c.resistencia, Boolean(c.ativa !== false)]
+      );
+    }
+
+    await client.query("COMMIT");
+    return getLeituraAlberById(id, serviceReportId);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteLeituraAlber(id, serviceReportId = null) {
+  const values = [id];
+  let query = "DELETE FROM leituras_alber WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  return result.rowCount > 0;
+}
+
 module.exports = {
   toInt,
   getAppSetting,
@@ -2563,6 +2719,11 @@ module.exports = {
   listPdfHistoryByOrderId,
   getPdfHistoryEntry,
   getLatestPdfHistoryByReportId,
-  deletePdfHistoryEntry
+  deletePdfHistoryEntry,
+  createLeituraAlber,
+  listLeiturasAlberByReport,
+  getLeituraAlberById,
+  updateLeituraAlber,
+  deleteLeituraAlber
 };
 

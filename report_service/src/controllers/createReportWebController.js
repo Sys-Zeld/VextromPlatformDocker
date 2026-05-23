@@ -1,6 +1,7 @@
 const path = require("path");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { parseAlberCsv } = require("../services/alberParserService");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../../db");
 const repo = require("../repositories/serviceReportRepository");
@@ -529,7 +530,8 @@ function createReportWebController(deps) {
       signatures,
       technicians,
       instruments,
-      images
+      images,
+      alberLeituras
     ] = await Promise.all([
       repo.listCustomers(),
       repo.listSites(order.customer_id ? { customerId: order.customer_id } : {}),
@@ -543,7 +545,8 @@ function createReportWebController(deps) {
       repo.listSignatures(report.id),
       repo.listTechniciansByOrder(orderId),
       repo.listInstrumentsByOrder(orderId),
-      repo.listImages(report.id)
+      repo.listImages(report.id),
+      repo.listLeiturasAlberByReport(report.id)
     ]);
     const equipments = (allEquipments || []).filter((equipment) => {
       const sameCustomer = Number(equipment.customer_id) === Number(order.customer_id);
@@ -577,6 +580,7 @@ function createReportWebController(deps) {
       sections,
       components,
       measurements,
+      alberLeituras,
       signatures,
       technicians,
       instruments,
@@ -1825,10 +1829,129 @@ function createReportWebController(deps) {
         order: orderView,
         report: data.report,
         measurements: decodeMeasurements(data.measurements),
+        alberLeituras: data.alberLeituras || [],
         saved: req.query.saved === "1",
         editLocked: req.query.edit_locked === "1",
         csrfToken: req.csrfToken()
       });
+    },
+
+    async alberEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).send("OS nao encontrada.");
+      const orderView = withServiceOrderDisplay(data.order);
+      return res.render("report-service/alber-editor", {
+        pageTitle: `Leituras Alber - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
+        order: orderView,
+        report: data.report,
+        alberLeituras: data.alberLeituras || [],
+        saved: req.query.saved === "1",
+        importError: req.query.import_error ? decodeURIComponent(req.query.import_error) : null,
+        csrfToken: req.csrfToken()
+      });
+    },
+
+    async importAlberFile(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) {
+        return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      }
+
+      const originalName = sanitizeInput(decodeURIComponent(String(req.headers["x-file-name"] || "arquivo.csv")));
+      const rawContent = buffer.toString("utf-8");
+      const parsed = parseAlberCsv(rawContent, originalName);
+
+      if (!parsed.isValid) {
+        return res.status(422).json({ ok: false, error: parsed.errors.join(" | ") });
+      }
+
+      const { header, celulas } = parsed;
+
+      const stringNums = [...new Set(celulas.map((c) => c.stringNum))].sort((a, b) => a - b);
+      const stringLabels = {};
+      stringNums.forEach((sNum) => { stringLabels[String(sNum)] = `Banco ${sNum}`; });
+
+      const leitura = await repo.createLeituraAlber({
+        serviceReportId: report.id,
+        locationName: header.locationName,
+        batteryName: header.batteryName,
+        modelNumber: header.modelNumber,
+        installDate: header.installDate,
+        totalStrings: header.totalStrings,
+        nomeArquivo: header.nomeArquivo,
+        stringLabels,
+        celulas
+      });
+
+      return res.status(201).json({
+        ok: true,
+        data: {
+          id: leitura.id,
+          batteryName: leitura.battery_name,
+          totalStrings: stringNums.length,
+          totalCelulas: parsed.totalCelulas,
+          totalAtivas: parsed.totalAtivas
+        }
+      });
+    },
+
+    async updateAlberLeitura(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.redirect(`/admin/report-service/orders/${orderId}/alber`);
+      }
+
+      const body = req.body || {};
+      const locationName = sanitizeInput(String(body.location_name || ""));
+      const batteryName = sanitizeInput(String(body.battery_name || ""));
+      const modelNumber = sanitizeInput(String(body.model_number || ""));
+      const installDate = sanitizeInput(String(body.install_date || ""));
+
+      let stringLabels = {};
+      try { stringLabels = JSON.parse(body.string_labels || "{}"); } catch (_e) { /* ignore */ }
+
+      let celulas = [];
+      try { celulas = JSON.parse(body.celulas_json || "[]"); } catch (_e) { /* ignore */ }
+
+      const normalizedCelulas = (Array.isArray(celulas) ? celulas : []).map((c) => ({
+        stringNum: Number(c.stringNum || c.string_num || 0),
+        celulaNum: Number(c.celulaNum || c.celula_num || 0),
+        voltagem: Number(c.voltagem || 0),
+        resistencia: Number(c.resistencia || c.resistencia_interna || 0),
+        ativa: c.ativa !== false && c.ativa !== "false"
+      })).filter((c) => c.stringNum > 0 && c.celulaNum > 0);
+
+      await repo.updateLeituraAlber(leituraId, report.id, {
+        locationName,
+        batteryName,
+        modelNumber,
+        installDate,
+        totalStrings: Object.keys(stringLabels).length || 0,
+        stringLabels,
+        celulas: normalizedCelulas
+      });
+
+      return res.redirect(`/admin/report-service/orders/${orderId}/alber?saved=1`);
+    },
+
+    async deleteAlberLeitura(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(leituraId) && leituraId > 0) {
+        await repo.deleteLeituraAlber(leituraId, report.id);
+      }
+      return res.redirect(`/admin/report-service/orders/${orderId}/alber`);
     },
 
     async reportOrderEditor(req, res) {

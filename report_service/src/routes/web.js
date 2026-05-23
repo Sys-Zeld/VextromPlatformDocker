@@ -20,6 +20,16 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/revalidate-os", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.revalidateOrder));
   router.get("/orders/:id", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.orderEditor));
   router.get("/orders/:id/measurements", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementsEditor));
+  router.get("/orders/:id/alber", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberEditor));
+  router.post(
+    "/orders/:id/alber/import",
+    express.raw({ type: ["text/csv", "application/octet-stream", "text/plain"], limit: "5mb" }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.importAlberFile)
+  );
+  router.post("/orders/:id/alber/:leituraId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateAlberLeitura));
+  router.post("/orders/:id/alber/:leituraId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteAlberLeitura));
   router.get("/orders/:id/report-editor", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportOrderEditor));
   router.get("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReportPage));
   router.post("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReport));

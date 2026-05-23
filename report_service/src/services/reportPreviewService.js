@@ -469,6 +469,166 @@ function renderMeasurementsInlineTable(measurementTables, requestedId) {
   `;
 }
 
+function renderAlberLeituraTable(alberLeituras, requestedId) {
+  const id = Number(requestedId);
+  const leitura = (Array.isArray(alberLeituras) ? alberLeituras : [])
+    .find((item) => Number(item && item.id) === id);
+  if (!leitura) return "";
+
+  const celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
+  const stringLabels = leitura.string_labels && typeof leitura.string_labels === "object"
+    ? leitura.string_labels
+    : {};
+
+  // Group cells by string_num
+  const stringNums = [...new Set(celulas.map((c) => Number(c.string_num)))].sort((a, b) => a - b);
+
+  // Palette
+  const borderColor = "#1e5fa8";
+  const thBg = "#1e5fa8";
+  const thColor = "#ffffff";
+  const tdBase = `border:1px solid ${borderColor};padding:5px 8px;font-size:11px;vertical-align:middle;`;
+  const tdAlt = `${tdBase}background:#e8f0fb;`;
+  const thStyle = `border:1px solid ${borderColor};background:${thBg};color:${thColor};padding:6px 8px;font-size:11px;font-weight:600;letter-spacing:0.03em;`;
+
+  // Stats helper (only active cells)
+  function statsForCells(cells) {
+    const active = cells.filter((c) => c.ativa !== false);
+    if (!active.length) return null;
+    const volts = active.map((c) => Number(c.voltagem));
+    const irs = active.map((c) => Number(c.resistencia_interna));
+    const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
+    return {
+      vMin: Math.min(...volts), vMed: avg(volts), vMax: Math.max(...volts),
+      irMin: Math.min(...irs), irMed: avg(irs), irMax: Math.max(...irs),
+      ativas: active.length, total: cells.length
+    };
+  }
+
+  function fmtV(v) { return v == null ? "-" : Number(v).toFixed(3); }
+  function fmtIr(v) { return v == null ? "-" : Math.round(Number(v)).toString(); }
+  function fmtAvg(v) { return v == null ? "-" : Number(v).toFixed(2); }
+
+  const headerHtml = `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11px;page-break-inside:avoid;break-inside:avoid;">
+      <tr style="page-break-inside:avoid;break-inside:avoid;">
+        <td style="${tdBase}font-weight:600;">Local:</td>
+        <td style="${tdBase}">${escapeHtml(leitura.location_name || "-")}</td>
+        <td style="${tdBase}font-weight:600;">Banco de Baterias:</td>
+        <td style="${tdBase}">${escapeHtml(leitura.battery_name || "-")}</td>
+        <td style="${tdBase}font-weight:600;">Modelo:</td>
+        <td style="${tdBase}">${escapeHtml(leitura.model_number || "-")}</td>
+        <td style="${tdBase}font-weight:600;">Instalação:</td>
+        <td style="${tdBase}">${escapeHtml(leitura.install_date || "-")}</td>
+      </tr>
+    </table>`;
+
+  const allStats = [];
+  const stringsHtml = stringNums.map((sNum) => {
+    const strCells = celulas.filter((c) => Number(c.string_num) === sNum);
+    const label = String(stringLabels[String(sNum)] || `Banco ${sNum}`);
+    const stats = statsForCells(strCells);
+    if (stats) allStats.push({ label, stats, cells: strCells });
+    const irHighThreshold = stats ? stats.irMed * 1.5 : Infinity;
+
+    const rows = strCells.map((c, idx) => {
+      const tdStyle = idx % 2 === 0 ? tdBase : tdAlt;
+      const isHighIr = c.ativa !== false && Number(c.resistencia_interna) > irHighThreshold;
+      const irStyle = isHighIr
+        ? `${tdStyle}color:#b91c1c;font-weight:700;`
+        : tdStyle;
+      const inativo = c.ativa === false ? `<span style="color:#9ca3af;font-style:italic;"> (inativa)</span>` : "";
+      // page-break-inside:avoid on each row keeps the row intact but lets the table break between rows
+      return `<tr style="page-break-inside:avoid;break-inside:avoid;">
+        <td style="${tdStyle}">${escapeHtml(String(c.string_num))}</td>
+        <td style="${tdStyle}">${escapeHtml(String(c.celula_num))}${inativo}</td>
+        <td style="${tdStyle}">${escapeHtml(fmtV(c.voltagem))}</td>
+        <td style="${irStyle}">${escapeHtml(fmtIr(c.resistencia_interna))}</td>
+      </tr>`;
+    }).join("");
+
+    const statsRow = stats ? `
+      <tr style="background:#dbeafe;page-break-inside:avoid;break-inside:avoid;">
+        <td colspan="2" style="${tdBase}font-weight:700;">Estatísticas ${label}</td>
+        <td style="${tdBase}font-size:10px;">V: ${escapeHtml(fmtV(stats.vMin))} / ${escapeHtml(fmtAvg(stats.vMed))} / ${escapeHtml(fmtV(stats.vMax))}</td>
+        <td style="${tdBase}font-size:10px;">iR: ${escapeHtml(fmtIr(stats.irMin))} / ${escapeHtml(fmtAvg(stats.irMed))} / ${escapeHtml(fmtIr(stats.irMax))}</td>
+      </tr>` : "";
+
+    // No avoid-break on the container — let long tables break across pages.
+    // thead with display:table-header-group repeats the header on every new page.
+    return `
+      <div class="alber-string-block" style="margin-bottom:16px;">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;line-height:1.3;page-break-inside:auto;">
+          <thead style="display:table-header-group;">
+            <tr style="page-break-inside:avoid;break-inside:avoid;">
+              <th colspan="4" style="${thStyle}font-size:13px;padding:7px 8px;">${escapeHtml(label)}</th>
+            </tr>
+            <tr style="page-break-inside:avoid;break-inside:avoid;">
+              <th style="${thStyle}">Nº String</th>
+              <th style="${thStyle}">Nº Célula</th>
+              <th style="${thStyle}">Voltagem (V)</th>
+              <th style="${thStyle}">Resist. Interna (mΩ)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            ${statsRow}
+          </tbody>
+        </table>
+      </div>`;
+  }).join("");
+
+  // Overall statistics footer
+  let overallHtml = "";
+  if (allStats.length > 1) {
+    const allActive = celulas.filter((c) => c.ativa !== false);
+    const oStats = statsForCells(allActive);
+    if (oStats) {
+      overallHtml = `
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
+          <thead>
+            <tr><th colspan="7" style="${thStyle}font-size:12px;padding:7px 8px;">Estatísticas Gerais</th></tr>
+            <tr>
+              <th style="${thStyle}">Seção</th>
+              <th style="${thStyle}">V mín</th><th style="${thStyle}">V méd</th><th style="${thStyle}">V máx</th>
+              <th style="${thStyle}">iR mín</th><th style="${thStyle}">iR méd</th><th style="${thStyle}">iR máx</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allStats.map(({ label, stats }, i) => {
+    const td = i % 2 === 0 ? tdBase : tdAlt;
+    return `<tr>
+                <td style="${td}font-weight:600;">${escapeHtml(label)}</td>
+                <td style="${td}">${escapeHtml(fmtV(stats.vMin))}</td>
+                <td style="${td}">${escapeHtml(fmtAvg(stats.vMed))}</td>
+                <td style="${td}">${escapeHtml(fmtV(stats.vMax))}</td>
+                <td style="${td}">${escapeHtml(fmtIr(stats.irMin))}</td>
+                <td style="${td}">${escapeHtml(fmtAvg(stats.irMed))}</td>
+                <td style="${td}">${escapeHtml(fmtIr(stats.irMax))}</td>
+              </tr>`;
+  }).join("")}
+            <tr style="background:#bfdbfe;font-weight:700;">
+              <td style="${tdBase}">Geral</td>
+              <td style="${tdBase}">${escapeHtml(fmtV(oStats.vMin))}</td>
+              <td style="${tdBase}">${escapeHtml(fmtAvg(oStats.vMed))}</td>
+              <td style="${tdBase}">${escapeHtml(fmtV(oStats.vMax))}</td>
+              <td style="${tdBase}">${escapeHtml(fmtIr(oStats.irMin))}</td>
+              <td style="${tdBase}">${escapeHtml(fmtAvg(oStats.irMed))}</td>
+              <td style="${tdBase}">${escapeHtml(fmtIr(oStats.irMax))}</td>
+            </tr>
+          </tbody>
+        </table>`;
+    }
+  }
+
+  return `
+    <div class="report-inline-alber-wrap" data-alber-id="${escapeHtml(String(id))}" style="margin:8px 0 16px 0;">
+      ${headerHtml}
+      ${stringsHtml}
+      ${overallHtml}
+    </div>`;
+}
+
 function normalizeInlineCellValue(value, fallback = "-") {
   const raw = String(value == null ? "" : value).trim();
   return raw || fallback;
@@ -873,7 +1033,7 @@ function liftBlockTagFromParagraph(html, tagSrc, inlineReplacer) {
   });
 }
 
-function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = []) {
+function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = []) {
   const source = String(contentHtml || "");
   if (!source) return "<p><br></p>";
   const opts = {
@@ -933,7 +1093,12 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const withMeasurementsP = liftBlockTagFromParagraph(r6, measurementsSrc, measurementsFn);
   const r7 = mergeSameTitleMeasurementTables(withMeasurementsP.replace(new RegExp(measurementsSrc, "gi"), measurementsFn));
 
-  if (!opts.expandDailyLogTags) return r7;
+  const alberSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*alber(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const alberFn = (_match, rawId) => renderAlberLeituraTable(alberLeituras, rawId) || _match;
+  const withAlberP = liftBlockTagFromParagraph(r7, alberSrc, alberFn);
+  const r7b = withAlberP.replace(new RegExp(alberSrc, "gi"), alberFn);
+
+  if (!opts.expandDailyLogTags) return r7b;
 
   const nestedContext = {
     imageById,
@@ -946,6 +1111,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     orderEquipments,
     siteData,
     measurementTables,
+    alberLeituras,
     imageLabel: opts.imageLabel || "Imagem"
   };
 
@@ -956,7 +1122,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     if (!Number.isInteger(id) || id <= 0) return _match;
     return renderDailyLogInlineItem(dailyLogsById.get(id), id, nestedContext);
   };
-  const withDailyLogsP = liftBlockTagFromParagraph(r7, dailyLogTagSrc, dailyLogReplacer);
+  const withDailyLogsP = liftBlockTagFromParagraph(r7b, dailyLogTagSrc, dailyLogReplacer);
   const withDailyLogs = withDailyLogsP.replace(new RegExp(dailyLogTagSrc, "gi"), dailyLogReplacer);
 
   // @descricaodia (all logs): lift out of <p> wrappers, then inline fallback
@@ -1052,6 +1218,7 @@ function buildPreviewModel(payload, options = {}) {
   );
   const componentItems = Array.isArray(payload.components) ? payload.components : [];
   const measurementTables = Array.isArray(payload.measurements) ? payload.measurements : [];
+  const alberLeituras = Array.isArray(payload.alberLeituras) ? payload.alberLeituras : [];
   const timesheetItems = Array.isArray(payload.timesheet) ? payload.timesheet : [];
   const technicianItems = Array.isArray(payload.technicians) ? payload.technicians : [];
   const dailyLogsOrdered = (Array.isArray(payload.dailyLogs) ? payload.dailyLogs : [])
@@ -1122,7 +1289,8 @@ function buildPreviewModel(payload, options = {}) {
           technicianItems,
           orderEquipments,
           siteData,
-          measurementTables
+          measurementTables,
+          alberLeituras
         ),
         content_html_preview: injectTaggedImagesInHtml(
           section.content_html || "<p><br></p>",
@@ -1136,7 +1304,8 @@ function buildPreviewModel(payload, options = {}) {
           technicianItems,
           orderEquipments,
           siteData,
-          measurementTables
+          measurementTables,
+          alberLeituras
         ),
         section_title_html: section.section_title_html || `<p>${section.section_title || "-"}</p>`,
         section_title_text: section.section_title_text || section.section_title || "-",

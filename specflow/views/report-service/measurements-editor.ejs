@@ -29,6 +29,9 @@
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-primary btn-sm" href="/admin/report-service/orders/<%= order.id %>/alber">
+          Leituras Alber<% if ((alberLeituras || []).length) { %> (<%= alberLeituras.length %>)<% } %>
+        </a>
       </div>
     </div>
   </div>

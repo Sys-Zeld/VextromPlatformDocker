@@ -1,0 +1,278 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
+<%
+  function formatDateShort(value) {
+    if (!value) return "-";
+    const raw = String(value).trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "-";
+    return `${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()}`;
+  }
+
+  function formatDateTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return `${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()} ${String(date.getHours()).padStart(2,"0")}:${String(date.getMinutes()).padStart(2,"0")}`;
+  }
+%>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">LEITURAS ALBER (BCT)</span>
+        <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
+        <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
+      </div>
+      <div class="token-hero-actions">
+        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">← Ensaios/Medições</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+      </div>
+    </div>
+  </div>
+
+  <% if (saved) { %><div class="alert alert-success mb-0">Leitura Alber salva com sucesso.</div><% } %>
+  <% if (importError) { %><div class="alert alert-danger mb-0"><strong>Erro ao importar:</strong> <%= importError %></div><% } %>
+
+  <!-- Import card -->
+  <div class="card app-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h6 app-card-title mb-1">Importar Arquivo Alber (CSV)</h2>
+          <div class="text-muted small">Após importar, use a tag <code>@alber=ID</code> nos capítulos do relatório para inserir as tabelas de medição.</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <button class="btn btn-primary btn-sm" type="button" id="alberImportBtn">Importar Arquivo Alber</button>
+        <input type="file" accept=".csv,.txt" id="alberFileInput" class="d-none" />
+        <span class="text-muted small" id="alberFileName"></span>
+        <div id="alberImportSpinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></div>
+        <span id="alberImportMsg" class="small"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leituras list + inline editor -->
+  <div class="card app-card">
+    <div class="card-body p-0">
+      <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+        <h2 class="h6 app-card-title mb-0">Leituras importadas (<%= (alberLeituras || []).length %>)</h2>
+      </div>
+
+      <% if (!(alberLeituras || []).length) { %>
+        <div class="p-4 text-center text-muted">Nenhuma leitura Alber importada para esta OS.</div>
+      <% } %>
+
+      <% (alberLeituras || []).forEach(function(leitura) {
+        var celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
+        var stringLabels = (leitura.string_labels && typeof leitura.string_labels === 'object') ? leitura.string_labels : {};
+        var stringNums = [...new Set(celulas.map(function(c){ return Number(c.string_num); }))].sort(function(a,b){return a-b;});
+        var totalAtivas = celulas.filter(function(c){ return c.ativa !== false; }).length;
+      %>
+      <div class="border-bottom">
+        <!-- Summary row -->
+        <div class="p-3 d-flex align-items-start gap-3 flex-wrap" style="cursor:pointer;" onclick="toggleAlberEditor(<%= leitura.id %>)">
+          <div class="flex-grow-1">
+            <div class="fw-semibold"><%= leitura.battery_name || leitura.location_name || "-" %> &mdash; <span class="text-muted small"><%= leitura.nome_arquivo || "-" %></span></div>
+            <div class="text-muted small mt-1">
+              Local: <strong><%= leitura.location_name || "-" %></strong> &nbsp;|&nbsp;
+              Modelo: <strong><%= leitura.model_number || "-" %></strong> &nbsp;|&nbsp;
+              Instalação: <strong><%= leitura.install_date || "-" %></strong> &nbsp;|&nbsp;
+              Strings: <strong><%= stringNums.length %></strong> &nbsp;|&nbsp;
+              Células ativas: <strong><%= totalAtivas %></strong> &nbsp;|&nbsp;
+              Importado: <strong><%= formatDateTime(leitura.importado_em) %></strong>
+            </div>
+            <div class="mt-1"><code class="small text-primary">@alber=<%= leitura.id %></code></div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-shrink-0">
+            <span class="text-muted small" id="alberEditorChevron_<%= leitura.id %>">▼ Editar</span>
+            <form method="post" action="/admin/report-service/orders/<%= order.id %>/alber/<%= leitura.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta leitura Alber e todas as suas células?');">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button class="btn btn-outline-danger btn-sm" type="submit" onclick="event.stopPropagation();">Excluir</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Inline editor (collapsed by default) -->
+        <div id="alberEditor_<%= leitura.id %>" class="d-none border-top bg-light p-3">
+          <form method="post" action="/admin/report-service/orders/<%= order.id %>/alber/<%= leitura.id %>/update">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <input type="hidden" name="celulas_json" id="celulasJson_<%= leitura.id %>" value="" />
+            <input type="hidden" name="string_labels" id="stringLabelsJson_<%= leitura.id %>" value="<%= JSON.stringify(stringLabels).replace(/"/g, '&quot;') %>" />
+
+            <!-- Header fields -->
+            <div class="row g-2 mb-3">
+              <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1">Local (Location Name)</label>
+                <input class="form-control form-control-sm" name="location_name" value="<%= leitura.location_name || '' %>" />
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1">Banco de Baterias (Battery Name)</label>
+                <input class="form-control form-control-sm" name="battery_name" value="<%= leitura.battery_name || '' %>" />
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1">Modelo (Model Number)</label>
+                <input class="form-control form-control-sm" name="model_number" value="<%= leitura.model_number || '' %>" />
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1">Data de Instalação</label>
+                <input class="form-control form-control-sm" name="install_date" value="<%= leitura.install_date || '' %>" />
+              </div>
+            </div>
+
+            <!-- String sections -->
+            <% stringNums.forEach(function(sNum) {
+              var strCells = celulas.filter(function(c){ return Number(c.string_num) === sNum; });
+              var defaultLabel = 'Banco ' + sNum;
+              var label = stringLabels[String(sNum)] || defaultLabel;
+            %>
+            <div class="mb-3 border rounded" data-string-num="<%= sNum %>" data-leitura-id="<%= leitura.id %>">
+              <div class="p-2 bg-white border-bottom d-flex align-items-center gap-2">
+                <label class="form-label form-label-sm mb-0 fw-semibold" style="min-width:80px;">Rótulo:</label>
+                <input class="form-control form-control-sm string-label-input"
+                  style="max-width:220px;"
+                  data-leitura-id="<%= leitura.id %>"
+                  data-string-num="<%= sNum %>"
+                  value="<%= label %>"
+                  placeholder="<%= defaultLabel %>" />
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm app-table mb-0 alber-cells-table" data-leitura-id="<%= leitura.id %>" data-string-num="<%= sNum %>">
+                  <thead>
+                    <tr>
+                      <th style="width:80px;">Nº String</th>
+                      <th style="width:90px;">Nº Célula</th>
+                      <th style="width:130px;">Voltagem (V)</th>
+                      <th style="width:160px;">Resist. Interna (mΩ)</th>
+                      <th style="width:70px;">Ativa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% strCells.forEach(function(c) { %>
+                    <tr data-leitura-id="<%= leitura.id %>" data-string-num="<%= c.string_num %>" data-celula-num="<%= c.celula_num %>">
+                      <td><%= c.string_num %></td>
+                      <td><%= c.celula_num %></td>
+                      <td><input type="number" step="0.001" class="form-control form-control-sm cell-voltagem" data-leitura-id="<%= leitura.id %>" value="<%= Number(c.voltagem).toFixed(3) %>" style="width:110px;" /></td>
+                      <td><input type="number" step="1" class="form-control form-control-sm cell-resistencia" data-leitura-id="<%= leitura.id %>" value="<%= Number(c.resistencia_interna) %>" style="width:120px;" /></td>
+                      <td><input type="checkbox" class="form-check-input cell-ativa" data-leitura-id="<%= leitura.id %>" <%= c.ativa !== false ? 'checked' : '' %> /></td>
+                    </tr>
+                    <% }); %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <% }); %>
+
+            <div class="d-flex justify-content-end gap-2 mt-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleAlberEditor(<%= leitura.id %>)">Cancelar</button>
+              <button type="submit" class="btn btn-primary btn-sm" onclick="syncAlberEditor(<%= leitura.id %>)">Salvar alterações</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <% }); %>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  // ---- Import via fetch ----
+  var importBtn = document.getElementById("alberImportBtn");
+  var fileInput = document.getElementById("alberFileInput");
+  var fileNameLabel = document.getElementById("alberFileName");
+  var spinner = document.getElementById("alberImportSpinner");
+  var msgEl = document.getElementById("alberImportMsg");
+  var csrfToken = "<%= csrfToken %>";
+  var orderId = "<%= order.id %>";
+
+  importBtn.addEventListener("click", function () {
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    fileNameLabel.textContent = file.name;
+    spinner.classList.remove("d-none");
+    msgEl.textContent = "";
+    importBtn.disabled = true;
+
+    fetch("/admin/report-service/orders/" + orderId + "/alber/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-CSRF-Token": csrfToken,
+        "X-File-Name": encodeURIComponent(file.name)
+      },
+      body: file
+    }).then(function (resp) {
+      return resp.json().then(function (data) {
+        spinner.classList.add("d-none");
+        importBtn.disabled = false;
+        if (!resp.ok || !data.ok) {
+          msgEl.textContent = (data && data.error) ? data.error : "Erro ao importar.";
+          msgEl.style.color = "red";
+        } else {
+          window.location.reload();
+        }
+      });
+    }).catch(function (err) {
+      spinner.classList.add("d-none");
+      importBtn.disabled = false;
+      msgEl.textContent = "Erro de rede: " + err.message;
+      msgEl.style.color = "red";
+    });
+  });
+
+  // ---- Inline editor toggle ----
+  window.toggleAlberEditor = function (leituraId) {
+    var el = document.getElementById("alberEditor_" + leituraId);
+    var ch = document.getElementById("alberEditorChevron_" + leituraId);
+    if (!el) return;
+    var isOpen = !el.classList.contains("d-none");
+    el.classList.toggle("d-none", isOpen);
+    if (ch) ch.textContent = isOpen ? "▼ Editar" : "▲ Fechar";
+  };
+
+  // ---- Sync editor state to hidden JSON inputs before submit ----
+  window.syncAlberEditor = function (leituraId) {
+    // Collect string labels
+    var labels = {};
+    document.querySelectorAll(".string-label-input[data-leitura-id='" + leituraId + "']").forEach(function (inp) {
+      var sNum = inp.getAttribute("data-string-num");
+      labels[sNum] = inp.value.trim() || ("Banco " + sNum);
+    });
+    var labelsInput = document.getElementById("stringLabelsJson_" + leituraId);
+    if (labelsInput) labelsInput.value = JSON.stringify(labels);
+
+    // Collect cell values
+    var celulas = [];
+    document.querySelectorAll("tr[data-leitura-id='" + leituraId + "'][data-string-num]").forEach(function (row) {
+      var sNum = Number(row.getAttribute("data-string-num"));
+      var cNum = Number(row.getAttribute("data-celula-num"));
+      var voltagemEl = row.querySelector(".cell-voltagem[data-leitura-id='" + leituraId + "']");
+      var resistenciaEl = row.querySelector(".cell-resistencia[data-leitura-id='" + leituraId + "']");
+      var ativaEl = row.querySelector(".cell-ativa[data-leitura-id='" + leituraId + "']");
+      if (!voltagemEl || !resistenciaEl) return;
+      celulas.push({
+        stringNum: sNum,
+        celulaNum: cNum,
+        voltagem: parseFloat(voltagemEl.value) || 0,
+        resistencia: parseInt(resistenciaEl.value, 10) || 0,
+        ativa: ativaEl ? ativaEl.checked : true
+      });
+    });
+    var celulasInput = document.getElementById("celulasJson_" + leituraId);
+    if (celulasInput) celulasInput.value = JSON.stringify(celulas);
+  };
+})();
+</script>
+<%- include("../partials/footer") %>
