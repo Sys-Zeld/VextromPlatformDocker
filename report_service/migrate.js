@@ -342,9 +342,6 @@ async function migrateServiceReport() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_measurement_tables_report_id ON service_report_measurement_tables (service_report_id);`);
   await db.query(`ALTER TABLE service_report_measurement_tables ADD COLUMN IF NOT EXISTS style_config JSONB;`);
-  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS display_config JSONB;`);
-  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS manufacture_date TEXT NOT NULL DEFAULT '';`);
-  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS style_config JSONB;`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_instruments (
@@ -599,6 +596,9 @@ async function migrateServiceReport() {
     );
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_leituras_alber_report_id ON leituras_alber (service_report_id);`);
+  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS display_config JSONB;`);
+  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS manufacture_date TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS style_config JSONB;`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS celulas_alber (
