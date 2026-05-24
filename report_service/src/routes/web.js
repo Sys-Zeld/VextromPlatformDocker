@@ -75,6 +75,7 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/measurements", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveMeasurementTable));
   router.post("/orders/:id/measurements/:measurementId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteMeasurementTable));
   router.post("/orders/:id/measurements/:measurementId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleAi));
+  router.post("/orders/:id/measurements/:measurementId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleDefault));
   router.post("/orders/:id/measurements/:measurementId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleReset));
   router.post("/orders/:id/signatures", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.addSignature));
   router.post("/orders/:id/signatures/:signatureId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSignature));

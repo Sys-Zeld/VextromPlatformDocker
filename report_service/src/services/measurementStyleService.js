@@ -1,6 +1,7 @@
 const { renderMeasurementsInlineTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss } = require("./reportPreviewService");
 const repo = require("../repositories/serviceReportRepository");
 
+const MEASUREMENT_DEFAULT_STYLE_SETTING_KEY = "report.preview.measurements.style.default";
 const ALBER_DEFAULT_STYLE_SETTING_KEY = "report.preview.alber.style.default";
 
 function buildStyleConfig(raw) {
@@ -13,6 +14,48 @@ function buildStyleConfig(raw) {
     cfg.extraColumns = src.extraColumns.filter((ec) => ec && typeof ec === "object");
   }
   return cfg;
+}
+
+function scopeMeasurementStyleConfig(styleConfig, tableId) {
+  const cfg = buildStyleConfig(styleConfig);
+  if (!cfg.customCss && !cfg.extraColumns) return null;
+  if (cfg.customCss) {
+    cfg.customCss = cfg.customCss.replace(
+      /\[data-table-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+      `[data-table-id="${Number(tableId)}"]`
+    );
+  }
+  return cfg;
+}
+
+async function getDefaultMeasurementStyleConfig() {
+  const raw = await repo.getAppSetting(MEASUREMENT_DEFAULT_STYLE_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const cfg = buildStyleConfig(parsed);
+    return (cfg.customCss || cfg.extraColumns) ? cfg : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveDefaultMeasurementStyleConfig(styleConfig) {
+  const cfg = buildStyleConfig(styleConfig);
+  if (!cfg.customCss && !cfg.extraColumns) return null;
+  await repo.upsertAppSetting(MEASUREMENT_DEFAULT_STYLE_SETTING_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+function applyDefaultMeasurementStyle(measurementTables, defaultStyleConfig) {
+  if (!defaultStyleConfig || (!defaultStyleConfig.customCss && !defaultStyleConfig.extraColumns) || !Array.isArray(measurementTables)) {
+    return Array.isArray(measurementTables) ? measurementTables : [];
+  }
+  return measurementTables.map((item) => {
+    if (!item || (item.style_config && typeof item.style_config === "object")) return item;
+    const scopedStyleConfig = scopeMeasurementStyleConfig(defaultStyleConfig, item.id);
+    return scopedStyleConfig ? { ...item, style_config: scopedStyleConfig, _uses_default_measurement_style: true } : item;
+  });
 }
 
 function buildPreviewHtml(measurementTable, styleConfig) {
@@ -169,6 +212,10 @@ module.exports = {
   generateDefaultCss,
   generateDefaultAlberCss,
   buildStyleConfig,
+  scopeMeasurementStyleConfig,
+  getDefaultMeasurementStyleConfig,
+  saveDefaultMeasurementStyleConfig,
+  applyDefaultMeasurementStyle,
   buildPreviewHtml,
   buildAlberPreviewHtml,
   buildAlberStyleConfig,

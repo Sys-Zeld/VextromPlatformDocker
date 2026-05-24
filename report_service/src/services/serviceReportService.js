@@ -1,7 +1,12 @@
 const path = require("path");
 const fs = require("fs");
 const repo = require("../repositories/serviceReportRepository");
-const { getDefaultAlberStyleConfig, applyDefaultAlberStyle } = require("./measurementStyleService");
+const {
+  getDefaultMeasurementStyleConfig,
+  applyDefaultMeasurementStyle,
+  getDefaultAlberStyleConfig,
+  applyDefaultAlberStyle
+} = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
 const {
@@ -470,7 +475,11 @@ async function buildReportAggregate(serviceReportId) {
   const site = order && order.site_id ? await repo.getSiteById(order.site_id) : null;
   const sections = await repo.listSections(serviceReportId);
   const components = await repo.listComponents(serviceReportId);
-  const measurements = await repo.listMeasurementTables(serviceReportId);
+  const [measurementRows, defaultMeasurementStyleConfig] = await Promise.all([
+    repo.listMeasurementTables(serviceReportId),
+    getDefaultMeasurementStyleConfig()
+  ]);
+  const measurements = applyDefaultMeasurementStyle(measurementRows, defaultMeasurementStyleConfig);
   const [alberRows, defaultAlberStyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
     getDefaultAlberStyleConfig()

@@ -98,8 +98,8 @@
                     <button class="btn btn-outline-secondary btn-sm measurement-style-btn" type="button"
                       data-measurement-id="<%= item.id %>"
                       data-order-id="<%= order.id %>"
-                      data-has-style="<%= item.style_config ? '1' : '0' %>">
-                      🎨 Visual<% if (item.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
+                      data-has-style="<%= item.style_config && !item._uses_default_measurement_style ? '1' : '0' %>">
+                      🎨 Visual<% if (item.style_config && item._uses_default_measurement_style) { %> <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span><% } else if (item.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
                     </button>
                     <form method="post" action="/admin/report-service/orders/<%= order.id %>/measurements/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta tabela de ensaios/medicoes?');">
                       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
@@ -533,6 +533,10 @@
           Restaurar padrão
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" id="msmDefaultBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v14H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 9h6M9 13h6"/></svg>
+          Salvar como padrão
+        </button>
         <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1" id="msmSaveBtn">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
           Salvar visual
@@ -555,6 +559,7 @@
     var inputEl       = document.getElementById("msmInput");
     var sendBtn       = document.getElementById("msmSendBtn");
     var saveBtn       = document.getElementById("msmSaveBtn");
+    var defaultBtn    = document.getElementById("msmDefaultBtn");
     var resetBtn      = document.getElementById("msmResetBtn");
     var unsavedBadge  = document.getElementById("msmUnsavedBadge");
     var tableName     = document.getElementById("msmTableName");
@@ -577,6 +582,7 @@
       sendBtn.disabled = on;
       inputEl.disabled = on;
       resetBtn.disabled = on;
+      if (defaultBtn) defaultBtn.disabled = on;
     }
 
     function addBubble(type, text) {
@@ -635,6 +641,21 @@
       return resp.json();
     }
 
+    async function callDefault() {
+      var body = new URLSearchParams();
+      body.set("_csrf", csrfToken);
+      if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+      var resp = await fetch(
+        "/admin/report-service/orders/" + activeOrderId + "/measurements/" + activeMeasId + "/style-default",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+      );
+      if (!resp.ok) {
+        var data = await resp.json().catch(function () { return {}; });
+        throw new Error(data.error || "Erro ao salvar padrão.");
+      }
+      return resp.json();
+    }
+
     // Abre o modal
     document.querySelectorAll(".measurement-style-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -646,6 +667,7 @@
         previewHint.textContent = "";
         setUnsaved(false);
         saveBtn.disabled = true;
+        if (defaultBtn) defaultBtn.disabled = true;
 
         var item = (window.measurementTablesIndex || []).find(function (e) { return Number(e.id) === activeMeasId; });
         tableName.textContent = (item && item.title) ? item.title : "Tabela #" + activeMeasId;
@@ -657,6 +679,7 @@
           showOverlay(false);
           updatePreview(r.previewHtml);
           pendingStyle = r.styleConfig || null;
+          if (defaultBtn) defaultBtn.disabled = !pendingStyle;
           previewHint.textContent = "Envie uma instrução para personalizar";
           addBubble("ai", "Olá! Descreva o que deseja alterar: cores, fontes, bordas, tamanhos, alinhamento ou estilos por coluna. Use os atalhos abaixo ou escreva livremente.");
         }).catch(function (err) {
@@ -681,6 +704,7 @@
         pendingStyle = r.styleConfig || null;
         setUnsaved(true);
         saveBtn.disabled = false;
+        if (defaultBtn) defaultBtn.disabled = false;
         previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
         addBubble("ai", "Feito! Verifique o preview ao lado. Você pode continuar ajustando ou salvar.");
       }).catch(function (err) {
@@ -715,9 +739,9 @@
         var styleBtn = document.querySelector('.measurement-style-btn[data-measurement-id="' + activeMeasId + '"]');
         if (styleBtn) {
           styleBtn.setAttribute("data-has-style", "1");
-          if (!styleBtn.querySelector(".badge")) {
-            styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
-          }
+          var badge = styleBtn.querySelector(".badge");
+          if (badge) badge.remove();
+          styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
         }
         setUnsaved(false);
         getModal().hide();
@@ -729,16 +753,45 @@
       });
     });
 
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", function () {
+        if (!pendingStyle) return;
+        setInputBusy(true);
+        defaultBtn.disabled = true;
+        callDefault().then(function (r) {
+          updatePreview(r.previewHtml);
+          pendingStyle = r.styleConfig || pendingStyle;
+          var styleBtn = document.querySelector('.measurement-style-btn[data-measurement-id="' + activeMeasId + '"]');
+          if (styleBtn) {
+            styleBtn.setAttribute("data-has-style", "1");
+            var badge = styleBtn.querySelector(".badge");
+            if (badge) badge.remove();
+            styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
+          }
+          setUnsaved(false);
+          saveBtn.disabled = true;
+          previewHint.textContent = "Estilo salvo como padrão para novas tabelas";
+          addBubble("ai", "Este visual foi salvo como padrão. Outras tabelas de ensaios sem estilo próprio usarão este visual automaticamente.");
+        }).catch(function (err) {
+          addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente."));
+        }).finally(function () {
+          setInputBusy(false);
+          defaultBtn.disabled = !pendingStyle;
+        });
+      });
+    }
+
     // Resetar
     resetBtn.addEventListener("click", function () {
       if (!confirm("Restaurar o visual padrão desta tabela?")) return;
       setInputBusy(true);
       callReset().then(function (r) {
         updatePreview(r.previewHtml);
-        pendingStyle = null;
+        pendingStyle = r.styleConfig || null;
         chatArea.innerHTML = "";
         setUnsaved(false);
         saveBtn.disabled = true;
+        if (defaultBtn) defaultBtn.disabled = !pendingStyle;
         previewHint.textContent = "Visual padrão restaurado";
         addBubble("ai", "Visual restaurado para o padrão. Envie novas instruções para personalizar novamente.");
         var styleBtn = document.querySelector('.measurement-style-btn[data-measurement-id="' + activeMeasId + '"]');
@@ -746,6 +799,9 @@
           styleBtn.setAttribute("data-has-style", "0");
           var badge = styleBtn.querySelector(".badge");
           if (badge) badge.remove();
+          if (pendingStyle) {
+            styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span>');
+          }
         }
       }).catch(function (err) {
         addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));

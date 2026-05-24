@@ -15,6 +15,11 @@ const { getReportConfigSettings, saveReportConfigSettings } = require("../servic
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
 const { buildPreviewModel } = require("../services/reportPreviewService");
 const {
+  buildStyleConfig,
+  getDefaultMeasurementStyleConfig,
+  saveDefaultMeasurementStyleConfig,
+  scopeMeasurementStyleConfig,
+  applyDefaultMeasurementStyle,
   buildAlberStyleConfig,
   getDefaultAlberStyleConfig,
   saveDefaultAlberStyleConfig,
@@ -574,6 +579,8 @@ function createReportWebController(deps) {
       acc[key].push(item);
       return acc;
     }, {});
+    const defaultMeasurementStyleConfig = await getDefaultMeasurementStyleConfig();
+    const styledMeasurements = applyDefaultMeasurementStyle(measurements, defaultMeasurementStyleConfig);
     const defaultAlberStyleConfig = await getDefaultAlberStyleConfig();
     const styledAlberLeituras = applyDefaultAlberStyle(alberLeituras, defaultAlberStyleConfig);
 
@@ -588,7 +595,7 @@ function createReportWebController(deps) {
       dailyLogs,
       sections,
       components,
-      measurements,
+      measurements: styledMeasurements,
       alberLeituras: styledAlberLeituras,
       signatures,
       technicians,
@@ -2787,7 +2794,7 @@ function createReportWebController(deps) {
         return res.status(400).json({ error: "ID de ensaio inválido." });
       }
 
-      const { buildPreviewHtml, applyStyleViaAi, buildStyleConfig, generateDefaultCss } = require("../services/measurementStyleService");
+      const { buildPreviewHtml, applyStyleViaAi, generateDefaultCss } = require("../services/measurementStyleService");
       const report = await service.ensureReportForOrder(orderId);
       const rows = await repo.listMeasurementTables(report.id);
       const table = rows.find((r) => Number(r.id) === measurementId);
@@ -2795,7 +2802,8 @@ function createReportWebController(deps) {
 
       let parsedCurrentStyle = null;
       try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
-      const activeStyle = parsedCurrentStyle || table.style_config || null;
+      const defaultStyle = scopeMeasurementStyleConfig(await getDefaultMeasurementStyleConfig(), measurementId);
+      const activeStyle = parsedCurrentStyle || table.style_config || defaultStyle || null;
 
       // Sem instrução: retorna preview atual ou salva estilo pendente
       if (!String(instruction || "").trim()) {
@@ -2838,8 +2846,39 @@ function createReportWebController(deps) {
       const table = rows.find((r) => Number(r.id) === measurementId);
       if (!table) return res.status(404).json({ error: "Ensaio não encontrado." });
       const { buildPreviewHtml } = require("../services/measurementStyleService");
-      const previewHtml = buildPreviewHtml(table, null);
-      return res.json({ previewHtml, styleConfig: null });
+      const defaultStyle = scopeMeasurementStyleConfig(await getDefaultMeasurementStyleConfig(), measurementId);
+      const previewHtml = buildPreviewHtml(table, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async measurementStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const measurementId = Number(req.params.measurementId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(measurementId) || measurementId <= 0) {
+        return res.status(400).json({ error: "ID de ensaio inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const rows = await repo.listMeasurementTables(report.id);
+      const table = rows.find((r) => Number(r.id) === measurementId);
+      if (!table) return res.status(404).json({ error: "Ensaio não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const { buildPreviewHtml, generateDefaultCss } = require("../services/measurementStyleService");
+      const styleConfig = buildStyleConfig(parsedCurrentStyle || table.style_config || { customCss: generateDefaultCss(measurementId) });
+      if (!styleConfig.customCss && !styleConfig.extraColumns) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultMeasurementStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeMeasurementStyleConfig(styleConfig, measurementId);
+      await repo.updateMeasurementStyleConfig(measurementId, report.id, scopedStyleConfig);
+      const previewHtml = buildPreviewHtml(table, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
     },
 
     async alberStyleAi(req, res) {
