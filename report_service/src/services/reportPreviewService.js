@@ -423,6 +423,7 @@ const MEAS_CSS_DEFAULTS = {
   altRowBg: "#f0f5e8",
   titleFontSize: "16px",
   titleFontWeight: "700",
+  titleTextAlign: "left",
   thFontSize: "11px",
   thFontWeight: "600",
   thFontStyle: "normal",
@@ -442,7 +443,7 @@ function generateDefaultCss(tableId) {
   const border = `${v.borderWidth} ${v.borderStyle} ${v.borderColor}`;
   const tdBase = `border:${border};padding:${v.cellPadding};height:22px;vertical-align:top;font-size:${v.tdFontSize};font-weight:${v.tdFontWeight};font-style:${v.tdFontStyle};text-align:${v.tdTextAlign};`;
   return [
-    `${s} .meas-title{border:${border};background:${v.headerBg};color:${v.headerText};padding:${v.titlePadding};font-weight:${v.titleFontWeight};font-size:${v.titleFontSize};letter-spacing:0.01em;}`,
+    `${s} .meas-title{border:${border};border-bottom:none;background:${v.headerBg};color:${v.headerText};padding:${v.titlePadding};font-weight:${v.titleFontWeight};font-size:${v.titleFontSize};letter-spacing:0.01em;text-align:${v.titleTextAlign};width:100%;box-sizing:border-box;}`,
     `${s} .meas-th{border:${border};background:${v.headerBg};color:${v.headerText};padding:${v.thPadding};text-align:${v.thTextAlign};font-weight:${v.thFontWeight};font-style:${v.thFontStyle};font-size:${v.thFontSize};letter-spacing:0.04em;}`,
     `${s} .meas-td{${tdBase}}`,
     `${s} .meas-td-alt{${tdBase}background:${v.altRowBg};}`,
@@ -493,7 +494,7 @@ function renderMeasurementsInlineTable(measurementTables, requestedId, styleConf
   const title = decodeHtmlEntities(String(table.title || "")).trim();
   const notes = decodeHtmlEntities(String(table.notes || "")).trim();
   const titleCaption = title
-    ? `<caption class="meas-title" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">${escapeHtml(title)}</caption>`
+    ? `<caption class="meas-title" style="caption-side:top;">${escapeHtml(title)}</caption>`
     : "";
   const notesHtml = notes
     ? `<div class="meas-notes"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
