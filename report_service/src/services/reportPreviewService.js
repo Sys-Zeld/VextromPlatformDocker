@@ -526,7 +526,7 @@ function generateDefaultAlberCss(leituraId) {
     `${s} .alber-stat-label{font-size:9.5px;color:#64748b;margin-bottom:1px;}`,
     `${s} .alber-stat-value{font-size:15px;font-weight:700;color:#1e293b;line-height:1.1;}`,
     `${s} .alber-stat-unit{font-size:10px;font-weight:400;color:#94a3b8;margin-left:2px;}`,
-    `${s} .alber-title-th{border:1px solid #87b86a;background:#5d8f3d;color:#ffffff;padding:7px 8px;font-size:13px;font-weight:600;letter-spacing:0.03em;}`,
+    `${s} .alber-title-th{border:1px solid #87b86a;border-bottom:none;background:#5d8f3d;color:#ffffff;padding:7px 8px;font-size:13px;font-weight:600;letter-spacing:0.03em;text-align:left;width:100%;box-sizing:border-box;}`,
     `${s} .alber-th{border:1px solid #87b86a;background:#5d8f3d;color:#ffffff;padding:6px 8px;font-size:11px;font-weight:600;letter-spacing:0.03em;}`,
     `${s} .alber-td{border:1px solid #87b86a;padding:5px 8px;font-size:11px;vertical-align:middle;}`,
     `${s} .alber-td-alt{border:1px solid #87b86a;padding:5px 8px;font-size:11px;vertical-align:middle;background:#f0f5e8;}`,
@@ -693,7 +693,7 @@ function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
     return `
       <div class="alber-string-block" data-alber-id="${id}" style="margin-bottom:16px;">
         <table style="width:100%;border-collapse:collapse;line-height:1.3;page-break-inside:auto;">
-          <caption class="alber-title-th" style="caption-side:top;text-align:left;width:100%;box-sizing:border-box;border-bottom:none;">${escapeHtml(label)}</caption>
+          <caption class="alber-title-th" style="caption-side:top;">${escapeHtml(label)}</caption>
           <thead style="display:table-header-group;">
             <tr style="page-break-inside:avoid;break-inside:avoid;">
               ${visCols.map((col) => `<th class="alber-th">${col.label}</th>`).join("")}
