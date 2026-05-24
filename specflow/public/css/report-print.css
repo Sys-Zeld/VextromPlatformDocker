@@ -131,18 +131,4 @@
     max-width: 380px !important;
   }
 
-  /* Páginas com tabela Alber: desativa height fixo e posicionamento absoluto do footer */
-  .report-page:has(.report-inline-alber-wrap) {
-    height: auto !important;
-    min-height: 297mm;
-    overflow: visible !important;
-  }
-
-  .report-page:has(.report-inline-alber-wrap) .report-footer {
-    position: relative !important;
-    bottom: auto !important;
-    left: auto !important;
-    right: auto !important;
-    margin-top: 12mm;
-  }
 }

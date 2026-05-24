@@ -342,7 +342,10 @@ async function upsertReportSection(reportId, sectionKey, sectionInput = {}) {
     normalizedInput,
     currentSection?.section_title || fallbackDefinition?.title || normalizedKey
   );
-  await repo.upsertSection(reportId, normalizedKey, normalized);
+  await repo.upsertSection(reportId, normalizedKey, {
+    ...normalized,
+    sortOrder: normalizedInput.sortOrder
+  });
   await repo.replaceSectionImages(reportId, normalizedKey, [
     {
       filePath: normalized.imageLeftPath,

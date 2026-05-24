@@ -365,10 +365,8 @@ function renderTimesheetInlineTable(timesheetItems) {
   return `
     <div class="report-inline-timesheet-wrap avoid-break" data-table-title="TIME SHEET">
       <table class="report-inline-timesheet-table">
+        <caption class="report-inline-timesheet-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">TIME SHEET</caption>
         <thead>
-          <tr class="report-inline-timesheet-title-row">
-            <th colspan="5">TIME SHEET</th>
-          </tr>
           <tr>
             <th>Data</th>
             <th>Check in base</th>
@@ -398,10 +396,8 @@ function renderTechTeamInlineTable(technicianItems) {
   return `
     <div class="report-inline-techteam-wrap avoid-break" data-table-title="EQUIPE TECNICA">
       <table class="report-inline-techteam-table">
+        <caption class="report-inline-techteam-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">EQUIPE TECNICA</caption>
         <thead>
-          <tr class="report-inline-techteam-title-row">
-            <th colspan="3">EQUIPE TECNICA</th>
-          </tr>
           <tr>
             <th>Nome</th>
             <th>Funcao</th>
@@ -496,8 +492,8 @@ function renderMeasurementsInlineTable(measurementTables, requestedId, styleConf
 
   const title = decodeHtmlEntities(String(table.title || "")).trim();
   const notes = decodeHtmlEntities(String(table.notes || "")).trim();
-  const titleTheadRow = title
-    ? `<tr><th colspan="${totalColCount}" class="meas-title">${escapeHtml(title)}</th></tr>`
+  const titleCaption = title
+    ? `<caption class="meas-title" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">${escapeHtml(title)}</caption>`
     : "";
   const notesHtml = notes
     ? `<div class="meas-notes"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`
@@ -507,8 +503,8 @@ function renderMeasurementsInlineTable(measurementTables, requestedId, styleConf
     <div class="report-inline-measurements-wrap avoid-break" data-table-id="${id}" data-table-title="${escapeHtml(title)}" style="margin:8px 0 14px 0;break-inside:avoid;page-break-inside:avoid;">
       <style>${css}</style>
       <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
+        ${titleCaption}
         <thead>
-          ${titleTheadRow}
           <tr>
             ${safeColumns.map((column, index) => `<th class="meas-th meas-col-${index}">${safeText(column)}</th>`).join("")}${extraColHeaders}
           </tr>
@@ -697,10 +693,8 @@ function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
     return `
       <div class="alber-string-block" data-alber-id="${id}" style="margin-bottom:16px;">
         <table style="width:100%;border-collapse:collapse;line-height:1.3;page-break-inside:auto;">
+          <caption class="alber-title-th" style="caption-side:top;text-align:left;width:100%;box-sizing:border-box;border-bottom:none;">${escapeHtml(label)}</caption>
           <thead style="display:table-header-group;">
-            <tr style="page-break-inside:avoid;break-inside:avoid;">
-              <th colspan="${colCount}" class="alber-title-th">${escapeHtml(label)}</th>
-            </tr>
             <tr style="page-break-inside:avoid;break-inside:avoid;">
               ${visCols.map((col) => `<th class="alber-th">${col.label}</th>`).join("")}
             </tr>
@@ -720,9 +714,9 @@ function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
         ...(showIr ? ["iR mín", "iR méd", "iR máx"] : [])
       ];
       overallHtml = `
-        <table data-alber-id="${id}" style="width:100%;border-collapse:collapse;margin-top:4px;">
+        <div data-alber-id="${id}" class="alber-overall-th" style="display:block;width:100%;box-sizing:border-box;font-size:12px;padding:7px 8px;">Estatísticas Gerais</div>
+        <table data-alber-id="${id}" style="width:100%;border-collapse:collapse;margin-top:0;">
           <thead>
-            <tr><th colspan="${overallCols.length}" class="alber-overall-th" style="font-size:12px;padding:7px 8px;">Estatísticas Gerais</th></tr>
             <tr>${overallCols.map((c) => `<th class="alber-overall-th">${c}</th>`).join("")}</tr>
           </thead>
           <tbody>
@@ -814,11 +808,7 @@ function renderEquipmentsInlineTable(orderEquipments) {
 
     return `
       <table class="report-inline-equipments-table">
-        <thead>
-          <tr class="report-inline-equipments-title-row">
-            <th colspan="${columnsPerRow}">${escapeHtml(tableTitle)}</th>
-          </tr>
-        </thead>
+        <caption class="report-inline-equipments-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;">${escapeHtml(tableTitle)}</caption>
         <tbody>${renderPairsRows(pairs)}</tbody>
       </table>
     `;

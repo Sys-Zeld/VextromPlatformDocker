@@ -72,7 +72,16 @@
     var styles = window.getComputedStyle(page);
     var padBottom = parseFloat(styles.paddingBottom || "0") || 0;
     var flowTop = flowRect.top - pageRect.top;
-    var usable = pageRect.height - padBottom - flowTop;
+    var contentBottom = pageRect.height - padBottom;
+    var footer = page.querySelector(".report-footer");
+    if (footer) {
+      var footerRect = footer.getBoundingClientRect();
+      var footerTop = footerRect.top - pageRect.top;
+      if (Number.isFinite(footerTop) && footerTop > 0) {
+        contentBottom = Math.min(contentBottom, footerTop - 8);
+      }
+    }
+    var usable = contentBottom - flowTop;
     return Math.max(0, usable);
   }
 

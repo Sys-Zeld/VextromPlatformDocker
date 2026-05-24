@@ -43,22 +43,24 @@ async function renderPdf(html, imageCache) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    const hasImages = imageCache && Object.keys(imageCache).length > 0;
-    if (hasImages) {
-      await page.setRequestInterception(true);
-      page.on("request", (request) => {
-        const entry = imageCache[request.url()];
-        if (entry) {
-          request.respond({ status: 200, contentType: entry.mime, body: Buffer.from(entry.data, "base64") }).catch(() => {});
-        } else {
-          request.abort().catch(() => {});
-        }
-      });
-    }
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      const reqUrl = request.url();
+      const entry = imageCache && imageCache[reqUrl];
+      if (entry) {
+        request.respond({ status: 200, contentType: entry.mime, body: Buffer.from(entry.data, "base64") }).catch(() => {});
+        return;
+      }
+      if (reqUrl.includes("fonts.googleapis.com") || reqUrl.includes("fonts.gstatic.com")) {
+        request.continue().catch(() => {});
+        return;
+      }
+      request.abort().catch(() => {});
+    });
 
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
     if (typeof page.emulateMediaType === "function") await page.emulateMediaType("print");
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "load" });
 
     await page.evaluate(async () => {
       const images = Array.from(document.images || []);

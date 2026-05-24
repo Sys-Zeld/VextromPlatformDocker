@@ -515,8 +515,12 @@ async function buildPdfBufferFromHtmlWithPuppeteer(html, fallbackPayload = {}) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=960, initial-scale=1.0" />
   <base href="${appBaseUrl}/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
   <style>${cssPreview}</style>
   <style>${cssPrint}</style>
+  <style>body,html{font-family:"Inter","Segoe UI",Tahoma,sans-serif;}</style>
 </head>
 <body>
 ${html}
@@ -538,24 +542,26 @@ ${html}
 
   try {
     return await withPuppeteerPdfPage(puppeteer, async (page) => {
-      if (imageCache.size) {
-        await page.setRequestInterception(true);
-        page.on("request", (request) => {
-          const reqUrl = request.url();
-          const cached = imageCache.get(reqUrl);
-          if (cached) {
-            request.respond({ status: 200, contentType: cached.mime, body: cached.body }).catch(() => {});
-            return;
-          }
-          request.abort().catch(() => {});
-        });
-      }
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const reqUrl = request.url();
+        const cached = imageCache.get(reqUrl);
+        if (cached) {
+          request.respond({ status: 200, contentType: cached.mime, body: cached.body }).catch(() => {});
+          return;
+        }
+        if (reqUrl.includes("fonts.googleapis.com") || reqUrl.includes("fonts.gstatic.com")) {
+          request.continue().catch(() => {});
+          return;
+        }
+        request.abort().catch(() => {});
+      });
 
       await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
       if (typeof page.emulateMediaType === "function") {
         await page.emulateMediaType("print");
       }
-      await page.setContent(fullHtml, { waitUntil: "domcontentloaded" });
+      await page.setContent(fullHtml, { waitUntil: "load" });
 
       await page.evaluate(async () => {
         const images = Array.from(document.images || []);
@@ -569,6 +575,10 @@ ${html}
         if (document.fonts && document.fonts.ready) {
           await document.fonts.ready;
         }
+      });
+      await page.evaluate(() => {
+        window.__reportPaginationDone = false;
+        window.dispatchEvent(new Event("resize"));
       });
       await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
 
@@ -615,8 +625,12 @@ async function buildPdfBufferFromHtml(html, fallbackPayload) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=960, initial-scale=1.0" />
   <base href="${appBaseUrl}/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
   <style>${cssPreview}</style>
   <style>${cssPrint}</style>
+  <style>body,html{font-family:"Inter","Segoe UI",Tahoma,sans-serif;}</style>
 </head>
 <body>
 ${html}
@@ -632,13 +646,15 @@ ${html}
         const cached = imageCache.get(reqUrl);
         if (cached) {
           return route.fulfill({ status: 200, contentType: cached.mime, body: cached.body });
-        } else {
-          return route.abort();
         }
+        if (reqUrl.includes("fonts.googleapis.com") || reqUrl.includes("fonts.gstatic.com")) {
+          return route.continue();
+        }
+        return route.abort();
       });
 
       await page.setViewportSize({ width: 1240, height: 1754 });
-      await page.setContent(fullHtml, { waitUntil: "domcontentloaded" });
+      await page.setContent(fullHtml, { waitUntil: "load" });
 
       // Aguarda todas as imagens carregarem (ou falharem) + fonts + paginação
       await page.evaluate(async () => {
@@ -653,6 +669,10 @@ ${html}
         if (document.fonts && document.fonts.ready) {
           await document.fonts.ready;
         }
+      });
+      await page.evaluate(() => {
+        window.__reportPaginationDone = false;
+        window.dispatchEvent(new Event("resize"));
       });
       await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
 
@@ -707,6 +727,10 @@ async function buildPdfBufferFromUrl(url, options = {}) {
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
+    });
+    await page.evaluate(() => {
+      window.__reportPaginationDone = false;
+      window.dispatchEvent(new Event("resize"));
     });
     await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
     const buffer = await page.pdf({
