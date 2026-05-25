@@ -278,7 +278,7 @@
     var usedHeight = flow.scrollHeight;
     var remaining = totalHeight - usedHeight;
     var maxHeight = Math.max(120, remaining - 10);
-    toArray(block.querySelectorAll("img")).forEach(function (img) {
+    toArray(block.querySelectorAll("img.report-inline-image")).forEach(function (img) {
       img.style.width = "250px";
       img.style.height = Math.min(250, maxHeight) + "px";
       img.style.objectFit = "cover";
