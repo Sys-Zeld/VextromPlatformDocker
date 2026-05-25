@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const ejs = require("ejs");
 const { buildPreviewModel } = require("./reportPreviewService");
+const { getSystemTimezone } = require("../../../specflow/services/systemSettings");
 
 const REPORT_TEMPLATE_DEFINITIONS = [
   {
@@ -49,11 +50,14 @@ async function renderReportPreviewHtml(payload, options = {}) {
     options.templateKey || (options.reportConfig && options.reportConfig.templateKey)
   );
   const viewPath = resolveTemplatePath(templateKey);
-  const model = buildPreviewModel(payload, {
-    reportConfig: options.reportConfig || null,
-    templateKey
-  });
-  return ejs.renderFile(viewPath, model, {
+  const [model, systemTimezone] = await Promise.all([
+    Promise.resolve(buildPreviewModel(payload, {
+      reportConfig: options.reportConfig || null,
+      templateKey
+    })),
+    getSystemTimezone()
+  ]);
+  return ejs.renderFile(viewPath, { ...model, systemTimezone }, {
     async: true
   });
 }

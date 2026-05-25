@@ -68,6 +68,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+    environment:
+      TZ: America/Sao_Paulo
     volumes:
       - dados_volume:/app/dados
 

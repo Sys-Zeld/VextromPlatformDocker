@@ -205,7 +205,7 @@ function renderInlineImageCard(image, requestedId = null, imageLabel = "Imagem")
   const wrapStyle = swapDims
     ? `display:flex;align-items:center;justify-content:center;width:250px;height:250px;overflow:hidden;`
     : `width:250px;height:250px;`;
-  const imgStyle = `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`;
+  const imgStyle = `object-fit:cover;width:250px;height:250px;display:block;margin-top:auto;margin-bottom:0;${rotateStyle}`;
   return `<figure class="report-inline-image-card"><div style="${wrapStyle}"><img class="report-inline-image" src="${safePath}" alt="${captionAlt}" width="250" height="250" data-rotation="${rotation}" style="${imgStyle}" /></div><figcaption class="report-inline-image-caption">${captionHtml}</figcaption></figure>`;
 }
 

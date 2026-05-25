@@ -71,6 +71,7 @@ const {
 } = require("../services/reportTemplateService");
 const { sanitizeReportSectionHtml } = require("../services/quillContentService");
 const { withServiceOrderDisplay } = require("../utils/serviceOrderDisplay");
+const { getSystemTimezone } = require("../../../specflow/services/systemSettings");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const {
   SECTION_DEFINITIONS,
@@ -88,6 +89,18 @@ function getSharpOrNull() {
     return require("sharp");
   } catch (_err) {
     return null;
+  }
+}
+
+function localIsoDate(tz) {
+  const timezone = tz || process.env.TZ || "America/Sao_Paulo";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric", month: "2-digit", day: "2-digit"
+    }).format(new Date());
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
   }
 }
 
@@ -2663,7 +2676,7 @@ function createReportWebController(deps) {
       });
       await service.updateReport(data.report.id, {
         revision: incrementReportRevision(data.report.revision || "A"),
-        issueDate: new Date().toISOString().slice(0, 10)
+        issueDate: localIsoDate()
       });
       return res.redirect(`${redirectBase}?revalidated=1`);
     },
@@ -2877,7 +2890,7 @@ function createReportWebController(deps) {
         } else {
           savedLog = await repo.createDailyLog({
             serviceOrderId: orderId,
-            activityDate: new Date().toISOString().slice(0, 10),
+            activityDate: localIsoDate(),
             title: "Conclusao Geral",
             content: contentHtml,
             notes: "conclusaogeral",
@@ -4113,10 +4126,14 @@ function createReportWebController(deps) {
       const report = await service.ensureReportForOrder(orderId);
       const payload = await service.buildReportAggregate(report.id);
       if (!payload) return res.status(404).send("Relatorio nao encontrado.");
-      const { reportConfig, templateKey } = await resolveRenderConfig("", null);
+      const [{ reportConfig, templateKey }, systemTimezone] = await Promise.all([
+        resolveRenderConfig("", null),
+        getSystemTimezone()
+      ]);
       return res.render("report-service/preview", {
         pageTitle: `Preview - ${payload.report.report_number}`,
         ...buildPreviewModel(payload, { reportConfig, templateKey }),
+        systemTimezone,
         csrfToken: req.csrfToken()
       });
     },
@@ -4470,7 +4487,7 @@ ${bodyHtml}
       await service.updateReport(report.id, {
         pdfPath: outputPath,
         status: "issued",
-        issueDate: new Date().toISOString().slice(0, 10)
+        issueDate: localIsoDate()
       });
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
     },

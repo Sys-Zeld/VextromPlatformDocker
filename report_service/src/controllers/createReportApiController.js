@@ -1,5 +1,17 @@
 const path = require("path");
 const repo = require("../repositories/serviceReportRepository");
+
+function localIsoDate(tz) {
+  const timezone = tz || process.env.TZ || "America/Sao_Paulo";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric", month: "2-digit", day: "2-digit"
+    }).format(new Date());
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
 const service = require("../services/serviceReportService");
 const { buildPdfBufferFromHtml } = require("../services/serviceReportPdfService");
 const { getReportConfigSettings } = require("../services/reportConfigSettings");
@@ -302,7 +314,7 @@ function createReportApiController(deps) {
         pdfBuffer,
         { contentType: "application/pdf" }
       );
-      await service.updateReport(reportId, { pdfPath: outputPath, status: "issued", issueDate: new Date().toISOString().slice(0, 10) });
+      await service.updateReport(reportId, { pdfPath: outputPath, status: "issued", issueDate: localIsoDate() });
       return ok(res, {
         reportId,
         outputPath

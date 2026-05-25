@@ -279,8 +279,9 @@
     var remaining = totalHeight - usedHeight;
     var maxHeight = Math.max(120, remaining - 10);
     toArray(block.querySelectorAll("img")).forEach(function (img) {
-      img.style.maxHeight = maxHeight + "px";
-      img.style.width = "auto";
+      img.style.width = "250px";
+      img.style.height = Math.min(250, maxHeight) + "px";
+      img.style.objectFit = "cover";
     });
   }
 

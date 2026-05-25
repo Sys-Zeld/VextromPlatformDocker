@@ -1,15 +1,25 @@
 <%
+  const _reportTz = (typeof systemTimezone !== "undefined" && systemTimezone) || process.env.TZ || "America/Sao_Paulo";
   function formatClassicDateTime(value) {
     if (!value) return "-";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "-";
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = String(date.getFullYear()).slice(-2);
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    const seconds = String(date.getSeconds()).padStart(2, "0");
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: _reportTz,
+        day: "2-digit", month: "2-digit", year: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false
+      }).format(date).replace(",", "");
+    } catch (_) {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = String(date.getFullYear()).slice(-2);
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const seconds = String(date.getSeconds()).padStart(2, "0");
+      return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    }
   }
 %>
 
@@ -136,7 +146,7 @@
                       <div class="report-signature-name"><%= sig.signer_name || '-' %></div>
                       <% if (sig.signer_role) { %><div class="report-signature-detail"><%= sig.signer_role %></div><% } %>
                       <% if (sig.signer_company) { %><div class="report-signature-detail"><%= sig.signer_company %></div><% } %>
-                      <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString(uiLabels?.dateLocale || 'pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div><% } %>
+                      <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString(uiLabels?.dateLocale || 'pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: _reportTz }) %></div><% } %>
                     </div>
                   </div>
                 <% }) %>
@@ -179,7 +189,7 @@
                   <div class="report-signature-name"><%= sig.signer_name || '-' %></div>
                   <% if (sig.signer_role) { %><div class="report-signature-detail"><%= sig.signer_role %></div><% } %>
                   <% if (sig.signer_company) { %><div class="report-signature-detail"><%= sig.signer_company %></div><% } %>
-                  <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div><% } %>
+                  <% if (sig.signed_at) { %><div class="report-signature-date"><%= new Date(sig.signed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: _reportTz }) %></div><% } %>
                 </div>
               </div>
             <% }) %>
