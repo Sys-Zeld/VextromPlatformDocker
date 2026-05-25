@@ -274,12 +274,13 @@
     var flow = getFlow(pageEl);
     if (!flow) return;
 
-    var maxHeight = Math.max(120, getMaxContentHeight(pageEl, flow) - 10);
+    var totalHeight = getMaxContentHeight(pageEl, flow);
+    var usedHeight = flow.scrollHeight;
+    var remaining = totalHeight - usedHeight;
+    var maxHeight = Math.max(120, remaining - 10);
     toArray(block.querySelectorAll("img")).forEach(function (img) {
-      if (!img.getAttribute("style") || String(img.style.maxHeight || "").trim() === "") {
-        img.style.maxHeight = maxHeight + "px";
-      }
-      if (!img.style.width) img.style.width = "auto";
+      img.style.maxHeight = maxHeight + "px";
+      img.style.width = "auto";
     });
   }
 
@@ -466,40 +467,123 @@
     var rows = toArray(table.querySelectorAll("tbody tr"));
     if (!rows.length) return moveWholeBlockToNextPage(block, pageEl, reportDoc, sectionMeta);
 
-    var currentPage = pageEl;
-    var rowIndex = 0;
+    // Nós após a tabela dentro do wrapper (ex: Observações, label "Tabela 4.1").
+    // Devem aparecer apenas depois da última linha, nunca repetidos em cada chunk.
+    var isWrapper = !block.matches("table");
+    var postTableNodes = [];
+    if (isWrapper) {
+      var pastTable = false;
+      toArray(block.childNodes).forEach(function (node) {
+        if (pastTable) { postTableNodes.push(node); return; }
+        if (node === table ||
+            (node.nodeType === Node.ELEMENT_NODE && node.contains && node.contains(table))) {
+          pastTable = true;
+        }
+      });
+    }
 
-    while (rowIndex < rows.length) {
-      var chunk = block.cloneNode(true);
-      var chunkTable = chunk.matches("table") ? chunk : chunk.querySelector("table");
-      var chunkBody = chunkTable ? chunkTable.querySelector("tbody") : null;
-      if (!chunkTable || !chunkBody) return currentPage;
-      chunkBody.innerHTML = "";
-      appendAndCheck(chunk, currentPage);
+    // Linha de título: única célula com colspan > 1 (ex: "MONITORAMENTO TEMPERATURA/UMIDADE").
+    // Em páginas de continuação essa linha é suprimida para evitar repetição visual.
+    function isTitleRow(row) {
+      var cells = toArray(row.querySelectorAll("th, td"));
+      return cells.length === 1 && parseInt(String(cells[0].getAttribute("colspan") || "1"), 10) > 1;
+    }
 
+    function removeTitleRows(tableEl) {
+      var thead = tableEl ? tableEl.querySelector("thead") : null;
+      if (!thead) return;
+      toArray(thead.querySelectorAll("tr")).forEach(function (row) {
+        if (isTitleRow(row)) thead.removeChild(row);
+      });
+    }
+
+    // Constrói um chunk sem os nós pós-tabela e com tbody vazio.
+    // isFirst=true → thead completo; isFirst=false → suprime linhas de título.
+    function makeChunk(isFirst) {
+      if (!isWrapper) {
+        var c = block.cloneNode(true);
+        var ct = c.matches("table") ? c : c.querySelector("table");
+        var cb = ct ? ct.querySelector("tbody") : null;
+        if (cb) cb.innerHTML = "";
+        if (!isFirst) removeTitleRows(ct);
+        return { el: c, body: cb };
+      }
+      var c = block.cloneNode(false);
+      toArray(block.childNodes).forEach(function (node) {
+        if (postTableNodes.indexOf(node) !== -1) return;
+        if (node === table ||
+            (node.nodeType === Node.ELEMENT_NODE && node.contains && node.contains(table))) {
+          var nodeClone = node.cloneNode(true);
+          var innerTbody = nodeClone.querySelector("tbody");
+          if (innerTbody) innerTbody.innerHTML = "";
+          if (!isFirst) removeTitleRows(nodeClone.matches && nodeClone.matches("table") ? nodeClone : nodeClone.querySelector("table"));
+          c.appendChild(nodeClone);
+          return;
+        }
+        c.appendChild(node.cloneNode(true));
+      });
+      var ct = c.querySelector("table");
+      var cb = ct ? ct.querySelector("tbody") : null;
+      return { el: c, body: cb };
+    }
+
+    // Adiciona linhas ao tbody enquanto não há overflow. Retorna quantas couberam.
+    function fillRows(body, page, startIdx) {
       var used = 0;
-      while (rowIndex + used < rows.length) {
-        chunkBody.appendChild(rows[rowIndex + used].cloneNode(true));
-        if (isFlowOverflowing(getFlow(currentPage), currentPage) || isPageOverflowing(currentPage)) {
-          chunkBody.removeChild(chunkBody.lastElementChild);
+      while (startIdx + used < rows.length) {
+        body.appendChild(rows[startIdx + used].cloneNode(true));
+        if (isFlowOverflowing(getFlow(page), page) || isPageOverflowing(page)) {
+          body.removeChild(body.lastElementChild);
           break;
         }
         used += 1;
       }
+      return used;
+    }
+
+    function appendPostNodes(page) {
+      for (var i = 0; i < postTableNodes.length; i++) {
+        var n = postTableNodes[i];
+        if (isBlankTextNode(n)) continue;
+        page = appendBlockWithPagination(n.cloneNode(true), page, reportDoc, null, sectionMeta);
+      }
+      return page;
+    }
+
+    var currentPage = pageEl;
+    var rowIndex = 0;
+
+    while (rowIndex < rows.length) {
+      var built = makeChunk(rowIndex === 0);
+      if (!built.el || !built.body) return currentPage;
+      appendAndCheck(built.el, currentPage);
+
+      var used = fillRows(built.body, currentPage, rowIndex);
 
       if (used === 0) {
-        removeFromFlow(chunk, currentPage);
+        // Nenhuma linha coube: remove chunk vazio, cria nova página e força a primeira linha.
+        // Continua preenchendo linhas no mesmo chunk forçado para evitar cabeçalho duplo.
+        removeFromFlow(built.el, currentPage);
         currentPage = ensureNextPageForSection(currentPage, reportDoc, sectionMeta, true);
-        var forced = block.cloneNode(true);
-        var forcedTable = forced.matches("table") ? forced : forced.querySelector("table");
-        var forcedBody = forcedTable ? forcedTable.querySelector("tbody") : null;
-        if (!forcedBody) return currentPage;
-        forcedBody.innerHTML = rows[rowIndex].outerHTML;
-        appendAndCheck(forced, currentPage);
+        var forced = makeChunk(false);
+        if (!forced.body) return currentPage;
+        forced.body.appendChild(rows[rowIndex].cloneNode(true));
+        appendAndCheck(forced.el, currentPage);
         rowIndex += 1;
+        var forcedUsed = fillRows(forced.body, currentPage, rowIndex);
+        rowIndex += forcedUsed;
+        if (rowIndex >= rows.length) {
+          currentPage = appendPostNodes(currentPage);
+        } else {
+          currentPage = ensureNextPageForSection(currentPage, reportDoc, sectionMeta, true);
+        }
       } else {
         rowIndex += used;
-        if (rowIndex < rows.length) currentPage = ensureNextPageForSection(currentPage, reportDoc, sectionMeta, true);
+        if (rowIndex < rows.length) {
+          currentPage = ensureNextPageForSection(currentPage, reportDoc, sectionMeta, true);
+        } else {
+          currentPage = appendPostNodes(currentPage);
+        }
       }
     }
     return currentPage;
@@ -635,13 +719,12 @@
     removeFromFlow(block, currentPage);
 
     if ((block.classList && block.classList.contains("avoid-break")) || blockIsImage(block)) {
-      var movedPage = moveWholeBlockToNextPage(block, currentPage, reportDoc, sectionMeta);
-      var movedFlow = getFlow(movedPage);
-      if (blockIsTable(block) && movedFlow && (isFlowOverflowing(movedFlow, movedPage) || isPageOverflowing(movedPage))) {
-        removeFromFlow(block, movedPage);
-        return splitTableBlock(block, movedPage, reportDoc, sectionMeta);
+      if (blockIsTable(block) && !blockIsImage(block)) {
+        // Tabela não coube inteira: tenta iniciar na página atual por linhas.
+        // splitTableBlock lida com o caso de 0 linhas caberem (cria nova página automaticamente).
+        return splitTableBlock(block, currentPage, reportDoc, sectionMeta);
       }
-      return movedPage;
+      return moveWholeBlockToNextPage(block, currentPage, reportDoc, sectionMeta);
     }
     if (blockIsTable(block)) return splitTableBlock(block, currentPage, reportDoc, sectionMeta);
     if (blockIsList(block)) return splitListBlock(block, currentPage, reportDoc, sectionMeta);
@@ -839,31 +922,39 @@
     window.__reportPaginationDone = true;
   }
 
-  var hasFinalRun = false;
-  var finalRunTimer = null;
+  function waitForAllResources() {
+    var images = toArray(document.querySelectorAll("img"));
+    var imagePromises = images.map(function (img) {
+      if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+      return new Promise(function (resolve) {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      });
+    });
 
-  function finalRun() {
-    if (finalRunTimer) window.clearTimeout(finalRunTimer);
-    finalRunTimer = null;
-    hasFinalRun = true;
-    schedule(run);
-  }
+    var fontPromise = (document.fonts && document.fonts.ready)
+      ? document.fonts.ready.then(function () {}, function () {})
+      : Promise.resolve();
 
-  function scheduleFallback() {
-    if (finalRunTimer) window.clearTimeout(finalRunTimer);
-    // Fallback: força re-execução após 10s caso window.load nunca dispare
-    // (ocorre quando uma imagem ou recurso trava por conexão lenta/queda)
-    finalRunTimer = window.setTimeout(finalRun, 10000);
+    var timeout = new Promise(function (resolve) {
+      window.setTimeout(resolve, 5000);
+    });
+
+    return Promise.race([Promise.all(imagePromises.concat([fontPromise])), timeout]);
   }
 
   function initPagination() {
-    schedule(run);
-    scheduleFallback();
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(function () {
-        if (!hasFinalRun) schedule(run);
-      });
+    // Garante que a classe de loading está ativa mesmo sem o controller inline.
+    // O CSS de report-preview.css usa html.report-paginating para mostrar o spinner
+    // e suprimir o report-doc (opacity:0). A classe é removida quando reportPaginationReady
+    // dispara (lógica no controller), ativando o fade-in via transition.
+    if (!document.documentElement.classList.contains("report-paginating")) {
+      document.documentElement.classList.add("report-paginating");
     }
+
+    waitForAllResources().then(function () {
+      schedule(run);
+    });
   }
 
   if (document.readyState === "loading") {
@@ -871,8 +962,6 @@
   } else {
     initPagination();
   }
-
-  window.addEventListener("load", finalRun);
 
   window.addEventListener("resize", function () {
     debounceRun();
