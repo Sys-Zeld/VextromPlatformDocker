@@ -33,6 +33,19 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/alber/:leituraId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleAi));
   router.post("/orders/:id/alber/:leituraId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleDefault));
   router.post("/orders/:id/alber/:leituraId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleReset));
+  router.get("/orders/:id/discharge", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeEditor));
+  router.post(
+    "/orders/:id/discharge/import",
+    express.raw({ type: ["text/csv", "application/octet-stream", "text/plain"], limit: "5mb" }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.importDischargeTest)
+  );
+  router.post("/orders/:id/discharge/:testId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateDischargeTest));
+  router.post("/orders/:id/discharge/:testId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteDischargeTest));
+  router.post("/orders/:id/discharge/:testId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleAi));
+  router.post("/orders/:id/discharge/:testId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleDefault));
+  router.post("/orders/:id/discharge/:testId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleReset));
   router.get("/orders/:id/report-editor", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportOrderEditor));
   router.get("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReportPage));
   router.post("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReport));

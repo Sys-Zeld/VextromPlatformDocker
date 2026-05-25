@@ -717,9 +717,9 @@ docker compose \
 # Rodar migrations se houver alterações no banco
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.prod.yml \
-  --env-file .env.prod \
-  exec app npm run db:migrate
+    -f docker-compose.prod.yml \
+      --env-file .env.prod \
+        exec app npm run db:migrate
 ```
 
 ### Invalidar sessões admin

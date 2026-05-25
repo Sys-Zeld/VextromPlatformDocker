@@ -75,6 +75,24 @@ async function upsertAppSetting(key, value) {
   );
 }
 
+async function touchReport(serviceReportId) {
+  const id = Number(serviceReportId);
+  if (!Number.isInteger(id) || id <= 0) return;
+  await db.query(
+    `UPDATE service_report_reports SET last_modified_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [id]
+  );
+}
+
+async function touchReportByOrderId(serviceOrderId) {
+  const id = Number(serviceOrderId);
+  if (!Number.isInteger(id) || id <= 0) return;
+  await db.query(
+    `UPDATE service_report_reports SET last_modified_at = NOW(), updated_at = NOW() WHERE service_order_id = $1`,
+    [id]
+  );
+}
+
 function buildOrderSeedKey(year) {
   return `order.code.seed.${Number(year)}`;
 }
@@ -1099,6 +1117,7 @@ async function createDailyLog(payload) {
       payload.sortOrder || 0
     ]
   );
+  await touchReportByOrderId(payload.serviceOrderId);
   return result.rows[0];
 }
 
@@ -1139,6 +1158,7 @@ async function updateDailyLogByOrderAndId(serviceOrderId, dailyLogId, payload) {
       payload.sortOrder || 0
     ]
   );
+  if (result.rows[0]) await touchReportByOrderId(serviceOrderId);
   return result.rows[0] || null;
 }
 
@@ -1151,6 +1171,7 @@ async function deleteDailyLogByOrderAndId(serviceOrderId, dailyLogId) {
     `,
     [dailyLogId, serviceOrderId]
   );
+  if (result.rowCount > 0) await touchReportByOrderId(serviceOrderId);
   return result.rowCount > 0;
 }
 
@@ -1477,6 +1498,7 @@ async function upsertSection(serviceReportId, sectionKey, payload = {}) {
       toBool(payload.isLocked, false)
     ]
   );
+  await touchReport(serviceReportId);
 }
 
 async function getNextSectionSortOrder(serviceReportId) {
@@ -1525,11 +1547,12 @@ async function reorderSections(serviceReportId, orderedKeys) {
       [i + 1, serviceReportId, orderedKeys[i]]
     );
   }
+  await touchReport(serviceReportId);
 }
 
 async function saveTocTablesConfig(reportId, config) {
   await db.query(
-    `UPDATE service_report_reports SET toc_tables_config = $2, updated_at = NOW() WHERE id = $1`,
+    `UPDATE service_report_reports SET toc_tables_config = $2, last_modified_at = NOW(), updated_at = NOW() WHERE id = $1`,
     [reportId, JSON.stringify(config)]
   );
 }
@@ -1542,6 +1565,7 @@ async function deleteSection(serviceReportId, sectionKey) {
     `,
     [serviceReportId, sectionKey]
   );
+  if (result.rowCount > 0) await touchReport(serviceReportId);
   return result.rowCount > 0;
 }
 
@@ -1595,6 +1619,7 @@ async function createComponent(payload) {
       payload.sortOrder || 0
     ]
   );
+  await touchReport(payload.serviceReportId);
   return result.rows[0];
 }
 
@@ -1625,14 +1650,17 @@ async function updateComponent(id, payload) {
       payload.sortOrder || 0
     ]
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await touchReport(row.service_report_id);
+  return row;
 }
 
 async function deleteComponent(id) {
   const result = await db.query(
-    "DELETE FROM service_report_component_items WHERE id = $1",
+    "DELETE FROM service_report_component_items WHERE id = $1 RETURNING service_report_id",
     [id]
   );
+  if (result.rows[0]) await touchReport(result.rows[0].service_report_id);
   return result.rowCount > 0;
 }
 
@@ -1674,6 +1702,7 @@ async function createMeasurementTable(payload) {
       payload.sortOrder || 0
     ]
   );
+  await touchReport(payload.serviceReportId);
   return result.rows[0];
 }
 
@@ -1701,6 +1730,7 @@ async function updateMeasurementTable(id, serviceReportId, payload) {
       payload.sortOrder || 0
     ]
   );
+  if (result.rows[0]) await touchReport(serviceReportId);
   return result.rows[0] || null;
 }
 
@@ -1725,6 +1755,9 @@ async function deleteMeasurementTable(id, serviceReportId = null) {
     query += " AND service_report_id = $2";
   }
   const result = await db.query(query, values);
+  if (result.rowCount > 0 && Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    await touchReport(serviceReportId);
+  }
   return result.rowCount > 0;
 }
 
@@ -2098,6 +2131,7 @@ async function createInstrument(payload) {
       payload.notes || ""
     ]
   );
+  await touchReport(payload.serviceReportId);
   return result.rows[0];
 }
 
@@ -2141,6 +2175,7 @@ async function createTechnician(payload) {
       Boolean(payload.isLead)
     ]
   );
+  await touchReport(payload.serviceReportId);
   return result.rows[0];
 }
 
@@ -2158,6 +2193,7 @@ async function updateTechnician(id, serviceReportId, payload) {
       payload.email || "", payload.phone || "", Boolean(payload.isLead)
     ]
   );
+  if (result.rows[0]) await touchReport(serviceReportId);
   return result.rows[0] || null;
 }
 
@@ -2166,6 +2202,7 @@ async function deleteTechnician(id, serviceReportId) {
     `DELETE FROM service_report_technicians WHERE id = $1 AND service_report_id = $2`,
     [id, serviceReportId]
   );
+  if (result.rowCount > 0) await touchReport(serviceReportId);
   return result.rowCount > 0;
 }
 
@@ -2186,6 +2223,7 @@ async function updateInstrument(id, serviceReportId, payload) {
       payload.notes || ""
     ]
   );
+  if (result.rows[0]) await touchReport(serviceReportId);
   return result.rows[0] || null;
 }
 
@@ -2194,6 +2232,7 @@ async function deleteInstrument(id, serviceReportId) {
     `DELETE FROM service_report_instruments WHERE id = $1 AND service_report_id = $2`,
     [id, serviceReportId]
   );
+  if (result.rowCount > 0) await touchReport(serviceReportId);
   return result.rowCount > 0;
 }
 
@@ -2593,6 +2632,7 @@ async function updateLeituraAlber(id, serviceReportId, payload) {
     }
 
     await client.query("COMMIT");
+    await touchReport(serviceReportId);
     return getLeituraAlberById(id, serviceReportId);
   } catch (err) {
     await client.query("ROLLBACK");
@@ -2626,12 +2666,109 @@ async function deleteLeituraAlber(id, serviceReportId = null) {
   return result.rowCount > 0;
 }
 
+async function createDischargeTest(payload) {
+  const result = await db.query(
+    `
+      INSERT INTO discharge_tests (
+        service_report_id, title, measurement_date, nominal_voltage,
+        notes, hour_labels, readings, col_celula_label, col_flutuacao_label, created_at, updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,NOW(),NOW())
+      RETURNING *
+    `,
+    [
+      payload.serviceReportId,
+      payload.title || "",
+      payload.measurementDate || "",
+      payload.nominalVoltage || null,
+      payload.notes || "",
+      JSON.stringify(payload.hourLabels || []),
+      JSON.stringify(payload.readings || []),
+      payload.colCelulaLabel || "",
+      payload.colFlutuacaoLabel || ""
+    ]
+  );
+  await touchReport(payload.serviceReportId);
+  return result.rows[0];
+}
+
+async function listDischargeTestsByReport(serviceReportId) {
+  const result = await db.query(
+    `SELECT * FROM discharge_tests WHERE service_report_id = $1 ORDER BY id ASC`,
+    [serviceReportId]
+  );
+  return result.rows;
+}
+
+async function getDischargeTestById(id, serviceReportId) {
+  const result = await db.query(
+    `SELECT * FROM discharge_tests WHERE id = $1 AND service_report_id = $2`,
+    [id, serviceReportId]
+  );
+  return result.rows[0] || null;
+}
+
+async function updateDischargeTest(id, serviceReportId, payload) {
+  const result = await db.query(
+    `
+      UPDATE discharge_tests
+      SET
+        title = $3,
+        measurement_date = $4,
+        nominal_voltage = $5,
+        notes = $6,
+        hour_labels = $7::jsonb,
+        col_celula_label = $8,
+        col_flutuacao_label = $9,
+        updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [
+      id,
+      serviceReportId,
+      payload.title || "",
+      payload.measurementDate || "",
+      payload.nominalVoltage || null,
+      payload.notes || "",
+      JSON.stringify(Array.isArray(payload.hourLabels) ? payload.hourLabels : []),
+      payload.colCelulaLabel || "",
+      payload.colFlutuacaoLabel || ""
+    ]
+  );
+  if (result.rows[0]) await touchReport(serviceReportId);
+  return result.rows[0] || null;
+}
+
+async function updateDischargeTestStyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `UPDATE discharge_tests SET style_config = $3, updated_at = NOW() WHERE id = $1 AND service_report_id = $2 RETURNING *`,
+    [id, serviceReportId, styleConfig ? JSON.stringify(styleConfig) : null]
+  );
+  if (result.rows[0]) await touchReport(serviceReportId);
+  return result.rows[0] || null;
+}
+
+async function deleteDischargeTest(id, serviceReportId = null) {
+  const values = [id];
+  let query = "DELETE FROM discharge_tests WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  if (result.rowCount > 0 && Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    await touchReport(serviceReportId);
+  }
+  return result.rowCount > 0;
+}
+
 module.exports = {
   getAppSetting,
   upsertAppSetting,
+  touchReport,
+  touchReportByOrderId,
   toInt,
-  getAppSetting,
-  upsertAppSetting,
   getOrderCodeSeed,
   setOrderCodeSeed,
   getOrderCodeSequence,
@@ -2757,6 +2894,12 @@ module.exports = {
   getLeituraAlberById,
   updateLeituraAlber,
   updateLeituraAlberStyleConfig,
-  deleteLeituraAlber
+  deleteLeituraAlber,
+  createDischargeTest,
+  listDischargeTestsByReport,
+  getDischargeTestById,
+  updateDischargeTest,
+  updateDischargeTestStyleConfig,
+  deleteDischargeTest
 };
 

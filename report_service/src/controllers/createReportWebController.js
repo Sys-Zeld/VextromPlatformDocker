@@ -2,6 +2,7 @@ const path = require("path");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { parseAlberCsv } = require("../services/alberParserService");
+const { parseDischargeCsv } = require("../services/dischargeParserService");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../../db");
 const repo = require("../repositories/serviceReportRepository");
@@ -24,7 +25,13 @@ const {
   getDefaultAlberStyleConfig,
   saveDefaultAlberStyleConfig,
   scopeAlberStyleConfig,
-  applyDefaultAlberStyle
+  applyDefaultAlberStyle,
+  buildDischargeStyleConfig,
+  scopeDischargeStyleConfig,
+  getDefaultDischargeStyleConfig,
+  saveDefaultDischargeStyleConfig,
+  buildDischargePreviewHtml,
+  applyDischargeStyleViaAi
 } = require("../services/measurementStyleService");
 const {
   renderReportPreviewHtml,
@@ -1987,6 +1994,179 @@ function createReportWebController(deps) {
         await repo.deleteLeituraAlber(leituraId, report.id);
       }
       return res.redirect(`/admin/report-service/orders/${orderId}/alber`);
+    },
+
+    async dischargeEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).send("OS nao encontrada.");
+      const report = await service.ensureReportForOrder(orderId);
+      const dischargeTests = await repo.listDischargeTestsByReport(report.id);
+      const saved = req.query.saved === "1";
+      const importError = sanitizeInput(req.query.import_error) || null;
+      return res.render("report-service/discharge-editor", {
+        pageTitle: `Teste de Descarga — ${data.order.service_order_display || "OS"}`,
+        order: withServiceOrderDisplay(data.order),
+        report,
+        dischargeTests,
+        saved,
+        importError,
+        csrfToken: req.csrfToken(),
+        appVersion: env.APP_VERSION || "1"
+      });
+    },
+
+    async importDischargeTest(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      let rawContent;
+      if (Buffer.isBuffer(req.body)) {
+        rawContent = req.body.toString("utf8");
+      } else if (typeof req.body === "string") {
+        rawContent = req.body;
+      } else {
+        return res.redirect(`/admin/report-service/orders/${orderId}/discharge?import_error=${encodeURIComponent("Arquivo inválido.")}`);
+      }
+      const parsed = parseDischargeCsv(rawContent);
+      if (!parsed.isValid) {
+        const msg = parsed.errors.join(" ");
+        return res.redirect(`/admin/report-service/orders/${orderId}/discharge?import_error=${encodeURIComponent(msg)}`);
+      }
+      await repo.createDischargeTest({
+        serviceReportId: report.id,
+        title: "",
+        measurementDate: "",
+        nominalVoltage: null,
+        notes: "",
+        hourLabels: parsed.hourLabels,
+        readings: parsed.readings
+      });
+      return res.redirect(`/admin/report-service/orders/${orderId}/discharge?saved=1`);
+    },
+
+    async updateDischargeTest(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      const title = sanitizeInput(req.body.title) || "";
+      const measurementDate = sanitizeInput(req.body.measurement_date) || "";
+      const nominalVoltage = req.body.nominal_voltage !== "" && req.body.nominal_voltage !== undefined
+        ? parseFloat(String(req.body.nominal_voltage).replace(",", ".")) || null
+        : null;
+      const notes = sanitizeInput(req.body.notes) || "";
+      const colCelulaLabel = sanitizeInput(req.body.col_celula_label) || "";
+      const colFlutuacaoLabel = sanitizeInput(req.body.col_flutuacao_label) || "";
+      const hourLabels = [];
+      let i = 0;
+      while (req.body[`hour_label_${i}`] !== undefined) {
+        hourLabels.push(sanitizeInput(req.body[`hour_label_${i}`]) || "");
+        i++;
+      }
+      if (Number.isInteger(testId) && testId > 0) {
+        await repo.updateDischargeTest(testId, report.id, {
+          title, measurementDate, nominalVoltage, notes,
+          hourLabels, colCelulaLabel, colFlutuacaoLabel
+        });
+      }
+      return res.redirect(`/admin/report-service/orders/${orderId}/discharge?saved=1`);
+    },
+
+    async deleteDischargeTest(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(testId) && testId > 0) {
+        await repo.deleteDischargeTest(testId, report.id);
+      }
+      return res.redirect(`/admin/report-service/orders/${orderId}/discharge`);
+    },
+
+    async dischargeStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+
+      const { generateDefaultDischargeCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = scopeDischargeStyleConfig(await getDefaultDischargeStyleConfig(), testId);
+      const activeStyle = parsedCurrentStyle || test.style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          await repo.updateDischargeTestStyleConfig(testId, report.id, parsedCurrentStyle);
+          const previewHtml = buildDischargePreviewHtml(test, parsedCurrentStyle);
+          return res.json({ previewHtml, styleConfig: parsedCurrentStyle });
+        }
+        const previewHtml = buildDischargePreviewHtml(test, activeStyle);
+        return res.json({ previewHtml, styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultDischargeCss(testId);
+      const newCss = await applyDischargeStyleViaAi(currentCss, testId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = buildDischargePreviewHtml(test, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateDischargeTestStyleConfig(testId, report.id, newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async dischargeStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateDischargeTestStyleConfig(testId, report.id, null);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+      const defaultStyle = scopeDischargeStyleConfig(await getDefaultDischargeStyleConfig(), testId);
+      const previewHtml = buildDischargePreviewHtml(test, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async dischargeStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+
+      const { generateDefaultDischargeCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const styleConfig = buildDischargeStyleConfig(parsedCurrentStyle || test.style_config || { customCss: generateDefaultDischargeCss(testId) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultDischargeStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeDischargeStyleConfig(styleConfig, testId);
+      await repo.updateDischargeTestStyleConfig(testId, report.id, scopedStyleConfig);
+      const previewHtml = buildDischargePreviewHtml(test, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
     },
 
     async reportOrderEditor(req, res) {

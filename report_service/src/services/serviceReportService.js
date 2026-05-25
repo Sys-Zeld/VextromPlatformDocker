@@ -5,7 +5,9 @@ const {
   getDefaultMeasurementStyleConfig,
   applyDefaultMeasurementStyle,
   getDefaultAlberStyleConfig,
-  applyDefaultAlberStyle
+  applyDefaultAlberStyle,
+  getDefaultDischargeStyleConfig,
+  applyDefaultDischargeStyle
 } = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
@@ -483,11 +485,14 @@ async function buildReportAggregate(serviceReportId) {
     getDefaultMeasurementStyleConfig()
   ]);
   const measurements = applyDefaultMeasurementStyle(measurementRows, defaultMeasurementStyleConfig);
-  const [alberRows, defaultAlberStyleConfig] = await Promise.all([
+  const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
-    getDefaultAlberStyleConfig()
+    getDefaultAlberStyleConfig(),
+    repo.listDischargeTestsByReport(serviceReportId),
+    getDefaultDischargeStyleConfig()
   ]);
   const alberLeituras = applyDefaultAlberStyle(alberRows, defaultAlberStyleConfig);
+  const dischargeTests = applyDefaultDischargeStyle(dischargeRows, defaultDischargeStyleConfig);
   const signatures = await repo.listSignatures(serviceReportId);
   const instruments = await repo.listInstruments(serviceReportId);
   // Equipe tecnica no fluxo atual e vinculada a OS (order-level).
@@ -511,6 +516,7 @@ async function buildReportAggregate(serviceReportId) {
     components,
     measurements,
     alberLeituras,
+    dischargeTests,
     signatures,
     instruments,
     technicians,

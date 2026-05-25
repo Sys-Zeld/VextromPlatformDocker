@@ -613,6 +613,25 @@ async function migrateServiceReport() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_celulas_alber_leitura_id ON celulas_alber (leitura_id);`);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS discharge_tests (
+      id                BIGSERIAL PRIMARY KEY,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      title             TEXT NOT NULL DEFAULT '',
+      measurement_date  TEXT NOT NULL DEFAULT '',
+      nominal_voltage   DOUBLE PRECISION,
+      notes             TEXT NOT NULL DEFAULT '',
+      hour_labels       JSONB NOT NULL DEFAULT '[]',
+      readings          JSONB NOT NULL DEFAULT '[]',
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_discharge_tests_report_id ON discharge_tests (service_report_id);`);
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS style_config JSONB;`);
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_celula_label TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_flutuacao_label TEXT NOT NULL DEFAULT '';`);
+
   await seedServiceReportEquipment();
   await seedServiceReportSample();
 }

@@ -860,7 +860,9 @@ function renderDailyLogInlineItem(dailyLog, requestedId = null, context = null) 
     context.technicianItems || [],
     context.orderEquipments || [],
     context.siteData || {},
-    context.measurementTables || []
+    context.measurementTables || [],
+    context.alberLeituras || [],
+    context.dischargeTests || []
   );
 }
 
@@ -1143,7 +1145,7 @@ function liftBlockTagFromParagraph(html, tagSrc, inlineReplacer) {
   });
 }
 
-function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = []) {
+function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = [], dischargeTests = []) {
   const source = String(contentHtml || "");
   if (!source) return "<p><br></p>";
   const opts = {
@@ -1208,7 +1210,21 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const withAlberP = liftBlockTagFromParagraph(r7, alberSrc, alberFn);
   const r7b = withAlberP.replace(new RegExp(alberSrc, "gi"), alberFn);
 
-  if (!opts.expandDailyLogTags) return r7b;
+  const dischargeSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*discharge(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const dischargeFn = (_match, rawId) => renderDischargeTestTable(dischargeTests, rawId) || _match;
+  const withDischargeP = liftBlockTagFromParagraph(r7b, dischargeSrc, dischargeFn);
+  const r7c = withDischargeP.replace(new RegExp(dischargeSrc, "gi"), dischargeFn);
+
+  // @grafo=ID (total) | @grafo1=ID (célula 1) | @grafo2=ID (célula 2) ...
+  const grafoSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*grafo(\d*)(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const grafoFn = (_match, rawCell, rawId) => {
+    const cellIdx = (rawCell === "" || rawCell == null) ? -1 : (parseInt(rawCell, 10) - 1);
+    return generateDischargeSvgChart(dischargeTests, rawId, cellIdx) || _match;
+  };
+  const withGrafoP = liftBlockTagFromParagraph(r7c, grafoSrc, grafoFn);
+  const r7d = withGrafoP.replace(new RegExp(grafoSrc, "gi"), grafoFn);
+
+  if (!opts.expandDailyLogTags) return r7d;
 
   const nestedContext = {
     imageById,
@@ -1222,6 +1238,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     siteData,
     measurementTables,
     alberLeituras,
+    dischargeTests,
     imageLabel: opts.imageLabel || "Imagem"
   };
 
@@ -1232,7 +1249,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     if (!Number.isInteger(id) || id <= 0) return _match;
     return renderDailyLogInlineItem(dailyLogsById.get(id), id, nestedContext);
   };
-  const withDailyLogsP = liftBlockTagFromParagraph(r7b, dailyLogTagSrc, dailyLogReplacer);
+  const withDailyLogsP = liftBlockTagFromParagraph(r7d, dailyLogTagSrc, dailyLogReplacer);
   const withDailyLogs = withDailyLogsP.replace(new RegExp(dailyLogTagSrc, "gi"), dailyLogReplacer);
 
   // @descricaodia (all logs): lift out of <p> wrappers, then inline fallback
@@ -1329,6 +1346,7 @@ function buildPreviewModel(payload, options = {}) {
   const componentItems = Array.isArray(payload.components) ? payload.components : [];
   const measurementTables = Array.isArray(payload.measurements) ? payload.measurements : [];
   const alberLeituras = Array.isArray(payload.alberLeituras) ? payload.alberLeituras : [];
+  const dischargeTests = Array.isArray(payload.dischargeTests) ? payload.dischargeTests : [];
   const timesheetItems = Array.isArray(payload.timesheet) ? payload.timesheet : [];
   const technicianItems = Array.isArray(payload.technicians) ? payload.technicians : [];
   const dailyLogsOrdered = (Array.isArray(payload.dailyLogs) ? payload.dailyLogs : [])
@@ -1400,7 +1418,8 @@ function buildPreviewModel(payload, options = {}) {
           orderEquipments,
           siteData,
           measurementTables,
-          alberLeituras
+          alberLeituras,
+          dischargeTests
         ),
         content_html_preview: injectTaggedImagesInHtml(
           section.content_html || "<p><br></p>",
@@ -1415,7 +1434,8 @@ function buildPreviewModel(payload, options = {}) {
           orderEquipments,
           siteData,
           measurementTables,
-          alberLeituras
+          alberLeituras,
+          dischargeTests
         ),
         section_title_html: section.section_title_html || `<p>${section.section_title || "-"}</p>`,
         section_title_text: section.section_title_text || section.section_title || "-",
@@ -1495,10 +1515,278 @@ function buildPreviewModel(payload, options = {}) {
   };
 }
 
+function generateDefaultDischargeCss(testId) {
+  const s = `[data-discharge-id="${testId}"]`;
+  return [
+    `${s} .discharge-th{border:1px solid #2d5a8e;background:#1e3a5f;color:#ffffff;padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:0.03em;text-align:center;}`,
+    `${s} .discharge-th-celula{border:1px solid #2d5a8e;background:#1e3a5f;color:#ffffff;padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:0.03em;text-align:left;}`,
+    `${s} .discharge-td{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:center;}`,
+    `${s} .discharge-td-alt{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:center;background:#f0f4fa;}`,
+    `${s} .discharge-td-celula{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:left;font-weight:600;background:#f8fafc;}`
+  ].join("\n");
+}
+
+function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
+  const id = Number(requestedId);
+  const test = (Array.isArray(dischargeTests) ? dischargeTests : [])
+    .find((t) => Number(t && t.id) === id);
+  if (!test) return "";
+
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
+    : (test.style_config && typeof test.style_config === "object") ? test.style_config
+    : {};
+  const css = (sc.customCss && typeof sc.customCss === "string") ? sc.customCss : generateDefaultDischargeCss(id);
+
+  const hourLabels = Array.isArray(test.hour_labels) ? test.hour_labels : [];
+  const readings = Array.isArray(test.readings) ? test.readings : [];
+
+  if (!readings.length) return "";
+
+  const celulaLabel = String(test.col_celula_label || "").trim() || "Célula";
+  const flutuacaoLabel = String(test.col_flutuacao_label || "").trim() || "Flutuação (V)";
+  const headerCells = [
+    `<th class="discharge-th-celula">${escapeHtml(celulaLabel)}</th>`,
+    `<th class="discharge-th">${escapeHtml(flutuacaoLabel)}</th>`,
+    ...hourLabels.map((h) => `<th class="discharge-th">${escapeHtml(String(h))}</th>`)
+  ].join("");
+
+  const rows = readings.map((row, idx) => {
+    const tdClass = idx % 2 === 0 ? "discharge-td" : "discharge-td-alt";
+    const horas = Array.isArray(row.horas) ? row.horas : [];
+    const cells = [
+      `<td class="discharge-td-celula">${escapeHtml(String(row.celula))}</td>`,
+      `<td class="${tdClass}">${row.flutuacao != null ? escapeHtml(String(row.flutuacao)) : "-"}</td>`,
+      ...horas.map((v) => `<td class="${tdClass}">${v != null ? escapeHtml(String(v)) : "-"}</td>`)
+    ].join("");
+    return `<tr style="page-break-inside:avoid;break-inside:avoid;">${cells}</tr>`;
+  }).join("");
+
+  return `
+    <div class="report-inline-discharge-wrap" data-discharge-id="${id}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;overflow-x:auto;">
+      <style>${css}</style>
+      <table data-discharge-id="${id}" style="width:100%;border-collapse:collapse;line-height:1.3;white-space:nowrap;">
+        <thead style="display:table-header-group;">
+          <tr style="page-break-inside:avoid;break-inside:avoid;">${headerCells}</tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function generateDischargeSvgChart(dischargeTests, testId, seriesIndex) {
+  const id = Number(testId);
+  const test = (Array.isArray(dischargeTests) ? dischargeTests : [])
+    .find((t) => Number(t && t.id) === id);
+  if (!test) return "";
+
+  const hourLabels = Array.isArray(test.hour_labels) ? test.hour_labels : [];
+  const readings   = Array.isArray(test.readings) ? test.readings : [];
+  if (!readings.length) return "";
+
+  const cellIdx = Number(seriesIndex); // -1 = tensão total; 0+ = índice da célula (0-based)
+  const xLabels = [String(test.col_flutuacao_label || "").trim() || "Flutuação", ...hourLabels];
+  const n = xLabels.length;
+
+  let yValues, seriesLabel, isTotal;
+  if (cellIdx < 0) {
+    isTotal = true;
+    seriesLabel = "Tensão Total";
+    yValues = xLabels.map((_, ci) =>
+      readings.reduce((sum, row) => {
+        const v = ci === 0
+          ? parseFloat(row.flutuacao)
+          : parseFloat((Array.isArray(row.horas) ? row.horas : [])[ci - 1]);
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0)
+    );
+  } else {
+    isTotal = false;
+    const reading = readings[cellIdx];
+    if (!reading) return "";
+    seriesLabel = String(reading.celula || `Célula ${cellIdx + 1}`);
+    yValues = xLabels.map((_, ci) => {
+      const v = ci === 0
+        ? parseFloat(reading.flutuacao)
+        : parseFloat((Array.isArray(reading.horas) ? reading.horas : [])[ci - 1]);
+      return isNaN(v) ? null : v;
+    });
+  }
+
+  const validVals = yValues.filter((v) => v !== null && !isNaN(v));
+  if (!validVals.length) return "";
+
+  const f = (num) => Number(num).toFixed(2);
+
+  // Layout
+  const W = 660, H = 270;
+  const mL = 66, mR = 16, mT = 28, mB = 54;
+  const pW = W - mL - mR;
+  const pH = H - mT - mB;
+
+  const minY = Math.min(...validVals);
+  const maxY = Math.max(...validVals);
+  const rangeY = maxY - minY;
+  const padY = rangeY > 0 ? rangeY * 0.18 : (maxY * 0.05 || 1);
+  const yMin = Math.max(0, minY - padY);
+  const yMax = maxY + padY;
+  const yRange = yMax - yMin || 1;
+
+  const toX = (i) => mL + (n > 1 ? (i / (n - 1)) : 0.5) * pW;
+  const toY = (v) => v === null ? null : mT + (1 - (v - yMin) / yRange) * pH;
+
+  const points = yValues.map((v, i) => ({ x: toX(i), y: toY(v) }));
+
+  // Smooth bezier (catmull-rom → cubic)
+  function smoothPath(pts) {
+    const vp = pts.filter((p) => p.y !== null);
+    if (!vp.length) return "";
+    if (vp.length === 1) return `M ${f(vp[0].x)} ${f(vp[0].y)}`;
+    const t = 0.3;
+    let d = `M ${f(vp[0].x)} ${f(vp[0].y)}`;
+    for (let i = 0; i < vp.length - 1; i++) {
+      const p0 = vp[Math.max(0, i - 1)];
+      const p1 = vp[i];
+      const p2 = vp[i + 1];
+      const p3 = vp[Math.min(vp.length - 1, i + 2)];
+      const cp1x = p1.x + (p2.x - p0.x) * t;
+      const cp1y = p1.y + (p2.y - p0.y) * t;
+      const cp2x = p2.x - (p3.x - p1.x) * t;
+      const cp2y = p2.y - (p3.y - p1.y) * t;
+      d += ` C ${f(cp1x)} ${f(cp1y)} ${f(cp2x)} ${f(cp2y)} ${f(p2.x)} ${f(p2.y)}`;
+    }
+    return d;
+  }
+
+  const linePath = smoothPath(points);
+  const vpts = points.filter((p) => p.y !== null);
+  const fillPath = vpts.length && linePath
+    ? `${linePath} L ${f(vpts[vpts.length - 1].x)} ${f(mT + pH)} L ${f(vpts[0].x)} ${f(mT + pH)} Z`
+    : "";
+
+  const lineColor = isTotal ? "#4a7a30" : "#6aaa42";
+  const gradId    = `dchG_${id}_${cellIdx < 0 ? "t" : cellIdx}`;
+  const gradTop   = isTotal ? "rgba(74,122,48,0.32)"  : "rgba(106,170,66,0.26)";
+  const gradMid   = isTotal ? "rgba(93,143,61,0.10)"  : "rgba(106,170,66,0.08)";
+
+  const nTicks = 5;
+  const yTicks = Array.from({ length: nTicks }, (_, i) => ({
+    v: yMin + yRange * i / (nTicks - 1),
+    y: toY(yMin + yRange * i / (nTicks - 1))
+  }));
+
+  const decimals  = isTotal ? 2 : 3;
+  const initVal   = yValues[0];
+  const finalVal  = yValues[yValues.length - 1];
+  const dropV     = (initVal !== null && finalVal !== null) ? initVal - finalVal : null;
+  const dropPct   = (dropV !== null && initVal > 0) ? (dropV / initVal * 100) : null;
+  const testTitle = String(test.title || `Teste de Descarga #${id}`);
+  const subtitle  = isTotal
+    ? `Curva de Tensão Total — ${readings.length} célula${readings.length !== 1 ? "s" : ""}`
+    : `Curva da Célula ${escapeHtml(seriesLabel)}`;
+
+  // ── Header ──────────────────────────────────────────
+  let html = `<div class="report-inline-discharge-chart-wrap avoid-break" style="margin:10px 0 20px 0;break-inside:avoid;page-break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">`;
+  html += `<div style="background:linear-gradient(135deg,#1c3a0a 0%,#2f5c18 52%,#4a7a30 100%);padding:11px 16px 9px;color:#fff;">`;
+  html += `<div style="font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;opacity:.5;margin-bottom:3px;font-weight:600;">CURVA DE DESCARGA</div>`;
+  html += `<div style="font-size:13px;font-weight:700;line-height:1.25;">${escapeHtml(testTitle)}</div>`;
+  html += `<div style="font-size:9.5px;opacity:.65;margin-top:2px;">${subtitle}`;
+  if (test.measurement_date) html += ` &nbsp;&middot;&nbsp; ${escapeHtml(String(test.measurement_date))}`;
+  html += `</div></div>`;
+
+  // ── Stats bar ────────────────────────────────────────
+  if (initVal !== null && finalVal !== null) {
+    const sc = "flex:1;padding:9px 12px;border-right:1px solid #f1f5f9;text-align:center;min-width:0;";
+    const sl = "display:block;font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;";
+    const su = "font-size:9px;font-weight:400;color:#94a3b8;margin-left:1px;";
+    const sv = (clr) => `font-size:16px;font-weight:700;color:${clr || "#3d6b22"};line-height:1.1;`;
+    const dropColor = (dropV || 0) > 0.001 ? "#dc2626" : ((dropV || 0) < -0.001 ? "#16a34a" : "#3d6b22");
+    const sign = (dropV || 0) >= 0 ? "−" : "+";
+
+    html += `<div style="display:flex;background:#fff;border-left:1px solid #f1f5f9;border-right:1px solid #f1f5f9;">`;
+    html += `<div style="${sc}"><span style="${sl}">Tensão inicial</span><div style="${sv()}">` + initVal.toFixed(decimals) + `<span style="${su}">V</span></div></div>`;
+    html += `<div style="${sc}"><span style="${sl}">Tensão final</span><div style="${sv((dropV || 0) > 0.001 ? "#b45309" : "#3d6b22")}">` + finalVal.toFixed(decimals) + `<span style="${su}">V</span></div></div>`;
+    if (dropV !== null) {
+      html += `<div style="${sc}"><span style="${sl}">Queda total</span><div style="${sv(dropColor)}">${sign}` + Math.abs(dropV).toFixed(decimals) + `<span style="${su}">V</span>`;
+      if (dropPct !== null) html += `<span style="font-size:9px;color:${dropColor};margin-left:3px;">(${Math.abs(dropPct).toFixed(1)}%)</span>`;
+      html += `</div></div>`;
+    }
+    html += isTotal
+      ? `<div style="${sc}"><span style="${sl}">Células</span><div style="${sv()}">${readings.length}</div></div>`
+      : `<div style="${sc}"><span style="${sl}">Célula</span><div style="${sv()};font-size:14px;">${escapeHtml(seriesLabel)}</div></div>`;
+    if (isTotal && test.nominal_voltage) {
+      html += `<div style="${sc}border-right:none;"><span style="${sl}">V nominal</span><div style="${sv()}">` + parseFloat(test.nominal_voltage).toFixed(0) + `<span style="${su}">V</span></div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  // ── SVG chart ────────────────────────────────────────
+  html += `<div style="background:#fff;border-left:1px solid #f1f5f9;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;border-radius:0 0 8px 8px;padding:10px 6px 4px;">`;
+  html += `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">`;
+  html += `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">`;
+  html += `<stop offset="0%" stop-color="${gradTop}"/>`;
+  html += `<stop offset="55%" stop-color="${gradMid}"/>`;
+  html += `<stop offset="100%" stop-color="rgba(0,0,0,0)"/>`;
+  html += `</linearGradient></defs>`;
+
+  // Plot background
+  html += `<rect x="${mL}" y="${mT}" width="${pW}" height="${pH}" fill="#f9fafb" rx="3"/>`;
+
+  // Y grid + labels
+  yTicks.forEach((tick) => {
+    html += `<line x1="${mL}" y1="${f(tick.y)}" x2="${mL + pW}" y2="${f(tick.y)}" stroke="#eef2f7" stroke-width="1"/>`;
+    html += `<text x="${mL - 6}" y="${f(tick.y + 3.5)}" text-anchor="end" font-size="9.5" fill="#94a3b8" font-family="Segoe UI,Arial,sans-serif">${tick.v.toFixed(decimals)}</text>`;
+  });
+
+  // Y axis title (rotated)
+  const yAxisLabel = isTotal ? "Tensão Total (V)" : `${escapeHtml(seriesLabel)} (V)`;
+  html += `<text transform="rotate(-90,${mL - 46},${f(mT + pH / 2)})" x="${mL - 46}" y="${f(mT + pH / 2 + 3)}" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="Segoe UI,Arial,sans-serif">${yAxisLabel}</text>`;
+
+  // X grid + labels
+  const needsRotate = n > 7;
+  xLabels.forEach((label, i) => {
+    const x = toX(i);
+    if (i > 0 && i < n - 1) {
+      html += `<line x1="${f(x)}" y1="${mT}" x2="${f(x)}" y2="${f(mT + pH)}" stroke="#eef2f7" stroke-width="1" stroke-dasharray="3 3"/>`;
+    }
+    const ty = mT + pH + (needsRotate ? 13 : 16);
+    if (needsRotate) {
+      html += `<text transform="rotate(-38,${f(x)},${ty})" x="${f(x)}" y="${ty}" text-anchor="end" font-size="9.5" fill="#64748b" font-family="Segoe UI,Arial,sans-serif">${escapeHtml(String(label))}</text>`;
+    } else {
+      html += `<text x="${f(x)}" y="${ty}" text-anchor="middle" font-size="9.5" fill="#64748b" font-family="Segoe UI,Arial,sans-serif">${escapeHtml(String(label))}</text>`;
+    }
+  });
+
+  // Axes
+  html += `<line x1="${mL}" y1="${mT}" x2="${mL}" y2="${f(mT + pH)}" stroke="#e2e8f0" stroke-width="1.5"/>`;
+  html += `<line x1="${mL}" y1="${f(mT + pH)}" x2="${f(mL + pW)}" y2="${f(mT + pH)}" stroke="#e2e8f0" stroke-width="1.5"/>`;
+
+  // Fill area
+  if (fillPath) html += `<path d="${fillPath}" fill="url(#${gradId})"/>`;
+
+  // Line
+  if (linePath) html += `<path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+  // Points + value labels
+  const showLabels = n <= 10;
+  points.forEach((p, i) => {
+    if (p.y === null) return;
+    html += `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="4.5" fill="${lineColor}" stroke="#fff" stroke-width="2"/>`;
+    if (showLabels && yValues[i] !== null) {
+      html += `<text x="${f(p.x)}" y="${f(p.y - 8)}" text-anchor="middle" font-size="9" fill="${lineColor}" font-family="Segoe UI,Arial,sans-serif" font-weight="600">${yValues[i].toFixed(decimals)}</text>`;
+    }
+  });
+
+  html += `</svg></div></div>`;
+  return html;
+}
+
 module.exports = {
   buildPreviewModel,
   renderMeasurementsInlineTable,
   generateDefaultCss,
   renderAlberLeituraTable,
-  generateDefaultAlberCss
+  generateDefaultAlberCss,
+  renderDischargeTestTable,
+  generateDefaultDischargeCss,
+  generateDischargeSvgChart
 };

@@ -1,4 +1,4 @@
-const { renderMeasurementsInlineTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss } = require("./reportPreviewService");
+const { renderMeasurementsInlineTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss, renderDischargeTestTable, generateDefaultDischargeCss } = require("./reportPreviewService");
 const repo = require("../repositories/serviceReportRepository");
 
 const MEASUREMENT_DEFAULT_STYLE_SETTING_KEY = "report.preview.measurements.style.default";
@@ -208,9 +208,105 @@ REGRAS OBRIGATÓRIAS:
     .trim();
 }
 
+const DISCHARGE_DEFAULT_STYLE_SETTING_KEY = "report.preview.discharge.style.default";
+
+function buildDischargeStyleConfig(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const cfg = {};
+  if (src.customCss && typeof src.customCss === "string" && src.customCss.trim()) {
+    cfg.customCss = src.customCss;
+  }
+  return cfg;
+}
+
+function scopeDischargeStyleConfig(styleConfig, testId) {
+  const cfg = buildDischargeStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  const scopedCss = cfg.customCss.replace(
+    /\[data-discharge-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+    `[data-discharge-id="${Number(testId)}"]`
+  );
+  return { ...cfg, customCss: scopedCss };
+}
+
+async function getDefaultDischargeStyleConfig() {
+  const raw = await repo.getAppSetting(DISCHARGE_DEFAULT_STYLE_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const cfg = buildDischargeStyleConfig(parsed);
+    return cfg.customCss ? cfg : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveDefaultDischargeStyleConfig(styleConfig) {
+  const cfg = buildDischargeStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  await repo.upsertAppSetting(DISCHARGE_DEFAULT_STYLE_SETTING_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+function applyDefaultDischargeStyle(dischargeTests, defaultStyleConfig) {
+  if (!defaultStyleConfig || !defaultStyleConfig.customCss || !Array.isArray(dischargeTests)) {
+    return Array.isArray(dischargeTests) ? dischargeTests : [];
+  }
+  return dischargeTests.map((item) => {
+    if (!item || (item.style_config && typeof item.style_config === "object")) return item;
+    const scopedStyleConfig = scopeDischargeStyleConfig(defaultStyleConfig, item.id);
+    return scopedStyleConfig ? { ...item, style_config: scopedStyleConfig, _uses_default_discharge_style: true } : item;
+  });
+}
+
+function buildDischargePreviewHtml(test, styleConfig) {
+  return renderDischargeTestTable([test], test.id, styleConfig || null);
+}
+
+async function applyDischargeStyleViaAi(currentCss, testId, userInstruction, reviseTextWithAi) {
+  if (typeof reviseTextWithAi !== "function") {
+    const err = new Error("Serviço de IA indisponível.");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const scope = `[data-discharge-id="${testId}"]`;
+
+  const systemInstruction = `Você é um especialista em CSS para tabelas HTML impressas em PDF via Puppeteer.
+
+A tabela usa as seguintes classes CSS com escopo "${scope}":
+- .discharge-th → células do cabeçalho (todas as colunas exceto Célula)
+- .discharge-th-celula → cabeçalho da coluna Célula (primeira coluna)
+- .discharge-td → células de dados (linhas pares)
+- .discharge-td-alt → células de dados (linhas ímpares, cor alternada)
+- .discharge-td-celula → coluna Célula nas linhas de dados
+
+REGRAS OBRIGATÓRIAS:
+1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.
+2. Mantenha EXATAMENTE o prefixo de escopo "${scope}" em TODOS os seletores.
+3. Use apenas propriedades CSS compatíveis com Puppeteer: cores em hex, sem gradientes, sem variáveis CSS (--var).
+4. Preserve todas as propriedades existentes, modificando apenas o que a instrução solicita.
+5. Não adicione seletores além dos listados acima.`;
+
+  const prompt = `CSS atual:\n${currentCss}\n\nInstrução: ${userInstruction}\n\nRetorne o CSS completo modificado.`;
+
+  const result = await reviseTextWithAi({
+    text: prompt,
+    systemInstruction,
+    preserveFormatting: true
+  });
+
+  const raw = String(result && result.revisedText ? result.revisedText : "");
+  return raw
+    .replace(/^```css?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+}
+
 module.exports = {
   generateDefaultCss,
   generateDefaultAlberCss,
+  generateDefaultDischargeCss,
   buildStyleConfig,
   scopeMeasurementStyleConfig,
   getDefaultMeasurementStyleConfig,
@@ -224,5 +320,12 @@ module.exports = {
   saveDefaultAlberStyleConfig,
   applyDefaultAlberStyle,
   applyStyleViaAi,
-  applyAlberStyleViaAi
+  applyAlberStyleViaAi,
+  buildDischargeStyleConfig,
+  scopeDischargeStyleConfig,
+  getDefaultDischargeStyleConfig,
+  saveDefaultDischargeStyleConfig,
+  applyDefaultDischargeStyle,
+  buildDischargePreviewHtml,
+  applyDischargeStyleViaAi
 };
