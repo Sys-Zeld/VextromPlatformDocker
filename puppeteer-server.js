@@ -74,6 +74,11 @@ async function renderPdf(html, imageCache) {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
     });
     await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+    await page.evaluate(() => {
+      document.documentElement.classList.remove("report-paginating");
+      var doc = document.querySelector(".report-doc");
+      if (doc) { doc.style.transition = "none"; doc.style.opacity = "1"; }
+    });
 
     const buffer = await page.pdf({
       format: "A4",

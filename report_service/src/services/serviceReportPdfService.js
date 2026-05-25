@@ -581,6 +581,11 @@ ${html}
         window.dispatchEvent(new Event("resize"));
       });
       await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+      await page.evaluate(() => {
+        document.documentElement.classList.remove("report-paginating");
+        const doc = document.querySelector(".report-doc");
+        if (doc) { doc.style.transition = "none"; doc.style.opacity = "1"; }
+      });
 
       const buffer = await page.pdf({
         format: "A4",
@@ -675,6 +680,11 @@ ${html}
         window.dispatchEvent(new Event("resize"));
       });
       await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+      await page.evaluate(() => {
+        document.documentElement.classList.remove("report-paginating");
+        const doc = document.querySelector(".report-doc");
+        if (doc) { doc.style.transition = "none"; doc.style.opacity = "1"; }
+      });
 
       const buffer = await page.pdf({
         format: "A4",
