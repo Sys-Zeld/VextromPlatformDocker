@@ -90,11 +90,11 @@
             <% if (!(measurements || []).length) { %><tr><td colspan="6" class="text-center text-muted py-3">Sem ensaios/medicoes.</td></tr><% } %>
             <% (measurements || []).forEach((item) => { %>
               <tr>
-                <td><code><%= item.id %></code></td>
+                <td><code><%= item.seq_id %></code></td>
                 <td><%= item.title || "-" %></td>
                 <td><%= Array.isArray(item.columns_json) ? item.columns_json.length : 0 %></td>
                 <td><%= Array.isArray(item.rows_json) ? item.rows_json.length : 0 %></td>
-                <td><code>@ensaios=<%= item.id %></code></td>
+                <td><code>@ensaios=<%= item.seq_id %></code></td>
                 <td>
                   <div class="d-flex gap-1 flex-wrap">
                     <button class="btn btn-outline-primary btn-sm measurement-edit-btn" type="button" data-measurement-id="<%= item.id %>">Editar</button>

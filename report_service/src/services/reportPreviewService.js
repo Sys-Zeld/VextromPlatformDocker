@@ -205,9 +205,7 @@ function renderInlineImageCard(image, requestedId = null, imageLabel = "Imagem")
   const wrapStyle = swapDims
     ? `display:flex;align-items:center;justify-content:center;width:250px;height:250px;overflow:hidden;`
     : `width:250px;height:250px;`;
-  const imgStyle = swapDims
-    ? `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`
-    : `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`;
+  const imgStyle = `object-fit:cover;width:250px;height:250px;display:block;${rotateStyle}`;
   return `<figure class="report-inline-image-card"><div style="${wrapStyle}"><img class="report-inline-image" src="${safePath}" alt="${captionAlt}" width="250" height="250" data-rotation="${rotation}" style="${imgStyle}" /></div><figcaption class="report-inline-image-caption">${captionHtml}</figcaption></figure>`;
 }
 
@@ -255,7 +253,20 @@ function getComponentRowsByCategory(componentItems, categoryKey) {
   });
 }
 
-function renderSingleEquipmentComponentsTable(componentRows) {
+function generateDefaultComponentsCss(reportId) {
+  const s = `[data-components-report-id="${reportId}"]`;
+  return [
+    `${s} .report-inline-components-table{width:100%;border-collapse:collapse;font-size:11px;line-height:1.3;}`,
+    `${s} .report-inline-components-table th,${s} .report-inline-components-table td{border:1px solid #222;padding:2px 6px;vertical-align:middle;}`,
+    `${s} .report-inline-components-table thead th{background:#f4f6f5;color:#101715;font-size:10px;font-weight:600;text-align:center;}`,
+    `${s} .report-inline-components-meta th{background:#0d4f20 !important;color:#eff7ef !important;font-size:10px;font-weight:600;}`,
+    `${s} .report-inline-components-qty{width:74px;text-align:center;}`,
+    `${s} .report-inline-components-desc{text-align:left;}`,
+    `${s} .report-inline-components-part{width:160px;text-align:center;}`
+  ].join("\n");
+}
+
+function renderSingleEquipmentComponentsTable(componentRows, reportId, css) {
   const rows = Array.isArray(componentRows) ? componentRows : [];
   const first = rows[0] || {};
   const equipmentName = escapeHtml(first.equipment_type || first.equipment_model_family || "COMPONENTES");
@@ -278,8 +289,10 @@ function renderSingleEquipmentComponentsTable(componentRows) {
       </tr>
     `;
 
+  const styleTag = css ? `<style>${css}</style>` : "";
+  const reportAttr = reportId ? ` data-components-report-id="${Number(reportId)}"` : "";
   return `
-    <div class="report-inline-components-wrap avoid-break" data-table-title="${equipmentName}">
+    <div class="report-inline-components-wrap avoid-break" data-table-title="${equipmentName}"${reportAttr}>${styleTag}
       <table class="report-inline-components-table">
         <thead>
           <tr class="report-inline-components-meta">
@@ -303,9 +316,14 @@ function renderSingleEquipmentComponentsTable(componentRows) {
   `;
 }
 
-function renderComponentsInlineTable(componentItems) {
+function renderComponentsInlineTable(componentItems, reportId, styleConfig) {
   const rows = Array.isArray(componentItems) ? componentItems : [];
-  if (!rows.length) return renderSingleEquipmentComponentsTable([]);
+  const id = reportId ? Number(reportId) : null;
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig : {};
+  const css = (sc.customCss && typeof sc.customCss === "string") ? sc.customCss
+    : (id ? generateDefaultComponentsCss(id) : null);
+
+  if (!rows.length) return renderSingleEquipmentComponentsTable([], id, css);
 
   const groups = new Map();
   rows.forEach((item) => {
@@ -318,7 +336,7 @@ function renderComponentsInlineTable(componentItems) {
   });
 
   return Array.from(groups.values())
-    .map((groupRows) => renderSingleEquipmentComponentsTable(groupRows))
+    .map((groupRows, idx) => renderSingleEquipmentComponentsTable(groupRows, id, idx === 0 ? css : null))
     .join("");
 }
 
@@ -344,7 +362,17 @@ function normalizeTimesheetValue(value) {
   return raw ? raw.toUpperCase() : "NA";
 }
 
-function renderTimesheetInlineTable(timesheetItems) {
+function generateDefaultTimesheetCss() {
+  return [
+    `.report-inline-timesheet-title-row{border:1px solid #374151;background:#374151;color:#ffffff;padding:7px 9px;font-weight:700;font-size:13px;letter-spacing:0.01em;text-align:left;width:100%;box-sizing:border-box;}`,
+    `.report-inline-timesheet-table thead th{border:1px solid #6b7280;background:#4b5563;color:#ffffff;padding:6px 9px;font-weight:600;font-size:11px;letter-spacing:0.04em;}`,
+    `.report-inline-timesheet-table tbody td{border:1px solid #d1d5db;padding:5px 9px;font-size:11px;vertical-align:top;text-align:left;}`,
+    `.report-inline-timesheet-table tbody tr:nth-child(even) td{background:#f3f4f6;}`
+  ].join("\n");
+}
+
+function renderTimesheetInlineTable(timesheetItems, styleConfig) {
+  const sc = styleConfig && typeof styleConfig === "object" ? styleConfig : {};
   const rows = Array.isArray(timesheetItems) ? timesheetItems : [];
   const bodyRows = rows.length
     ? rows.map((item) => `
@@ -362,10 +390,13 @@ function renderTimesheetInlineTable(timesheetItems) {
       </tr>
     `;
 
+  const hasCustomCss = (sc.customCss && typeof sc.customCss === "string");
+  const styleTag = hasCustomCss ? `<style>${sc.customCss}</style>` : "";
+  const captionStyle = hasCustomCss ? "caption-side:top;box-sizing:border-box;border-bottom:none;" : "caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;";
   return `
-    <div class="report-inline-timesheet-wrap avoid-break" data-table-title="TIME SHEET">
+    ${styleTag}<div class="report-inline-timesheet-wrap avoid-break" data-table-title="TIME SHEET">
       <table class="report-inline-timesheet-table">
-        <caption class="report-inline-timesheet-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">TIME SHEET</caption>
+        <caption class="report-inline-timesheet-title-row" style="${captionStyle}">TIME SHEET</caption>
         <thead>
           <tr>
             <th>Data</th>
@@ -381,7 +412,17 @@ function renderTimesheetInlineTable(timesheetItems) {
   `;
 }
 
-function renderTechTeamInlineTable(technicianItems) {
+function generateDefaultTechteamCss() {
+  return [
+    `.report-inline-techteam-title-row{border:1px solid #1e40af;background:#1e40af;color:#ffffff;padding:7px 9px;font-weight:700;font-size:13px;letter-spacing:0.01em;text-align:left;width:100%;box-sizing:border-box;}`,
+    `.report-inline-techteam-table thead th{border:1px solid #3b82f6;background:#2563eb;color:#ffffff;padding:6px 9px;font-weight:600;font-size:11px;letter-spacing:0.04em;}`,
+    `.report-inline-techteam-table tbody td{border:1px solid #bfdbfe;padding:5px 9px;font-size:11px;vertical-align:top;text-align:left;}`,
+    `.report-inline-techteam-table tbody tr:nth-child(even) td{background:#eff6ff;}`
+  ].join("\n");
+}
+
+function renderTechTeamInlineTable(technicianItems, styleConfig) {
+  const sc = styleConfig && typeof styleConfig === "object" ? styleConfig : {};
   const rows = Array.isArray(technicianItems) ? technicianItems : [];
   const bodyRows = rows.length
     ? rows.map((item) => `
@@ -393,10 +434,13 @@ function renderTechTeamInlineTable(technicianItems) {
     `).join("")
     : `<tr><td colspan="3" class="report-inline-techteam-empty">Sem tecnicos cadastrados.</td></tr>`;
 
+  const hasCustomCss = (sc.customCss && typeof sc.customCss === "string");
+  const styleTag = hasCustomCss ? `<style>${sc.customCss}</style>` : "";
+  const captionStyle = hasCustomCss ? "caption-side:top;box-sizing:border-box;border-bottom:none;" : "caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;";
   return `
-    <div class="report-inline-techteam-wrap avoid-break" data-table-title="EQUIPE TECNICA">
+    ${styleTag}<div class="report-inline-techteam-wrap avoid-break" data-table-title="EQUIPE TECNICA">
       <table class="report-inline-techteam-table">
-        <caption class="report-inline-techteam-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;border-bottom:none;">EQUIPE TECNICA</caption>
+        <caption class="report-inline-techteam-title-row" style="${captionStyle}">EQUIPE TECNICA</caption>
         <thead>
           <tr>
             <th>Nome</th>
@@ -452,10 +496,12 @@ function generateDefaultCss(tableId) {
 }
 
 function renderMeasurementsInlineTable(measurementTables, requestedId, styleConfig) {
-  const id = Number(requestedId);
-  const table = normalizeMeasurementList(measurementTables)
-    .find((item) => Number(item && item.id) === id);
+  const tagId = Number(requestedId);
+  const list = normalizeMeasurementList(measurementTables);
+  const table = list.find((item) => Number(item && item.seq_id) === tagId)
+    || list.find((item) => Number(item && item.id) === tagId);
   if (!table) return "";
+  const id = Number(table.id);
 
   const columns = normalizeMeasurementList(table.columns_json)
     .map((item) => String(item || "").trim())
@@ -537,10 +583,12 @@ function generateDefaultAlberCss(leituraId) {
 }
 
 function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
-  const id = Number(requestedId);
-  const leitura = (Array.isArray(alberLeituras) ? alberLeituras : [])
-    .find((item) => Number(item && item.id) === id);
+  const tagId = Number(requestedId);
+  const list = Array.isArray(alberLeituras) ? alberLeituras : [];
+  const leitura = list.find((item) => Number(item && item.seq_id) === tagId)
+    || list.find((item) => Number(item && item.id) === tagId);
   if (!leitura) return "";
+  const id = Number(leitura.id);
 
   const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
     : (leitura.style_config && typeof leitura.style_config === "object") ? leitura.style_config
@@ -748,7 +796,16 @@ function normalizeInlineCellValue(value, fallback = "-") {
   return raw || fallback;
 }
 
-function renderEquipmentsInlineTable(orderEquipments) {
+function generateDefaultEquipmentCss() {
+  return [
+    `.report-inline-equipments-title-row{border:1px solid #92400e;background:#92400e;color:#ffffff;padding:7px 9px;font-weight:700;font-size:13px;letter-spacing:0.01em;text-align:left;width:100%;box-sizing:border-box;}`,
+    `.report-inline-equipments-table .report-inline-equipments-label{border:1px solid #d97706;background:#fef3c7;padding:5px 9px;font-size:11px;font-weight:600;text-align:left;vertical-align:top;}`,
+    `.report-inline-equipments-table .report-inline-equipments-value{border:1px solid #d97706;padding:5px 9px;font-size:11px;text-align:left;vertical-align:top;}`
+  ].join("\n");
+}
+
+function renderEquipmentsInlineTable(orderEquipments, styleConfig) {
+  const sc = styleConfig && typeof styleConfig === "object" ? styleConfig : {};
   const rows = (Array.isArray(orderEquipments) ? orderEquipments : [])
     .slice()
     .sort((a, b) => Number(a?.ref_id || 0) - Number(b?.ref_id || 0) || Number(a?.id || 0) - Number(b?.id || 0));
@@ -765,6 +822,7 @@ function renderEquipmentsInlineTable(orderEquipments) {
     `;
   }
 
+  const hasCustomCss = (sc.customCss && typeof sc.customCss === "string");
   const pairsPerRow = 3;
   const columnsPerRow = pairsPerRow * 2;
 
@@ -809,13 +867,14 @@ function renderEquipmentsInlineTable(orderEquipments) {
 
     return `
       <table class="report-inline-equipments-table">
-        <caption class="report-inline-equipments-title-row" style="caption-side:top;text-align:left;box-sizing:border-box;">${escapeHtml(tableTitle)}</caption>
+        <caption class="report-inline-equipments-title-row" style="caption-side:top;${hasCustomCss ? "" : "text-align:left;"}box-sizing:border-box;">${escapeHtml(tableTitle)}</caption>
         <tbody>${renderPairsRows(pairs)}</tbody>
       </table>
     `;
   }).join("");
 
-  return `<div class="report-inline-equipments-wrap avoid-break" data-table-title="Equipamentos">${tablesHtml}</div>`;
+  const styleTag = hasCustomCss ? `<style>${sc.customCss}</style>` : "";
+  return `${styleTag}<div class="report-inline-equipments-wrap avoid-break" data-table-title="Equipamentos">${tablesHtml}</div>`;
 }
 
 function renderEquipmentTagsInline(orderEquipments) {
@@ -856,7 +915,7 @@ function renderDailyLogInlineItem(dailyLog, requestedId = null, context = null) 
     context.timesheetItems,
     context.dailyLogsById,
     context.dailyLogsOrdered,
-    { expandDailyLogTags: false, imageLabel: context.imageLabel },
+    { expandDailyLogTags: false, imageLabel: context.imageLabel, timesheetStyleConfig: context.timesheetStyleConfig, techteamStyleConfig: context.techteamStyleConfig, equipmentStyleConfig: context.equipmentStyleConfig },
     context.technicianItems || [],
     context.orderEquipments || [],
     context.siteData || {},
@@ -1149,7 +1208,13 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const source = String(contentHtml || "");
   if (!source) return "<p><br></p>";
   const opts = {
-    expandDailyLogTags: options.expandDailyLogTags !== false
+    expandDailyLogTags: options.expandDailyLogTags !== false,
+    imageLabel: options.imageLabel || null,
+    timesheetStyleConfig: options.timesheetStyleConfig || null,
+    techteamStyleConfig: options.techteamStyleConfig || null,
+    equipmentStyleConfig: options.equipmentStyleConfig || null,
+    componentsStyleConfig: options.componentsStyleConfig || null,
+    reportId: options.reportId || null
   };
   const equipmentTagPattern = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*equip(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi;
   const withEquipments = source.replace(equipmentTagPattern, (_match, rawId) => {
@@ -1171,9 +1236,9 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const tblcmprSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*tblcmpr/gi.source;
   const tblcmpqSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*tblcmpq/gi.source;
   const tblcmpsSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*tblcmps/gi.source;
-  const replacedFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "replaced"));
-  const requiredFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "required"));
-  const spareFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "spare"));
+  const replacedFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "replaced"), opts.reportId, opts.componentsStyleConfig);
+  const requiredFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "required"), opts.reportId, opts.componentsStyleConfig);
+  const spareFn = () => renderComponentsInlineTable(getComponentRowsByCategory(componentItems, "spare"), opts.reportId, opts.componentsStyleConfig);
   const withReplacedTable = liftBlockTagFromParagraph(withImages, tblcmprSrc, replacedFn);
   const r1 = withReplacedTable.replace(new RegExp(tblcmprSrc, "gi"), replacedFn);
   const withRequiredTable = liftBlockTagFromParagraph(r1, tblcmpqSrc, requiredFn);
@@ -1191,9 +1256,9 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const tblequipSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*(?:tblequip(?:amentos)?)/gi.source;
   const timesheetSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*timesheet/gi.source;
   const techTeamSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*equipetecnica/gi.source;
-  const equipTableFn = () => renderEquipmentsInlineTable(orderEquipments);
-  const timesheetFn = () => renderTimesheetInlineTable(timesheetItems);
-  const techTeamFn = () => renderTechTeamInlineTable(technicianItems);
+  const equipTableFn = () => renderEquipmentsInlineTable(orderEquipments, opts.equipmentStyleConfig || null);
+  const timesheetFn = () => renderTimesheetInlineTable(timesheetItems, opts.timesheetStyleConfig || null);
+  const techTeamFn = () => renderTechTeamInlineTable(technicianItems, opts.techteamStyleConfig || null);
   const withEquipmentTable = liftBlockTagFromParagraph(withSite, tblequipSrc, equipTableFn);
   const r4 = withEquipmentTable.replace(new RegExp(tblequipSrc, "gi"), equipTableFn);
   const withTimesheet = liftBlockTagFromParagraph(r4, timesheetSrc, timesheetFn);
@@ -1239,6 +1304,9 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     measurementTables,
     alberLeituras,
     dischargeTests,
+    timesheetStyleConfig: opts.timesheetStyleConfig || null,
+    techteamStyleConfig: opts.techteamStyleConfig || null,
+    equipmentStyleConfig: opts.equipmentStyleConfig || null,
     imageLabel: opts.imageLabel || "Imagem"
   };
 
@@ -1349,6 +1417,11 @@ function buildPreviewModel(payload, options = {}) {
   const dischargeTests = Array.isArray(payload.dischargeTests) ? payload.dischargeTests : [];
   const timesheetItems = Array.isArray(payload.timesheet) ? payload.timesheet : [];
   const technicianItems = Array.isArray(payload.technicians) ? payload.technicians : [];
+  const timesheetStyleConfig = payload.timesheetStyleConfig || null;
+  const techteamStyleConfig = payload.techteamStyleConfig || null;
+  const equipmentStyleConfig = payload.equipmentStyleConfig || null;
+  const componentsStyleConfig = (rawReport.components_style_config && typeof rawReport.components_style_config === "object") ? rawReport.components_style_config : null;
+  const reportId = rawReport.id ? Number(rawReport.id) : null;
   const dailyLogsOrdered = (Array.isArray(payload.dailyLogs) ? payload.dailyLogs : [])
     .filter((item) => Number.isInteger(Number(item?.id)) && Number(item.id) > 0)
     .map((item) => ({
@@ -1413,7 +1486,7 @@ function buildPreviewModel(payload, options = {}) {
           timesheetItems,
           dailyLogsById,
           dailyLogsOrdered,
-          { imageLabel: uiLabels.image },
+          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId },
           technicianItems,
           orderEquipments,
           siteData,
@@ -1429,7 +1502,7 @@ function buildPreviewModel(payload, options = {}) {
           timesheetItems,
           dailyLogsById,
           dailyLogsOrdered,
-          { imageLabel: uiLabels.image },
+          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId },
           technicianItems,
           orderEquipments,
           siteData,
@@ -1527,10 +1600,12 @@ function generateDefaultDischargeCss(testId) {
 }
 
 function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
-  const id = Number(requestedId);
-  const test = (Array.isArray(dischargeTests) ? dischargeTests : [])
-    .find((t) => Number(t && t.id) === id);
+  const tagId = Number(requestedId);
+  const list = Array.isArray(dischargeTests) ? dischargeTests : [];
+  const test = list.find((t) => Number(t && t.seq_id) === tagId)
+    || list.find((t) => Number(t && t.id) === tagId);
   if (!test) return "";
+  const id = Number(test.id);
 
   const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
     : (test.style_config && typeof test.style_config === "object") ? test.style_config
@@ -1573,11 +1648,24 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
     </div>`;
 }
 
-function generateDischargeSvgChart(dischargeTests, testId, seriesIndex) {
-  const id = Number(testId);
-  const test = (Array.isArray(dischargeTests) ? dischargeTests : [])
-    .find((t) => Number(t && t.id) === id);
+function generateDefaultDischargeChartCss(testId) {
+  const s = `[data-discharge-chart-id="${testId}"]`;
+  return [
+    `${s} .dch-chart-header{background:linear-gradient(135deg,#1c3a0a 0%,#2f5c18 52%,#4a7a30 100%) !important;color:#ffffff !important;}`,
+    `${s} .dch-chart-line{stroke:#4a7a30;stroke-width:2.5px;}`,
+    `${s} .dch-chart-fill{fill:rgba(74,122,48,0.28);}`,
+    `${s} .dch-chart-point{fill:#4a7a30;}`,
+    `${s} .dch-chart-point-label{fill:#4a7a30;}`
+  ].join("\n");
+}
+
+function generateDischargeSvgChart(dischargeTests, testId, seriesIndex, styleConfig) {
+  const tagId = Number(testId);
+  const list = Array.isArray(dischargeTests) ? dischargeTests : [];
+  const test = list.find((t) => Number(t && t.seq_id) === tagId)
+    || list.find((t) => Number(t && t.id) === tagId);
   if (!test) return "";
+  const id = Number(test.id);
 
   const hourLabels = Array.isArray(test.hour_labels) ? test.hour_labels : [];
   const readings   = Array.isArray(test.readings) ? test.readings : [];
@@ -1614,6 +1702,12 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex) {
 
   const validVals = yValues.filter((v) => v !== null && !isNaN(v));
   if (!validVals.length) return "";
+
+  const chartCss = (styleConfig && styleConfig.customCss)
+    ? styleConfig.customCss
+    : (test.style_config && test.style_config.chartCustomCss)
+    ? test.style_config.chartCustomCss
+    : generateDefaultDischargeChartCss(id);
 
   const f = (num) => Number(num).toFixed(2);
 
@@ -1685,8 +1779,9 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex) {
     : `Curva da Célula ${escapeHtml(seriesLabel)}`;
 
   // ── Header ──────────────────────────────────────────
-  let html = `<div class="report-inline-discharge-chart-wrap avoid-break" style="margin:10px 0 20px 0;break-inside:avoid;page-break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">`;
-  html += `<div style="background:linear-gradient(135deg,#1c3a0a 0%,#2f5c18 52%,#4a7a30 100%);padding:11px 16px 9px;color:#fff;">`;
+  let html = `<div class="report-inline-discharge-chart-wrap avoid-break" data-discharge-chart-id="${id}" style="margin:10px 0 20px 0;break-inside:avoid;page-break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">`;
+  html += `<style>${chartCss}</style>`;
+  html += `<div class="dch-chart-header" style="background:linear-gradient(135deg,#1c3a0a 0%,#2f5c18 52%,#4a7a30 100%);padding:11px 16px 9px;color:#fff;">`;
   html += `<div style="font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;opacity:.5;margin-bottom:3px;font-weight:600;">CURVA DE DESCARGA</div>`;
   html += `<div style="font-size:13px;font-weight:700;line-height:1.25;">${escapeHtml(testTitle)}</div>`;
   html += `<div style="font-size:9.5px;opacity:.65;margin-top:2px;">${subtitle}`;
@@ -1761,18 +1856,18 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex) {
   html += `<line x1="${mL}" y1="${f(mT + pH)}" x2="${f(mL + pW)}" y2="${f(mT + pH)}" stroke="#e2e8f0" stroke-width="1.5"/>`;
 
   // Fill area
-  if (fillPath) html += `<path d="${fillPath}" fill="url(#${gradId})"/>`;
+  if (fillPath) html += `<path class="dch-chart-fill" d="${fillPath}" fill="url(#${gradId})"/>`;
 
   // Line
-  if (linePath) html += `<path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  if (linePath) html += `<path class="dch-chart-line" d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
 
   // Points + value labels
   const showLabels = n <= 10;
   points.forEach((p, i) => {
     if (p.y === null) return;
-    html += `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="4.5" fill="${lineColor}" stroke="#fff" stroke-width="2"/>`;
+    html += `<circle class="dch-chart-point" cx="${f(p.x)}" cy="${f(p.y)}" r="4.5" fill="${lineColor}" stroke="#fff" stroke-width="2"/>`;
     if (showLabels && yValues[i] !== null) {
-      html += `<text x="${f(p.x)}" y="${f(p.y - 8)}" text-anchor="middle" font-size="9" fill="${lineColor}" font-family="Segoe UI,Arial,sans-serif" font-weight="600">${yValues[i].toFixed(decimals)}</text>`;
+      html += `<text class="dch-chart-point-label" x="${f(p.x)}" y="${f(p.y - 8)}" text-anchor="middle" font-size="9" fill="${lineColor}" font-family="Segoe UI,Arial,sans-serif" font-weight="600">${yValues[i].toFixed(decimals)}</text>`;
     }
   });
 
@@ -1788,5 +1883,14 @@ module.exports = {
   generateDefaultAlberCss,
   renderDischargeTestTable,
   generateDefaultDischargeCss,
-  generateDischargeSvgChart
+  generateDischargeSvgChart,
+  generateDefaultDischargeChartCss,
+  renderTimesheetInlineTable,
+  generateDefaultTimesheetCss,
+  renderTechTeamInlineTable,
+  generateDefaultTechteamCss,
+  renderEquipmentsInlineTable,
+  generateDefaultEquipmentCss,
+  renderComponentsInlineTable,
+  generateDefaultComponentsCss
 };

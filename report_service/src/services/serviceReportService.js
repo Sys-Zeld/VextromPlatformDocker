@@ -7,7 +7,10 @@ const {
   getDefaultAlberStyleConfig,
   applyDefaultAlberStyle,
   getDefaultDischargeStyleConfig,
-  applyDefaultDischargeStyle
+  applyDefaultDischargeStyle,
+  getDefaultTimesheetStyleConfig,
+  getDefaultTechteamStyleConfig,
+  getDefaultEquipmentStyleConfig
 } = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
@@ -485,11 +488,14 @@ async function buildReportAggregate(serviceReportId) {
     getDefaultMeasurementStyleConfig()
   ]);
   const measurements = applyDefaultMeasurementStyle(measurementRows, defaultMeasurementStyleConfig);
-  const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig] = await Promise.all([
+  const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
     getDefaultAlberStyleConfig(),
     repo.listDischargeTestsByReport(serviceReportId),
-    getDefaultDischargeStyleConfig()
+    getDefaultDischargeStyleConfig(),
+    getDefaultTimesheetStyleConfig(),
+    getDefaultTechteamStyleConfig(),
+    getDefaultEquipmentStyleConfig()
   ]);
   const alberLeituras = applyDefaultAlberStyle(alberRows, defaultAlberStyleConfig);
   const dischargeTests = applyDefaultDischargeStyle(dischargeRows, defaultDischargeStyleConfig);
@@ -523,7 +529,10 @@ async function buildReportAggregate(serviceReportId) {
     images,
     timesheet,
     dailyLogs,
-    orderEquipments
+    orderEquipments,
+    timesheetStyleConfig,
+    techteamStyleConfig,
+    equipmentStyleConfig
   };
 }
 

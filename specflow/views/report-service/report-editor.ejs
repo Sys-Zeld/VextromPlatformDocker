@@ -268,13 +268,13 @@
                     <% const measurementRegistry = Array.isArray(measurements) ? measurements : []; %>
                     <% if (measurementRegistry.length) { %>
                       <% measurementRegistry.forEach((item) => { %>
-                        <span class="badge text-bg-light border me-1 mb-1"><code><%= item.id %></code></span>
+                        <span class="badge text-bg-light border me-1 mb-1"><code><%= item.seq_id %></code></span>
                       <% }) %>
                     <% } else { %>
                       <span class="text-muted">Nenhuma tabela cadastrada</span>
                     <% } %>
                   </td>
-                  <td><code>@ensaios=<%= measurementRegistry[0] ? measurementRegistry[0].id : "1" %></code></td>
+                  <td><code>@ensaios=<%= measurementRegistry[0] ? measurementRegistry[0].seq_id : "1" %></code></td>
                 </tr>
                 <tr>
                   <td><code>@timesheet</code></td>

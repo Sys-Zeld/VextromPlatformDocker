@@ -46,9 +46,15 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/discharge/:testId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleAi));
   router.post("/orders/:id/discharge/:testId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleDefault));
   router.post("/orders/:id/discharge/:testId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeStyleReset));
+  router.post("/orders/:id/discharge/:testId/chart-style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeChartStyleAi));
+  router.post("/orders/:id/discharge/:testId/chart-style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeChartStyleDefault));
+  router.post("/orders/:id/discharge/:testId/chart-style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeChartStyleReset));
   router.get("/orders/:id/report-editor", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportOrderEditor));
   router.get("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReportPage));
   router.post("/orders/:id/sign-report", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.signReport));
+  router.get("/table-styles", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.tableStylesPage));
+  router.post("/table-styles/:tableType/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.tableStyleAi));
+  router.post("/table-styles/:tableType/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.tableStyleReset));
   router.get("/config", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reportConfigPage));
   router.post("/config", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveReportConfig));
   router.post(
@@ -85,6 +91,9 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/sections/:sectionKey/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSection));
   router.post("/orders/:id/components", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.addComponent));
   router.post("/orders/:id/components/:componentId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteComponent));
+  router.post("/orders/:id/components/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.componentsStyleAi));
+  router.post("/orders/:id/components/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.componentsStyleDefault));
+  router.post("/orders/:id/components/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.componentsStyleReset));
   router.post("/orders/:id/measurements", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveMeasurementTable));
   router.post("/orders/:id/measurements/:measurementId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteMeasurementTable));
   router.post("/orders/:id/measurements/:measurementId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleAi));

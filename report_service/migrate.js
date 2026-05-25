@@ -580,6 +580,7 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE service_report_signatures ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';`);
   await db.query(`ALTER TABLE service_report_reports ADD COLUMN IF NOT EXISTS toc_tables_config JSONB;`);
   await db.query(`ALTER TABLE service_report_images ADD COLUMN IF NOT EXISTS rotation INTEGER NOT NULL DEFAULT 0;`);
+  await db.query(`ALTER TABLE service_report_reports ADD COLUMN IF NOT EXISTS components_style_config JSONB;`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS leituras_alber (
@@ -631,6 +632,49 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS style_config JSONB;`);
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_celula_label TEXT NOT NULL DEFAULT '';`);
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_flutuacao_label TEXT NOT NULL DEFAULT '';`);
+
+  // seq_id: ID sequencial por OS, reutilizando IDs deletados
+  await db.query(`ALTER TABLE service_report_measurement_tables ADD COLUMN IF NOT EXISTS seq_id INTEGER;`);
+  await db.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY service_report_id ORDER BY created_at ASC, id ASC) AS seq
+      FROM service_report_measurement_tables
+    )
+    UPDATE service_report_measurement_tables t
+    SET seq_id = ranked.seq
+    FROM ranked
+    WHERE t.id = ranked.id AND (t.seq_id IS NULL OR t.seq_id <= 0);
+  `);
+  await db.query(`ALTER TABLE service_report_measurement_tables ALTER COLUMN seq_id SET NOT NULL;`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_measurement_tables_seq_id ON service_report_measurement_tables (service_report_id, seq_id);`);
+
+  await db.query(`ALTER TABLE leituras_alber ADD COLUMN IF NOT EXISTS seq_id INTEGER;`);
+  await db.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY service_report_id ORDER BY importado_em ASC, id ASC) AS seq
+      FROM leituras_alber
+    )
+    UPDATE leituras_alber la
+    SET seq_id = ranked.seq
+    FROM ranked
+    WHERE la.id = ranked.id AND (la.seq_id IS NULL OR la.seq_id <= 0);
+  `);
+  await db.query(`ALTER TABLE leituras_alber ALTER COLUMN seq_id SET NOT NULL;`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leituras_alber_seq_id ON leituras_alber (service_report_id, seq_id);`);
+
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS seq_id INTEGER;`);
+  await db.query(`
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY service_report_id ORDER BY created_at ASC, id ASC) AS seq
+      FROM discharge_tests
+    )
+    UPDATE discharge_tests dt
+    SET seq_id = ranked.seq
+    FROM ranked
+    WHERE dt.id = ranked.id AND (dt.seq_id IS NULL OR dt.seq_id <= 0);
+  `);
+  await db.query(`ALTER TABLE discharge_tests ALTER COLUMN seq_id SET NOT NULL;`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_discharge_tests_seq_id ON discharge_tests (service_report_id, seq_id);`);
 
   await seedServiceReportEquipment();
   await seedServiceReportSample();

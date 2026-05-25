@@ -497,15 +497,26 @@
       });
     }
 
+    function removeCaption(tableEl) {
+      if (!tableEl) return;
+      var cap = tableEl.querySelector("caption");
+      if (cap) cap.parentNode.removeChild(cap);
+    }
+
+    function removeContinuationHeaders(tableEl) {
+      removeTitleRows(tableEl);
+      removeCaption(tableEl);
+    }
+
     // Constrói um chunk sem os nós pós-tabela e com tbody vazio.
-    // isFirst=true → thead completo; isFirst=false → suprime linhas de título.
+    // isFirst=true → thead completo; isFirst=false → suprime título e caption.
     function makeChunk(isFirst) {
       if (!isWrapper) {
         var c = block.cloneNode(true);
         var ct = c.matches("table") ? c : c.querySelector("table");
         var cb = ct ? ct.querySelector("tbody") : null;
         if (cb) cb.innerHTML = "";
-        if (!isFirst) removeTitleRows(ct);
+        if (!isFirst) removeContinuationHeaders(ct);
         return { el: c, body: cb };
       }
       var c = block.cloneNode(false);
@@ -516,7 +527,7 @@
           var nodeClone = node.cloneNode(true);
           var innerTbody = nodeClone.querySelector("tbody");
           if (innerTbody) innerTbody.innerHTML = "";
-          if (!isFirst) removeTitleRows(nodeClone.matches && nodeClone.matches("table") ? nodeClone : nodeClone.querySelector("table"));
+          if (!isFirst) removeContinuationHeaders(nodeClone.matches && nodeClone.matches("table") ? nodeClone : nodeClone.querySelector("table"));
           c.appendChild(nodeClone);
           return;
         }

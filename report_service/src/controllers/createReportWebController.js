@@ -31,7 +31,38 @@ const {
   getDefaultDischargeStyleConfig,
   saveDefaultDischargeStyleConfig,
   buildDischargePreviewHtml,
-  applyDischargeStyleViaAi
+  applyDischargeStyleViaAi,
+  buildTimesheetStyleConfig,
+  getDefaultTimesheetStyleConfig,
+  saveDefaultTimesheetStyleConfig,
+  buildTimesheetPreviewHtml,
+  applyTimesheetStyleViaAi,
+  buildTechteamStyleConfig,
+  getDefaultTechteamStyleConfig,
+  saveDefaultTechteamStyleConfig,
+  buildTechteamPreviewHtml,
+  applyTechteamStyleViaAi,
+  buildEquipmentStyleConfig,
+  getDefaultEquipmentStyleConfig,
+  saveDefaultEquipmentStyleConfig,
+  buildEquipmentPreviewHtml,
+  applyEquipmentStyleViaAi,
+  generateDefaultTimesheetCss,
+  generateDefaultTechteamCss,
+  generateDefaultEquipmentCss,
+  generateDefaultDischargeChartCss,
+  buildDischargeChartStyleConfig,
+  scopeDischargeChartStyleConfig,
+  getDefaultDischargeChartStyleConfig,
+  saveDefaultDischargeChartStyleConfig,
+  buildDischargeChartPreviewHtml,
+  applyDischargeChartStyleViaAi,
+  generateDefaultComponentsCss,
+  buildComponentsStyleConfig,
+  getDefaultComponentsStyleConfig,
+  saveDefaultComponentsStyleConfig,
+  buildComponentsPreviewHtml,
+  applyComponentsStyleViaAi
 } = require("../services/measurementStyleService");
 const {
   renderReportPreviewHtml,
@@ -2169,6 +2200,158 @@ function createReportWebController(deps) {
       return res.json({ previewHtml, styleConfig: scopedStyleConfig });
     },
 
+    async dischargeChartStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const defaultChartStyle = scopeDischargeChartStyleConfig(await getDefaultDischargeChartStyleConfig(), testId);
+      const savedChartCss = test.style_config && test.style_config.chartCustomCss;
+      const savedChartStyle = savedChartCss ? { customCss: savedChartCss } : null;
+      const activeStyle = parsedCurrentStyle || savedChartStyle || defaultChartStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          const merged = { ...(test.style_config || {}), chartCustomCss: parsedCurrentStyle.customCss };
+          await repo.updateDischargeTestStyleConfig(testId, report.id, merged);
+          return res.json({ previewHtml: buildDischargeChartPreviewHtml(test, parsedCurrentStyle), styleConfig: parsedCurrentStyle });
+        }
+        return res.json({ previewHtml: buildDischargeChartPreviewHtml(test, activeStyle), styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultDischargeChartCss(testId);
+      const newCss = await applyDischargeChartStyleViaAi(currentCss, testId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = buildDischargeChartPreviewHtml(test, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        const merged = { ...(test.style_config || {}), chartCustomCss: newCss };
+        await repo.updateDischargeTestStyleConfig(testId, report.id, merged);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async dischargeChartStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+
+      const merged = { ...(test.style_config || {}) };
+      delete merged.chartCustomCss;
+      await repo.updateDischargeTestStyleConfig(testId, report.id, Object.keys(merged).length ? merged : null);
+
+      const defaultChartStyle = scopeDischargeChartStyleConfig(await getDefaultDischargeChartStyleConfig(), testId);
+      return res.json({ previewHtml: buildDischargeChartPreviewHtml(test, defaultChartStyle || null), styleConfig: defaultChartStyle || null });
+    },
+
+    async dischargeChartStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const testId = Number(req.params.testId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(testId) || testId <= 0) {
+        return res.status(400).json({ error: "ID de teste inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const test = await repo.getDischargeTestById(testId, report.id);
+      if (!test) return res.status(404).json({ error: "Teste de descarga não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const savedChartCss = test.style_config && test.style_config.chartCustomCss;
+      const sourceStyle = parsedCurrentStyle || (savedChartCss ? { customCss: savedChartCss } : { customCss: generateDefaultDischargeChartCss(testId) });
+      const styleConfig = buildDischargeChartStyleConfig(sourceStyle);
+      if (!styleConfig.customCss) return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+
+      await saveDefaultDischargeChartStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeDischargeChartStyleConfig(styleConfig, testId);
+      const merged = { ...(test.style_config || {}), chartCustomCss: scopedStyleConfig.customCss };
+      await repo.updateDischargeTestStyleConfig(testId, report.id, merged);
+      return res.json({ previewHtml: buildDischargeChartPreviewHtml(test, scopedStyleConfig), styleConfig: scopedStyleConfig });
+    },
+
+    async componentsStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const { instruction, apply, current_style } = req.body || {};
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = await getDefaultComponentsStyleConfig();
+      const activeStyle = parsedCurrentStyle || report.components_style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          await repo.updateReportComponentsStyleConfig(reportId, parsedCurrentStyle);
+          const previewHtml = buildComponentsPreviewHtml(reportId, parsedCurrentStyle);
+          return res.json({ previewHtml, styleConfig: parsedCurrentStyle });
+        }
+        const previewHtml = buildComponentsPreviewHtml(reportId, activeStyle);
+        return res.json({ previewHtml, styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultComponentsCss(reportId);
+      const newCss = await applyComponentsStyleViaAi(currentCss, reportId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = buildComponentsPreviewHtml(reportId, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateReportComponentsStyleConfig(reportId, newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async componentsStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+      await repo.updateReportComponentsStyleConfig(reportId, null);
+      const defaultStyle = await getDefaultComponentsStyleConfig();
+      const previewHtml = buildComponentsPreviewHtml(reportId, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async componentsStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const { current_style } = req.body || {};
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const styleConfig = buildComponentsStyleConfig(parsedCurrentStyle || report.components_style_config || { customCss: generateDefaultComponentsCss(reportId) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultComponentsStyleConfig(styleConfig);
+      await repo.updateReportComponentsStyleConfig(reportId, styleConfig);
+      const previewHtml = buildComponentsPreviewHtml(reportId, styleConfig);
+      return res.json({ previewHtml, styleConfig });
+    },
+
     async reportOrderEditor(req, res) {
       const orderId = Number(req.params.id);
       const data = await loadOrderEditorData(orderId);
@@ -3145,6 +3328,104 @@ function createReportWebController(deps) {
       await repo.updateLeituraAlberStyleConfig(leituraId, report.id, scopedStyleConfig);
       const previewHtml = buildAlberPreviewHtml(leitura, scopedStyleConfig);
       return res.json({ previewHtml, styleConfig: scopedStyleConfig });
+    },
+
+    async tableStylesPage(req, res) {
+      const [timesheetStyle, techteamStyle, equipmentStyle] = await Promise.all([
+        getDefaultTimesheetStyleConfig(),
+        getDefaultTechteamStyleConfig(),
+        getDefaultEquipmentStyleConfig()
+      ]);
+      return res.render("report-service/table-styles", {
+        csrfToken: req.csrfToken ? req.csrfToken() : "",
+        timesheetHasCustomStyle: !!(timesheetStyle && timesheetStyle.customCss),
+        techteamHasCustomStyle: !!(techteamStyle && techteamStyle.customCss),
+        equipmentHasCustomStyle: !!(equipmentStyle && equipmentStyle.customCss)
+      });
+    },
+
+    async tableStyleAi(req, res) {
+      const tableType = String(req.params.tableType || "").toLowerCase();
+      const VALID_TYPES = ["timesheet", "techteam", "equipment"];
+      if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
+
+      const { instruction, apply, current_style } = req.body || {};
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const handlers = {
+        timesheet: {
+          buildConfig: buildTimesheetStyleConfig,
+          getDefault: getDefaultTimesheetStyleConfig,
+          saveDefault: saveDefaultTimesheetStyleConfig,
+          buildPreview: buildTimesheetPreviewHtml,
+          applyAi: applyTimesheetStyleViaAi,
+          getDefaultCss: generateDefaultTimesheetCss
+        },
+        techteam: {
+          buildConfig: buildTechteamStyleConfig,
+          getDefault: getDefaultTechteamStyleConfig,
+          saveDefault: saveDefaultTechteamStyleConfig,
+          buildPreview: buildTechteamPreviewHtml,
+          applyAi: applyTechteamStyleViaAi,
+          getDefaultCss: generateDefaultTechteamCss
+        },
+        equipment: {
+          buildConfig: buildEquipmentStyleConfig,
+          getDefault: getDefaultEquipmentStyleConfig,
+          saveDefault: saveDefaultEquipmentStyleConfig,
+          buildPreview: buildEquipmentPreviewHtml,
+          applyAi: applyEquipmentStyleViaAi,
+          getDefaultCss: generateDefaultEquipmentCss
+        }
+      };
+
+      const h = handlers[tableType];
+      const savedDefault = await h.getDefault();
+      const activeStyle = parsedCurrentStyle || savedDefault || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          await h.saveDefault(parsedCurrentStyle);
+          const previewHtml = h.buildPreview(parsedCurrentStyle);
+          return res.json({ previewHtml, styleConfig: parsedCurrentStyle });
+        }
+        const previewHtml = h.buildPreview(activeStyle);
+        return res.json({ previewHtml, styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || h.getDefaultCss();
+      const newCss = await h.applyAi(currentCss, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = h.buildPreview(newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await h.saveDefault(newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async tableStyleReset(req, res) {
+      const tableType = String(req.params.tableType || "").toLowerCase();
+      const VALID_TYPES = ["timesheet", "techteam", "equipment"];
+      if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
+
+      const keyMap = {
+        timesheet: "report.preview.timesheet.style.default",
+        techteam: "report.preview.techteam.style.default",
+        equipment: "report.preview.equipment.style.default"
+      };
+      await repo.upsertAppSetting(keyMap[tableType], null);
+
+      const previewBuilders = {
+        timesheet: buildTimesheetPreviewHtml,
+        techteam: buildTechteamPreviewHtml,
+        equipment: buildEquipmentPreviewHtml
+      };
+      const previewHtml = previewBuilders[tableType](null);
+      return res.json({ previewHtml, styleConfig: null });
     },
 
     async createSignRequest(req, res) {

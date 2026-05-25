@@ -1,0 +1,504 @@
+<%- include("../partials/head", { pageTitle: "Ajuste de Layout das Tabelas" }) %>
+
+<style>
+  .tblstyle-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    padding: 20px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .tblstyle-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .tblstyle-card-icon.ts { background: #f1f5f9; color: #374151; }
+  .tblstyle-card-icon.tt { background: #eff6ff; color: #1e40af; }
+  .tblstyle-card-icon.eq { background: #fefce8; color: #92400e; }
+  .tblstyle-card-body { flex: 1; }
+  .tblstyle-card-title { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .tblstyle-card-desc { font-size: 12.5px; color: #64748b; margin-bottom: 0; }
+
+  #tsModal .msm-header {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    color: #fff;
+    padding: 16px 20px;
+    border-radius: 0;
+  }
+  #tsModal .msm-preview-panel {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    border-right: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+  }
+  #tsModal .msm-paper {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 16px;
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    min-height: 200px;
+  }
+  #tsModal .msm-paper-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248,250,252,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 6px;
+    z-index: 2;
+  }
+  #tsModal .msm-ai-panel {
+    width: 310px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+  }
+  #tsModal .msm-ai-header {
+    padding: 9px 14px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #6366f1;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  #tsModal .msm-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+  #tsModal .msm-bubble {
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    max-width: 90%;
+    word-break: break-word;
+  }
+  #tsModal .msm-bubble.user { background: #e0f2fe; color: #0c4a6e; align-self: flex-end; border-bottom-right-radius: 3px; }
+  #tsModal .msm-bubble.ai { background: #f0fdf4; color: #14532d; align-self: flex-start; border-bottom-left-radius: 3px; }
+  #tsModal .msm-bubble.err { background: #fef2f2; color: #991b1b; align-self: flex-start; border-bottom-left-radius: 3px; }
+  #tsModal .msm-typing span {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
+    animation: tsTyping .8s infinite ease-in-out; margin: 0 1px;
+  }
+  #tsModal .msm-typing span:nth-child(2) { animation-delay: .15s; }
+  #tsModal .msm-typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes tsTyping { 0%,80%,100%{ transform:scale(.8);opacity:.5 } 40%{ transform:scale(1.1);opacity:1 } }
+  #tsModal .msm-chips {
+    padding: 6px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    border-top: 1px solid #f1f5f9;
+    flex-shrink: 0;
+  }
+  #tsModal .msm-chip {
+    padding: 3px 9px;
+    border-radius: 12px;
+    background: #f1f5f9;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid #e2e8f0;
+    transition: background .15s;
+  }
+  #tsModal .msm-chip:hover { background: #e2e8f0; }
+  #tsModal .msm-input-area {
+    padding: 10px 14px;
+    border-top: 1px solid #e2e8f0;
+    flex-shrink: 0;
+  }
+  #tsModal .msm-unsaved { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#f59e0b; font-weight:600; }
+  #tsModal .msm-unsaved-dot { width:6px; height:6px; border-radius:50%; background:#f59e0b; }
+</style>
+
+<section class="card app-card mb-3">
+  <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <div>
+      <h1 class="h5 app-card-title mb-1">Ajuste de Layout das Tabelas</h1>
+      <p class="text-muted mb-0">Customize o visual padrão das tabelas de sistema usadas nos relatórios.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/config">Voltar para config</a>
+    </div>
+  </div>
+</section>
+
+<input type="hidden" id="tsGlobalCsrf" value="<%= csrfToken %>" />
+
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon ts">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Time Sheet
+          <% if (timesheetHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrão</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela de registro de datas e horários de entrada/saída da equipe.</p>
+        <button type="button" class="btn btn-sm btn-outline-dark tblstyle-open-btn"
+          data-table-type="timesheet"
+          data-table-label="Time Sheet"
+          data-has-style="<%= timesheetHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon tt">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Equipe Técnica
+          <% if (techteamHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrão</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela de composição da equipe com nome, função e empresa.</p>
+        <button type="button" class="btn btn-sm btn-outline-primary tblstyle-open-btn"
+          data-table-type="techteam"
+          data-table-label="Equipe Técnica"
+          data-has-style="<%= techteamHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon eq">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Equipamentos
+          <% if (equipmentHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrão</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela de ficha técnica dos equipamentos vinculados à OS.</p>
+        <button type="button" class="btn btn-sm btn-outline-warning tblstyle-open-btn"
+          data-table-type="equipment"
+          data-table-label="Equipamentos"
+          data-has-style="<%= equipmentHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- AI Style Modal -->
+<div class="modal fade modal-dark" id="tsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:900px;">
+    <div class="modal-content border-0" style="overflow:hidden;border-radius:12px;">
+
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="opacity:.85;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — <span id="tsModalTitle">Tabela</span></span>
+            <span id="tsUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div style="font-size:12px;opacity:.6;padding-left:22px;">Ajuste o visual padrão desta tabela para todos os relatórios</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="tsPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="tsOverlay">
+              <div class="spinner-border text-secondary" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="tsPreviewContent"></div>
+          </div>
+        </div>
+
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 20 20" style="color:#6366f1;flex-shrink:0;"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            Assistente de Design IA
+          </div>
+          <div class="msm-chat-area" id="tsChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Cabeçalho verde escuro, texto branco">Cabeçalho verde</span>
+            <span class="msm-chip" data-s="Cabeçalho cinza escuro, texto branco">Cabeçalho cinza</span>
+            <span class="msm-chip" data-s="Aumentar fonte das células para 12px">Fonte maior</span>
+            <span class="msm-chip" data-s="Remover o fundo alternado nas linhas, deixar todas brancas">Sem zebra</span>
+            <span class="msm-chip" data-s="Borda preta mais grossa 2px sólida">Borda grossa</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="tsInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-secondary btn-sm d-flex align-items-center justify-content-center" id="tsSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto d-flex align-items-center gap-1" id="tsResetBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Restaurar padrão do sistema
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1" id="tsSaveBtn" disabled>
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          Salvar visual
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var tsModal = document.getElementById("tsModal");
+  if (!tsModal) return;
+  var bsTsModal = null;
+  function getBsModal() { if (!bsTsModal) bsTsModal = new bootstrap.Modal(tsModal); return bsTsModal; }
+
+  var previewContent = document.getElementById("tsPreviewContent");
+  var chatArea      = document.getElementById("tsChatArea");
+  var overlay       = document.getElementById("tsOverlay");
+  var inputEl       = document.getElementById("tsInput");
+  var sendBtn       = document.getElementById("tsSendBtn");
+  var saveBtn       = document.getElementById("tsSaveBtn");
+  var resetBtn      = document.getElementById("tsResetBtn");
+  var unsavedBadge  = document.getElementById("tsUnsavedBadge");
+  var modalTitle    = document.getElementById("tsModalTitle");
+  var previewHint   = document.getElementById("tsPreviewHint");
+
+  var activeTableType = null, pendingStyle = null, activeOpenBtn = null;
+  var csrfToken = (document.getElementById("tsGlobalCsrf") || {}).value || "";
+  var typingEl = null;
+
+  function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+  function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+  function setInputBusy(on) {
+    sendBtn.disabled = on;
+    inputEl.disabled = on;
+    resetBtn.disabled = on;
+  }
+
+  function addBubble(type, text) {
+    removeTyping();
+    var div = document.createElement("div");
+    div.className = "msm-bubble " + type;
+    div.textContent = text;
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    return div;
+  }
+
+  function showTyping() {
+    removeTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "msm-bubble ai msm-typing";
+    typingEl.innerHTML = "<span></span><span></span><span></span>";
+    chatArea.appendChild(typingEl);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+
+  function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+  function updatePreview(html) { previewContent.innerHTML = html || ""; }
+
+  async function callAi(instruction, apply) {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (instruction) body.set("instruction", instruction);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    if (apply) body.set("apply", "true");
+    var resp = await fetch(
+      "/admin/report-service/table-styles/" + activeTableType + "/style-ai",
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+    );
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro na requisição."); }
+    return resp.json();
+  }
+
+  async function callReset() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    var resp = await fetch(
+      "/admin/report-service/table-styles/" + activeTableType + "/style-reset",
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() }
+    );
+    if (!resp.ok) throw new Error("Erro ao restaurar.");
+    return resp.json();
+  }
+
+  document.querySelectorAll(".tblstyle-open-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      activeTableType = btn.getAttribute("data-table-type") || "";
+      activeOpenBtn   = btn;
+      pendingStyle    = null;
+      chatArea.innerHTML = "";
+      inputEl.value = "";
+      previewHint.textContent = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      modalTitle.textContent = btn.getAttribute("data-table-label") || activeTableType;
+      showOverlay(true);
+      getBsModal().show();
+      callAi(null, false).then(function (r) {
+        showOverlay(false);
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        previewHint.textContent = "Envie uma instrução para personalizar";
+        addBubble("ai", "Olá! Descreva o que deseja alterar: cor do cabeçalho, fontes, bordas, fundo das células. Use os atalhos abaixo ou escreva livremente.");
+      }).catch(function (err) {
+        showOverlay(false);
+        previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+      });
+    });
+  });
+
+  function sendInstruction() {
+    var instruction = (inputEl.value || "").trim();
+    if (!instruction || sendBtn.disabled) return;
+    setInputBusy(true);
+    addBubble("user", instruction);
+    inputEl.value = "";
+    showTyping();
+    previewHint.textContent = "Aplicando alterações...";
+    callAi(instruction, false).then(function (r) {
+      removeTyping();
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      setUnsaved(true);
+      saveBtn.disabled = false;
+      previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+      addBubble("ai", "Feito! Verifique o preview ao lado. Você pode continuar ajustando ou salvar.");
+    }).catch(function (err) {
+      removeTyping();
+      addBubble("err", "Erro: " + (err.message || "Falha na IA."));
+      previewHint.textContent = "";
+    }).finally(function () {
+      setInputBusy(false);
+      inputEl.focus();
+    });
+  }
+
+  sendBtn.addEventListener("click", sendInstruction);
+  inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+
+  tsModal.querySelectorAll(".msm-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); });
+  });
+
+  saveBtn.addEventListener("click", function () {
+    if (!pendingStyle) return;
+    setInputBusy(true);
+    saveBtn.disabled = true;
+    callAi(null, true).then(function () {
+      if (activeOpenBtn) {
+        activeOpenBtn.setAttribute("data-has-style", "1");
+        var card = activeOpenBtn.closest(".tblstyle-card-body");
+        if (card) {
+          var titleEl = card.querySelector(".tblstyle-card-title");
+          if (titleEl) {
+            var badge = titleEl.querySelector(".badge");
+            if (badge) badge.remove();
+            titleEl.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>');
+          }
+        }
+      }
+      setUnsaved(false);
+      getBsModal().hide();
+    }).catch(function (err) {
+      addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente."));
+      saveBtn.disabled = false;
+    }).finally(function () {
+      setInputBusy(false);
+    });
+  });
+
+  resetBtn.addEventListener("click", function () {
+    if (!confirm("Restaurar o visual padrão do sistema para esta tabela?")) return;
+    setInputBusy(true);
+    callReset().then(function (r) {
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      chatArea.innerHTML = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      previewHint.textContent = "Visual padrão do sistema restaurado";
+      addBubble("ai", "Visual restaurado para o padrão do sistema. Envie novas instruções para personalizar novamente.");
+      if (activeOpenBtn) {
+        activeOpenBtn.setAttribute("data-has-style", "0");
+        var card = activeOpenBtn.closest(".tblstyle-card-body");
+        if (card) {
+          var titleEl = card.querySelector(".tblstyle-card-title");
+          if (titleEl) {
+            var badge = titleEl.querySelector(".badge");
+            if (badge) badge.remove();
+            titleEl.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrão</span>');
+          }
+        }
+      }
+    }).catch(function (err) {
+      addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));
+    }).finally(function () {
+      setInputBusy(false);
+    });
+  });
+})();
+</script>
+
+<%- include("../partials/footer") %>

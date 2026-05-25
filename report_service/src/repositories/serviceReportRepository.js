@@ -1557,6 +1557,14 @@ async function saveTocTablesConfig(reportId, config) {
   );
 }
 
+async function updateReportComponentsStyleConfig(reportId, styleConfig) {
+  const result = await db.query(
+    `UPDATE service_report_reports SET components_style_config = $2, last_modified_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [reportId, styleConfig ? JSON.stringify(styleConfig) : null]
+  );
+  return result.rows[0] || null;
+}
+
 async function deleteSection(serviceReportId, sectionKey) {
   const result = await db.query(
     `
@@ -1680,17 +1688,25 @@ async function listMeasurementTables(serviceReportId) {
 async function createMeasurementTable(payload) {
   const result = await db.query(
     `
-      INSERT INTO service_report_measurement_tables (
-        service_report_id,
-        title,
-        columns_json,
-        rows_json,
-        notes,
-        sort_order,
-        created_at,
-        updated_at
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM service_report_measurement_tables WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM service_report_measurement_tables t2
+          WHERE t2.service_report_id = $1 AND t2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
       )
-      VALUES ($1,$2,$3::jsonb,$4::jsonb,$5,$6,NOW(),NOW())
+      INSERT INTO service_report_measurement_tables (
+        service_report_id, seq_id, title, columns_json, rows_json, notes, sort_order, created_at, updated_at
+      )
+      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3::jsonb,$4::jsonb,$5,$6,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -2500,10 +2516,26 @@ async function createLeituraAlber(payload) {
   try {
     await client.query("BEGIN");
     const res = await client.query(
-      `INSERT INTO leituras_alber
-         (service_report_id, location_name, battery_name, model_number, install_date,
+      `
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM leituras_alber WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM leituras_alber la2
+          WHERE la2.service_report_id = $1 AND la2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
+      )
+      INSERT INTO leituras_alber
+         (service_report_id, seq_id, location_name, battery_name, model_number, install_date,
           total_strings, nome_arquivo, string_labels, importado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW())
+       VALUES ($1,(SELECT next_id FROM next_seq),$2,$3,$4,$5,$6,$7,$8::jsonb,NOW())
        RETURNING *`,
       [
         payload.serviceReportId,
@@ -2669,11 +2701,26 @@ async function deleteLeituraAlber(id, serviceReportId = null) {
 async function createDischargeTest(payload) {
   const result = await db.query(
     `
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM discharge_tests WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM discharge_tests dt2
+          WHERE dt2.service_report_id = $1 AND dt2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
+      )
       INSERT INTO discharge_tests (
-        service_report_id, title, measurement_date, nominal_voltage,
+        service_report_id, seq_id, title, measurement_date, nominal_voltage,
         notes, hour_labels, readings, col_celula_label, col_flutuacao_label, created_at, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,NOW(),NOW())
+      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -2830,6 +2877,7 @@ module.exports = {
   upsertSection,
   reorderSections,
   saveTocTablesConfig,
+  updateReportComponentsStyleConfig,
   deleteSection,
   listComponents,
   createComponent,
