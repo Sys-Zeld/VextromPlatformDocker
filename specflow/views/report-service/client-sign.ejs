@@ -325,7 +325,7 @@
 function printSignedReport() {
   var token = "<%= signRequest && signRequest.token ? signRequest.token : '' %>";
   if (!token) return;
-  window.open("/r/sign/" + token + "/report?print=1", "_blank");
+  window.open("/r/sign/" + token + "/report", "_blank");
 }
 
 function downloadReportPdf(btn, token) {

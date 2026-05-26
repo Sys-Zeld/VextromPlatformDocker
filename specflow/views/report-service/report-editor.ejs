@@ -1568,6 +1568,7 @@
   var csrfToken = "<%= csrfToken %>";
   var reorderUrl = "/admin/report-service/orders/<%= order.id %>/sections/reorder";
   var tocTablesUrl = "/admin/report-service/orders/<%= order.id %>/toc-tables";
+  var renameUrl = "/admin/report-service/orders/<%= order.id %>/toc-tables/rename";
 
   if (!list || !saveBtn) return;
 
@@ -1576,6 +1577,7 @@
 
   var tableTypeLabels = {
     measurements: "Ensaios/Medicoes",
+    discharge: "Descarga",
     components: "Componentes",
     timesheet: "Time Sheet",
     techteam: "Equipe Tecnica",
@@ -1602,16 +1604,29 @@
             sec.tables.forEach(function (tbl) {
               var checkId = "tbl-chk-" + tbl.anchorId;
               var typeLabel = tableTypeLabels[tbl.tableType] || tbl.tableType;
+              var isEditable = (tbl.tableType === "measurements" || tbl.tableType === "discharge") && tbl.itemId;
               var item = document.createElement("li");
               item.className = "d-flex align-items-center gap-2 py-1";
+              var titlePart;
+              if (isEditable) {
+                var safeTitle = String(tbl.title || tbl.label || "").replace(/"/g, "&quot;");
+                titlePart =
+                  '<input type="text" class="form-control form-control-sm tbl-name-input" ' +
+                  'data-item-id="' + tbl.itemId + '" data-item-type="' + tbl.tableType + '" ' +
+                  'data-original="' + safeTitle + '" value="' + safeTitle + '" ' +
+                  'style="min-width:0;flex:1;font-size:0.78rem;padding:2px 6px;height:24px;" ' +
+                  'placeholder="Nome da tabela">';
+              } else {
+                titlePart =
+                  '<label class="form-check-label small text-muted mb-0" for="' + checkId + '" style="cursor:pointer;flex:1;">' +
+                  (tbl.title || tbl.label) + '</label>';
+              }
               item.innerHTML =
                 '<input type="checkbox" class="form-check-input tbl-visibility-chk" id="' + checkId + '"' +
                 ' data-config-key="' + tbl.configKey + '"' +
                 (tbl.visible ? " checked" : "") + ' style="flex-shrink:0;">' +
-                '<label class="form-check-label small text-muted mb-0" for="' + checkId + '" style="cursor:pointer;">' +
-                  '<span class="badge bg-light text-secondary border me-1" style="font-size:0.65rem;">' + typeLabel + '</span>' +
-                  (tbl.title || tbl.label) +
-                '</label>';
+                titlePart +
+                '<span class="badge bg-light text-secondary border" style="font-size:0.65rem;flex-shrink:0;white-space:nowrap;">' + typeLabel + '</span>';
               subList.appendChild(item);
             });
             subList.style.display = "";
@@ -1684,24 +1699,42 @@
       if (configKey) tocTablesConfig[configKey] = chk.checked;
     });
 
+    var changedNames = [];
+    list.querySelectorAll(".tbl-name-input").forEach(function (inp) {
+      var current = (inp.value || "").trim();
+      var original = (inp.getAttribute("data-original") || "").trim();
+      if (current !== original) {
+        changedNames.push({ type: inp.getAttribute("data-item-type"), id: Number(inp.getAttribute("data-item-id")), title: current });
+      }
+    });
+
     saveBtn.disabled = true;
     if (statusEl) statusEl.textContent = "Salvando...";
-    fetch(reorderUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        "x-csrf-token": csrfToken
-      },
-      credentials: "same-origin",
-      body: "_csrf=" + encodeURIComponent(csrfToken) +
-            "&section_keys=" + encodeURIComponent(JSON.stringify(keys)) +
-            "&toc_tables_config=" + encodeURIComponent(JSON.stringify(tocTablesConfig))
-    })
+
+    var renamePromise = changedNames.length
+      ? fetch(renameUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "x-csrf-token": csrfToken },
+          credentials: "same-origin",
+          body: "_csrf=" + encodeURIComponent(csrfToken) + "&table_names=" + encodeURIComponent(JSON.stringify(changedNames))
+        }).then(function (r) { return r.json(); })
+      : Promise.resolve({ ok: true });
+
+    renamePromise
+      .then(function () {
+        return fetch(reorderUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "x-csrf-token": csrfToken },
+          credentials: "same-origin",
+          body: "_csrf=" + encodeURIComponent(csrfToken) +
+                "&section_keys=" + encodeURIComponent(JSON.stringify(keys)) +
+                "&toc_tables_config=" + encodeURIComponent(JSON.stringify(tocTablesConfig))
+        });
+      })
       .then(function (resp) { return resp.json(); })
       .then(function (data) {
         if (data && data.ok) {
-          if (statusEl) statusEl.textContent = "Ordem salva!";
+          if (statusEl) statusEl.textContent = "Salvo!";
           setTimeout(function () { window.location.reload(); }, 600);
         } else {
           throw new Error(data && data.message ? data.message : "Erro ao salvar.");

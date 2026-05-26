@@ -496,42 +496,56 @@
 </section>
 
 <!-- Modal de Ajuste de Layout - Componentes -->
-<div class="modal fade" id="cmpStyleModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
-    <div class="modal-content" style="height:90vh;display:flex;flex-direction:column;">
-      <div class="modal-header py-2" style="background:#0d4f20;color:#fff;flex-shrink:0;">
-        <div class="d-flex align-items-center gap-2">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h7"/></svg>
-          <span class="fw-semibold" style="font-size:14px;">Ajuste de Layout — Tabela de Componentes</span>
-          <span class="badge text-bg-warning d-none" id="csmUnsavedBadge" style="font-size:9px;">Alterações não salvas</span>
+<div class="modal fade modal-dark" id="cmpStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:900px;">
+    <div class="modal-content border-0" style="overflow:hidden;border-radius:12px;">
+
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="opacity:.85;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h7"/></svg>
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — Componentes</span>
+            <span id="csmUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div style="font-size:12px;opacity:.6;padding-left:22px;">Ajuste o visual padrão desta tabela para todos os relatórios</div>
         </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
       </div>
 
-      <div class="modal-body p-0 d-flex overflow-hidden" style="flex:1;min-height:0;">
-        <!-- Preview -->
-        <div style="flex:1;overflow-y:auto;background:#f4f6f5;padding:20px;position:relative;">
-          <div id="csmOverlay" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.7);z-index:10;align-items:center;justify-content:center;">
-            <div class="spinner-border text-success" style="width:2rem;height:2rem;"></div>
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="csmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
           </div>
-          <p style="font-size:11px;color:#6b7280;margin-bottom:8px;" id="csmPreviewHint">Carregando preview...</p>
-          <div id="csmPreviewContent"></div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="csmOverlay">
+              <div class="spinner-border text-secondary" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="csmPreviewContent"></div>
+          </div>
         </div>
 
-        <!-- Chat -->
-        <div style="width:340px;flex-shrink:0;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;background:#fff;">
-          <div id="csmChatArea" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;"></div>
-          <div style="padding:10px;border-top:1px solid #e9ecef;background:#f8fafc;">
-            <div class="d-flex flex-wrap gap-1 mb-2">
-              <button class="btn btn-outline-secondary btn-sm csm-chip" data-s="Cabeçalho verde escuro, texto branco">Cabeçalho verde</button>
-              <button class="btn btn-outline-secondary btn-sm csm-chip" data-s="Aumentar fonte para 12px">Fonte maior</button>
-              <button class="btn btn-outline-secondary btn-sm csm-chip" data-s="Bordas mais finas, cor cinza claro">Bordas finas</button>
-              <button class="btn btn-outline-secondary btn-sm csm-chip" data-s="Linha de dados alternada em azul muito claro">Linhas alternadas</button>
-            </div>
-            <div class="d-flex gap-2">
-              <textarea class="form-control" id="csmInput" rows="2" style="font-size:12px;resize:none;" placeholder="Descreva o ajuste de layout desejado..."></textarea>
-              <button class="btn btn-success btn-sm px-3 d-flex align-items-center" id="csmSendBtn">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 20 20" style="color:#6366f1;flex-shrink:0;"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            Assistente de Design IA
+          </div>
+          <div class="msm-chat-area" id="csmChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Cabeçalho verde escuro, texto branco">Cabeçalho verde</span>
+            <span class="msm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Aumentar fonte para 12px">Fonte maior</span>
+            <span class="msm-chip" data-s="Bordas mais finas, cor cinza claro">Bordas finas</span>
+            <span class="msm-chip" data-s="Linha de dados alternada em azul muito claro">Linhas alternadas</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="csmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-secondary btn-sm d-flex align-items-center justify-content-center" id="csmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
               </button>
             </div>
           </div>
@@ -541,14 +555,14 @@
       <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
         <button type="button" class="btn btn-sm btn-outline-secondary me-auto d-flex align-items-center gap-1" id="csmResetBtn">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Restaurar padrão
+          Restaurar padrão do sistema
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
         <button type="button" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" id="csmDefaultBtn">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v14H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 9h6M9 13h6"/></svg>
           Salvar como padrão
         </button>
-        <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1" id="csmSaveBtn">
+        <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1" id="csmSaveBtn" disabled>
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
           Salvar visual
         </button>
@@ -558,14 +572,27 @@
 </div>
 
 <style>
-  .csm-bubble{padding:8px 12px;border-radius:8px;font-size:12px;max-width:90%;word-break:break-word;}
-  .csm-bubble.user{background:#0d4f20;color:#fff;align-self:flex-end;}
-  .csm-bubble.ai{background:#f1f5f9;color:#1e293b;align-self:flex-start;}
-  .csm-bubble.err{background:#fee2e2;color:#dc2626;align-self:flex-start;}
-  .csm-bubble.csm-typing span{display:inline-block;width:6px;height:6px;background:#94a3b8;border-radius:50%;margin:0 2px;animation:csm-bounce .8s infinite;}
-  .csm-bubble.csm-typing span:nth-child(2){animation-delay:.15s;}
-  .csm-bubble.csm-typing span:nth-child(3){animation-delay:.3s;}
-  @keyframes csm-bounce{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-6px);}}
+  #cmpStyleModal .msm-header{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);color:#fff;padding:16px 20px;border-radius:0;}
+  #cmpStyleModal .msm-preview-panel{flex:1;padding:16px;overflow-y:auto;border-right:1px solid #e2e8f0;background:#f8fafc;display:flex;flex-direction:column;}
+  #cmpStyleModal .msm-paper{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:16px;flex:1;overflow-y:auto;position:relative;min-height:200px;}
+  #cmpStyleModal .msm-paper-overlay{position:absolute;inset:0;background:rgba(248,250,252,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:6px;z-index:2;}
+  #cmpStyleModal .msm-ai-panel{width:310px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;}
+  #cmpStyleModal .msm-ai-header{padding:9px 14px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6366f1;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:6px;flex-shrink:0;}
+  #cmpStyleModal .msm-chat-area{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px;min-height:0;}
+  #cmpStyleModal .msm-bubble{padding:8px 12px;border-radius:12px;font-size:12.5px;line-height:1.4;max-width:90%;word-break:break-word;}
+  #cmpStyleModal .msm-bubble.user{background:#e0f2fe;color:#0c4a6e;align-self:flex-end;border-bottom-right-radius:3px;}
+  #cmpStyleModal .msm-bubble.ai{background:#f0fdf4;color:#14532d;align-self:flex-start;border-bottom-left-radius:3px;}
+  #cmpStyleModal .msm-bubble.err{background:#fef2f2;color:#991b1b;align-self:flex-start;border-bottom-left-radius:3px;}
+  #cmpStyleModal .msm-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;animation:csmTyping .8s infinite ease-in-out;margin:0 1px;}
+  #cmpStyleModal .msm-typing span:nth-child(2){animation-delay:.15s;}
+  #cmpStyleModal .msm-typing span:nth-child(3){animation-delay:.3s;}
+  #cmpStyleModal .msm-chips{padding:6px 14px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid #f1f5f9;flex-shrink:0;}
+  #cmpStyleModal .msm-chip{padding:3px 9px;border-radius:12px;background:#f1f5f9;font-size:11px;cursor:pointer;border:1px solid #e2e8f0;transition:background .15s;}
+  #cmpStyleModal .msm-chip:hover{background:#e2e8f0;}
+  #cmpStyleModal .msm-input-area{padding:10px 14px;border-top:1px solid #e2e8f0;flex-shrink:0;}
+  #cmpStyleModal .msm-unsaved{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#f59e0b;font-weight:600;}
+  #cmpStyleModal .msm-unsaved-dot{width:6px;height:6px;border-radius:50%;background:#f59e0b;}
+  @keyframes csmTyping{0%,80%,100%{transform:scale(.8);opacity:.5}40%{transform:scale(1.1);opacity:1}}
 </style>
 
 <script>
@@ -1445,7 +1472,7 @@
     function addBubble(type, text) {
       removeTyping();
       var div = document.createElement("div");
-      div.className = "csm-bubble " + type;
+      div.className = "msm-bubble " + type;
       div.textContent = text;
       chatArea.appendChild(div);
       chatArea.scrollTop = chatArea.scrollHeight;
@@ -1455,7 +1482,7 @@
     function showTyping() {
       removeTyping();
       typingEl = document.createElement("div");
-      typingEl.className = "csm-bubble ai csm-typing";
+      typingEl.className = "msm-bubble ai msm-typing";
       typingEl.innerHTML = "<span></span><span></span><span></span>";
       chatArea.appendChild(typingEl);
       chatArea.scrollTop = chatArea.scrollHeight;
@@ -1574,7 +1601,7 @@
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); }
     });
 
-    modal.querySelectorAll(".csm-chip").forEach(function (chip) {
+    modal.querySelectorAll(".msm-chip").forEach(function (chip) {
       chip.addEventListener("click", function () {
         inputEl.value = chip.getAttribute("data-s") || "";
         inputEl.focus();

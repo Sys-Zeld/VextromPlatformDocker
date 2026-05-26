@@ -610,6 +610,23 @@ async function saveDefaultComponentsStyleConfig(styleConfig) {
   return cfg;
 }
 
+function scopeComponentsStyleConfig(styleConfig, reportId) {
+  const cfg = buildComponentsStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  const scopedCss = cfg.customCss.replace(
+    /\[data-components-report-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+    `[data-components-report-id="${Number(reportId)}"]`
+  );
+  return { ...cfg, customCss: scopedCss };
+}
+
+function applyDefaultComponentsStyle(report, defaultStyleConfig) {
+  if (!report || !defaultStyleConfig || !defaultStyleConfig.customCss) return report;
+  if (report.components_style_config && typeof report.components_style_config === "object") return report;
+  const scoped = scopeComponentsStyleConfig(defaultStyleConfig, report.id);
+  return scoped ? { ...report, components_style_config: scoped } : report;
+}
+
 function buildComponentsPreviewHtml(reportId, styleConfig) {
   return renderComponentsInlineTable(DUMMY_COMPONENTS_ITEMS, reportId, styleConfig || null);
 }
@@ -700,8 +717,10 @@ module.exports = {
   applyDischargeChartStyleViaAi,
   generateDefaultComponentsCss,
   buildComponentsStyleConfig,
+  scopeComponentsStyleConfig,
   getDefaultComponentsStyleConfig,
   saveDefaultComponentsStyleConfig,
+  applyDefaultComponentsStyle,
   buildComponentsPreviewHtml,
   applyComponentsStyleViaAi
 };

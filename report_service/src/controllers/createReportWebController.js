@@ -3091,6 +3091,28 @@ function createReportWebController(deps) {
       return res.json({ ok: true, sections: model.tocTablesMeta });
     },
 
+    async renameSubItems(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+
+      let items;
+      try { items = JSON.parse(req.body.table_names || "[]"); } catch (_) { items = []; }
+      if (!Array.isArray(items) || !items.length) return res.json({ ok: true });
+
+      const EDITABLE_TYPES = ["measurements", "discharge"];
+      await Promise.all(items.map(async (item) => {
+        const id = Number(item && item.id);
+        const type = String(item && item.type || "");
+        const title = String(item && item.title != null ? item.title : "").trim();
+        if (!id || !EDITABLE_TYPES.includes(type)) return;
+        if (type === "measurements") await repo.renameMeasurementTable(id, report.id, title);
+        if (type === "discharge") await repo.renameDischargeTest(id, report.id, title);
+      }));
+
+      return res.json({ ok: true });
+    },
+
     async deleteSection(req, res) {
       const orderId = Number(req.params.id);
       if (!await ensureOrderEditable(req, res, orderId)) return;
@@ -3344,22 +3366,24 @@ function createReportWebController(deps) {
     },
 
     async tableStylesPage(req, res) {
-      const [timesheetStyle, techteamStyle, equipmentStyle] = await Promise.all([
+      const [timesheetStyle, techteamStyle, equipmentStyle, componentsStyle] = await Promise.all([
         getDefaultTimesheetStyleConfig(),
         getDefaultTechteamStyleConfig(),
-        getDefaultEquipmentStyleConfig()
+        getDefaultEquipmentStyleConfig(),
+        getDefaultComponentsStyleConfig()
       ]);
       return res.render("report-service/table-styles", {
         csrfToken: req.csrfToken ? req.csrfToken() : "",
         timesheetHasCustomStyle: !!(timesheetStyle && timesheetStyle.customCss),
         techteamHasCustomStyle: !!(techteamStyle && techteamStyle.customCss),
-        equipmentHasCustomStyle: !!(equipmentStyle && equipmentStyle.customCss)
+        equipmentHasCustomStyle: !!(equipmentStyle && equipmentStyle.customCss),
+        componentsHasCustomStyle: !!(componentsStyle && componentsStyle.customCss)
       });
     },
 
     async tableStyleAi(req, res) {
       const tableType = String(req.params.tableType || "").toLowerCase();
-      const VALID_TYPES = ["timesheet", "techteam", "equipment"];
+      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components"];
       if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
 
       const { instruction, apply, current_style } = req.body || {};
@@ -3391,6 +3415,14 @@ function createReportWebController(deps) {
           buildPreview: buildEquipmentPreviewHtml,
           applyAi: applyEquipmentStyleViaAi,
           getDefaultCss: generateDefaultEquipmentCss
+        },
+        components: {
+          buildConfig: buildComponentsStyleConfig,
+          getDefault: getDefaultComponentsStyleConfig,
+          saveDefault: saveDefaultComponentsStyleConfig,
+          buildPreview: (cfg) => buildComponentsPreviewHtml(0, cfg),
+          applyAi: (currentCss, instruction2) => applyComponentsStyleViaAi(currentCss, 0, instruction2, reviseTextWithAi),
+          getDefaultCss: () => generateDefaultComponentsCss(0)
         }
       };
 
@@ -3422,20 +3454,22 @@ function createReportWebController(deps) {
 
     async tableStyleReset(req, res) {
       const tableType = String(req.params.tableType || "").toLowerCase();
-      const VALID_TYPES = ["timesheet", "techteam", "equipment"];
+      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components"];
       if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
 
       const keyMap = {
         timesheet: "report.preview.timesheet.style.default",
         techteam: "report.preview.techteam.style.default",
-        equipment: "report.preview.equipment.style.default"
+        equipment: "report.preview.equipment.style.default",
+        components: "report.preview.components.style.default"
       };
       await repo.upsertAppSetting(keyMap[tableType], null);
 
       const previewBuilders = {
         timesheet: buildTimesheetPreviewHtml,
         techteam: buildTechteamPreviewHtml,
-        equipment: buildEquipmentPreviewHtml
+        equipment: buildEquipmentPreviewHtml,
+        components: (cfg) => buildComponentsPreviewHtml(0, cfg)
       };
       const previewHtml = previewBuilders[tableType](null);
       return res.json({ previewHtml, styleConfig: null });

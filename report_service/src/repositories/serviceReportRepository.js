@@ -2810,6 +2810,24 @@ async function deleteDischargeTest(id, serviceReportId = null) {
   return result.rowCount > 0;
 }
 
+async function renameMeasurementTable(id, serviceReportId, title) {
+  const result = await db.query(
+    `UPDATE service_report_measurement_tables SET title = $3, updated_at = NOW() WHERE id = $1 AND service_report_id = $2 RETURNING id`,
+    [id, serviceReportId, String(title || "")]
+  );
+  if (result.rowCount > 0) await touchReport(serviceReportId);
+  return result.rowCount > 0;
+}
+
+async function renameDischargeTest(id, serviceReportId, title) {
+  const result = await db.query(
+    `UPDATE discharge_tests SET title = $3, updated_at = NOW() WHERE id = $1 AND service_report_id = $2 RETURNING id`,
+    [id, serviceReportId, String(title || "")]
+  );
+  if (result.rowCount > 0) await touchReport(serviceReportId);
+  return result.rowCount > 0;
+}
+
 module.exports = {
   getAppSetting,
   upsertAppSetting,
@@ -2948,6 +2966,8 @@ module.exports = {
   getDischargeTestById,
   updateDischargeTest,
   updateDischargeTestStyleConfig,
-  deleteDischargeTest
+  deleteDischargeTest,
+  renameMeasurementTable,
+  renameDischargeTest
 };
 

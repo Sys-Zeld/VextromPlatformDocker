@@ -10,7 +10,9 @@ const {
   applyDefaultDischargeStyle,
   getDefaultTimesheetStyleConfig,
   getDefaultTechteamStyleConfig,
-  getDefaultEquipmentStyleConfig
+  getDefaultEquipmentStyleConfig,
+  getDefaultComponentsStyleConfig,
+  applyDefaultComponentsStyle
 } = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
@@ -483,11 +485,13 @@ async function buildReportAggregate(serviceReportId) {
   const site = order && order.site_id ? await repo.getSiteById(order.site_id) : null;
   const sections = await repo.listSections(serviceReportId);
   const components = await repo.listComponents(serviceReportId);
-  const [measurementRows, defaultMeasurementStyleConfig] = await Promise.all([
+  const [measurementRows, defaultMeasurementStyleConfig, defaultComponentsStyleConfig] = await Promise.all([
     repo.listMeasurementTables(serviceReportId),
-    getDefaultMeasurementStyleConfig()
+    getDefaultMeasurementStyleConfig(),
+    getDefaultComponentsStyleConfig()
   ]);
   const measurements = applyDefaultMeasurementStyle(measurementRows, defaultMeasurementStyleConfig);
+  const reportWithDefaults = applyDefaultComponentsStyle(report, defaultComponentsStyleConfig);
   const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
     getDefaultAlberStyleConfig(),
@@ -514,7 +518,7 @@ async function buildReportAggregate(serviceReportId) {
   const orderEquipments = order ? await repo.listOrderEquipments(order.id) : [];
 
   return {
-    report,
+    report: reportWithDefaults,
     order,
     customer,
     site,

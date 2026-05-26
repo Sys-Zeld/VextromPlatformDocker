@@ -1129,6 +1129,7 @@ function mergeSameTitleMeasurementTables(html) {
 
 function getTableType(blockHtml) {
   if (blockHtml.includes("report-inline-measurements-wrap")) return "measurements";
+  if (blockHtml.includes("report-inline-discharge-wrap")) return "discharge";
   if (blockHtml.includes("report-inline-components-wrap")) return "components";
   if (blockHtml.includes("report-inline-timesheet-wrap")) return "timesheet";
   if (blockHtml.includes("report-inline-techteam-wrap")) return "techteam";
@@ -1160,7 +1161,10 @@ function numberMeasurementTablesInHtml(html, chapterNum) {
     const anchorId = `tbl-${chapterNum}-${tableNum}`;
 
     const tableType = getTableType(blockHtml);
-    tables.push({ label, title, anchorId, tableType });
+    const tableIdMatch = /data-table-id="(\d+)"/.exec(blockHtml);
+    const dischargeIdMatch = /data-discharge-id="(\d+)"/.exec(blockHtml);
+    const itemId = tableIdMatch ? Number(tableIdMatch[1]) : (dischargeIdMatch ? Number(dischargeIdMatch[1]) : null);
+    tables.push({ label, title, anchorId, tableType, itemId });
 
     const captionHtml = `<div style="font-size:14px;color:#6b7280;margin-top:0;text-align:left;font-style:italic;">${escapeHtml(label)}</div>`;
 
@@ -1637,7 +1641,7 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
   }).join("");
 
   return `
-    <div class="report-inline-discharge-wrap" data-discharge-id="${id}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;overflow-x:auto;">
+    <div class="report-inline-discharge-wrap" data-discharge-id="${id}" data-table-title="${escapeHtml(test.title || "")}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;overflow-x:auto;">
       <style>${css}</style>
       <table data-discharge-id="${id}" style="width:100%;border-collapse:collapse;line-height:1.3;white-space:nowrap;">
         <thead style="display:table-header-group;">

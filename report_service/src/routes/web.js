@@ -86,6 +86,7 @@ function createReportServiceWebRouter(deps) {
   router.get("/orders/:id/translate/jobs/:jobId", deps.requireAdminAuth, asyncHandler(controller.getTranslateReportJob));
   router.post("/orders/:id/sections", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createSection));
   router.get("/orders/:id/toc-tables", deps.requireAdminAuth, asyncHandler(controller.getTocTables));
+  router.post("/orders/:id/toc-tables/rename", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.renameSubItems));
   router.post("/orders/:id/sections/reorder", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.reorderSections));
   router.post("/orders/:id/sections/:sectionKey", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveSection));
   router.post("/orders/:id/sections/:sectionKey/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSection));

@@ -231,6 +231,32 @@
     </div>
   </div>
 
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon" style="background:#f0fdf4;color:#15803d;">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Componentes
+          <% if (componentsHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrão</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela de peças substituídas, necessárias e spare-on-board da OS.</p>
+        <button type="button" class="btn btn-sm btn-outline-success tblstyle-open-btn"
+          data-table-type="components"
+          data-table-label="Componentes"
+          data-has-style="<%= componentsHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- AI Style Modal -->
