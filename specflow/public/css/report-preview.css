@@ -565,16 +565,17 @@ blockquote {
 }
 
 .report-inline-timesheet-table thead th {
-  background: #ececec;
-  color: #4e4e4e;
-  font-weight: 700;
+  background: #4b5563;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
 }
 
-.report-inline-timesheet-table .report-inline-timesheet-title-row th {
-  background: #e2e2e2;
-  color: #4a612b;
-  font-size: 0.92rem;
-  letter-spacing: 0.01em;
+.report-inline-timesheet-title-row {
+  background: #374151;
+  color: #fff;
+  text-align: left;
 }
 
 .report-inline-timesheet-empty {

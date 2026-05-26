@@ -78,13 +78,11 @@
   }
 
   .report-inline-timesheet-table thead th {
-    background: #ececec !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  .report-inline-timesheet-table .report-inline-timesheet-title-row th {
-    background: #e2e2e2 !important;
+  .report-inline-timesheet-title-row {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
