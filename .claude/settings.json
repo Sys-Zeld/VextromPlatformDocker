@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git log -1 -L 319,341:\"report_service/src/services/reportPreviewService.js\" --format=\"%h %s\" 2>&1)",
+      "Bash(docker exec vextromplatform-docker-app-1 node -e ' *)"
+    ]
+  }
+}

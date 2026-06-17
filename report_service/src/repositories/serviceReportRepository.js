@@ -902,6 +902,298 @@ async function updateSparePartQuantityByEquipment(equipmentId, sparePartId, quan
   return result.rows[0] || null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-equipment spares (service_report_equipment_spares): independent, editable
+// snapshots. The global catalog (service_report_spare_parts) is only a source to
+// pull from when associating.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeEquipmentSparePayload(payload = {}) {
+  return {
+    description: String(payload.description || "").trim(),
+    manufacturer: String(payload.manufacturer || "").trim(),
+    equipmentModel: String(payload.equipmentModel || "").trim(),
+    partNumber: String(payload.partNumber || "").trim(),
+    leadTime: String(payload.leadTime || "").trim(),
+    isObsolete: Boolean(payload.isObsolete),
+    replacedByPartNumber: String(payload.replacedByPartNumber || "").trim(),
+    equipmentFamily: String(payload.equipmentFamily || "").trim(),
+    quantity: Number.isInteger(Number(payload.quantity)) && Number(payload.quantity) > 0
+      ? Number(payload.quantity)
+      : 1
+  };
+}
+
+async function listEquipmentSpares(equipmentId) {
+  const result = await db.query(
+    `
+      SELECT *
+      FROM service_report_equipment_spares
+      WHERE equipment_id = $1
+      ORDER BY description ASC, id ASC
+    `,
+    [equipmentId]
+  );
+  return result.rows;
+}
+
+async function listEquipmentSparesByEquipmentIds(equipmentIds = []) {
+  const normalizedIds = (Array.isArray(equipmentIds) ? equipmentIds : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!normalizedIds.length) return [];
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM service_report_equipment_spares
+      WHERE equipment_id = ANY($1::bigint[])
+      ORDER BY equipment_id ASC, description ASC, id ASC
+    `,
+    [normalizedIds]
+  );
+  return result.rows;
+}
+
+async function getEquipmentSpareById(id) {
+  const result = await db.query(
+    `SELECT * FROM service_report_equipment_spares WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function findEquipmentSpareByPn(equipmentId, partNumber) {
+  const pn = String(partNumber || "").trim();
+  if (!pn) return null;
+  const result = await db.query(
+    `
+      SELECT *
+      FROM service_report_equipment_spares
+      WHERE equipment_id = $1 AND LOWER(part_number) = LOWER($2) AND part_number <> ''
+      LIMIT 1
+    `,
+    [equipmentId, pn]
+  );
+  return result.rows[0] || null;
+}
+
+function pnDuplicateError() {
+  const conflict = new Error("Part Number ja associado a este equipamento.");
+  conflict.statusCode = 409;
+  conflict.code = "pn_duplicate";
+  return conflict;
+}
+
+async function createEquipmentSpare(equipmentId, rawPayload, sourceSparePartId = null) {
+  const payload = normalizeEquipmentSparePayload(rawPayload);
+  if (payload.partNumber) {
+    const existing = await findEquipmentSpareByPn(equipmentId, payload.partNumber);
+    if (existing) throw pnDuplicateError();
+  }
+  const result = await db.query(
+    `
+      INSERT INTO service_report_equipment_spares (
+        equipment_id, source_spare_part_id, description, manufacturer, equipment_model,
+        part_number, lead_time, is_obsolete, replaced_by_part_number, equipment_family,
+        quantity, created_at, updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+      RETURNING *
+    `,
+    [
+      equipmentId,
+      sourceSparePartId,
+      payload.description,
+      payload.manufacturer,
+      payload.equipmentModel,
+      payload.partNumber,
+      payload.leadTime,
+      payload.isObsolete,
+      payload.replacedByPartNumber,
+      payload.equipmentFamily,
+      payload.quantity
+    ]
+  );
+  return result.rows[0];
+}
+
+// Pull a catalog spare-part into an equipment's own list (snapshot copy).
+async function associateSparePartToEquipment(equipmentId, sparePartId, quantity = 1) {
+  const sparePart = await getSparePartById(sparePartId);
+  if (!sparePart) {
+    const err = new Error("Spare-part nao encontrado.");
+    err.statusCode = 404;
+    err.code = "spare_part_not_found";
+    throw err;
+  }
+  return createEquipmentSpare(
+    equipmentId,
+    {
+      description: sparePart.description,
+      manufacturer: sparePart.manufacturer,
+      equipmentModel: sparePart.equipment_model,
+      partNumber: sparePart.part_number,
+      leadTime: sparePart.lead_time,
+      isObsolete: sparePart.is_obsolete,
+      replacedByPartNumber: sparePart.replaced_by_part_number,
+      equipmentFamily: sparePart.equipment_family,
+      quantity
+    },
+    sparePart.id
+  );
+}
+
+async function updateEquipmentSpare(id, rawPayload) {
+  const payload = normalizeEquipmentSparePayload(rawPayload);
+  const current = await getEquipmentSpareById(id);
+  if (!current) return null;
+  if (payload.partNumber) {
+    const existing = await findEquipmentSpareByPn(current.equipment_id, payload.partNumber);
+    if (existing && Number(existing.id) !== Number(id)) throw pnDuplicateError();
+  }
+  const result = await db.query(
+    `
+      UPDATE service_report_equipment_spares
+      SET description = $2, manufacturer = $3, equipment_model = $4, part_number = $5,
+          lead_time = $6, is_obsolete = $7, replaced_by_part_number = $8,
+          equipment_family = $9, quantity = $10, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      id,
+      payload.description,
+      payload.manufacturer,
+      payload.equipmentModel,
+      payload.partNumber,
+      payload.leadTime,
+      payload.isObsolete,
+      payload.replacedByPartNumber,
+      payload.equipmentFamily,
+      payload.quantity
+    ]
+  );
+  return result.rows[0] || null;
+}
+
+async function updateEquipmentSpareQuantity(id, quantity) {
+  const normalizedQuantity = Number.isInteger(Number(quantity)) && Number(quantity) > 0
+    ? Number(quantity)
+    : 1;
+  const result = await db.query(
+    `
+      UPDATE service_report_equipment_spares
+      SET quantity = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [id, normalizedQuantity]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteEquipmentSpare(id) {
+  const result = await db.query(
+    `DELETE FROM service_report_equipment_spares WHERE id = $1`,
+    [id]
+  );
+  return result.rowCount > 0;
+}
+
+// Bulk upsert for AI/XLSX import: writes to the equipment's own list AND upserts
+// the global catalog (so the library keeps growing with imported data).
+async function bulkUpsertEquipmentSpares(equipmentId, items) {
+  let updated = 0;
+  let inserted = 0;
+  let linked = 0;
+
+  for (const raw of items) {
+    const item = {
+      description: String(raw.description || "").trim(),
+      manufacturer: String(raw.manufacturer || "").trim(),
+      equipmentModel: String(raw.equipmentModel || "").trim(),
+      partNumber: String(raw.partNumber || "").trim(),
+      leadTime: String(raw.leadTime || "").trim(),
+      replacedByPartNumber: String(raw.replacedByPartNumber || "").trim(),
+      equipmentFamily: String(raw.equipmentFamily || "").trim(),
+      isObsolete: Boolean(raw.isObsolete),
+      quantity: Number.isInteger(Number(raw.quantity)) && Number(raw.quantity) > 0 ? Number(raw.quantity) : 1
+    };
+    if (!item.description) continue;
+
+    // 1) Upsert the global catalog (association + catalogo).
+    let catalogId = null;
+    const pnLower = item.partNumber.toLowerCase();
+    if (item.partNumber) {
+      const findRes = await db.query( // eslint-disable-line no-await-in-loop
+        `SELECT id FROM service_report_spare_parts WHERE LOWER(part_number) = $1 AND part_number <> '' LIMIT 1`,
+        [pnLower]
+      );
+      if (findRes.rows.length > 0) {
+        catalogId = findRes.rows[0].id;
+        await db.query( // eslint-disable-line no-await-in-loop
+          `UPDATE service_report_spare_parts
+           SET description = $2, manufacturer = $3, equipment_model = $4,
+               lead_time = $5, is_obsolete = $6, replaced_by_part_number = $7,
+               equipment_family = $8, updated_at = NOW()
+           WHERE id = $1`,
+          [catalogId, item.description, item.manufacturer, item.equipmentModel,
+            item.leadTime, item.isObsolete, item.replacedByPartNumber, item.equipmentFamily]
+        );
+      }
+    }
+    if (!catalogId) {
+      try {
+        const row = await createSparePart(item); // eslint-disable-line no-await-in-loop
+        catalogId = row.id;
+      } catch (err) {
+        if (err.code === "pn_duplicate" && item.partNumber) {
+          const retryRes = await db.query( // eslint-disable-line no-await-in-loop
+            `SELECT id FROM service_report_spare_parts WHERE LOWER(part_number) = $1 AND part_number <> '' LIMIT 1`,
+            [pnLower]
+          );
+          if (retryRes.rows.length > 0) catalogId = retryRes.rows[0].id;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // 2) Upsert the per-equipment snapshot (matched by PN within the equipment).
+    const existingSpare = item.partNumber ? await findEquipmentSpareByPn(equipmentId, item.partNumber) : null; // eslint-disable-line no-await-in-loop
+    if (existingSpare) {
+      await db.query( // eslint-disable-line no-await-in-loop
+        `UPDATE service_report_equipment_spares
+         SET source_spare_part_id = COALESCE($2, source_spare_part_id),
+             description = $3, manufacturer = $4, equipment_model = $5,
+             lead_time = $6, is_obsolete = $7, replaced_by_part_number = $8,
+             equipment_family = $9, quantity = $10, updated_at = NOW()
+         WHERE id = $1`,
+        [existingSpare.id, catalogId, item.description, item.manufacturer, item.equipmentModel,
+          item.leadTime, item.isObsolete, item.replacedByPartNumber, item.equipmentFamily, item.quantity]
+      );
+      updated++;
+    } else {
+      await db.query( // eslint-disable-line no-await-in-loop
+        `INSERT INTO service_report_equipment_spares (
+           equipment_id, source_spare_part_id, description, manufacturer, equipment_model,
+           part_number, lead_time, is_obsolete, replaced_by_part_number, equipment_family,
+           quantity, created_at, updated_at
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())`,
+        [equipmentId, catalogId, item.description, item.manufacturer, item.equipmentModel,
+          item.partNumber, item.leadTime, item.isObsolete, item.replacedByPartNumber,
+          item.equipmentFamily, item.quantity]
+      );
+      inserted++;
+    }
+    linked++;
+  }
+
+  return { updated, inserted, linked };
+}
+
 async function attachEquipmentToOrder(serviceOrderId, equipmentId, notes = "") {
   const result = await db.query(
     `
@@ -2871,6 +3163,16 @@ module.exports = {
   linkSparePartToEquipmentIfMissing,
   unlinkSparePartFromEquipment,
   updateSparePartQuantityByEquipment,
+  listEquipmentSpares,
+  listEquipmentSparesByEquipmentIds,
+  getEquipmentSpareById,
+  findEquipmentSpareByPn,
+  createEquipmentSpare,
+  associateSparePartToEquipment,
+  updateEquipmentSpare,
+  updateEquipmentSpareQuantity,
+  deleteEquipmentSpare,
+  bulkUpsertEquipmentSpares,
   attachEquipmentToOrder,
   listOrderEquipments,
   detachEquipmentFromOrder,

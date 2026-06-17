@@ -91,6 +91,7 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/sections/:sectionKey", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveSection));
   router.post("/orders/:id/sections/:sectionKey/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSection));
   router.post("/orders/:id/components", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.addComponent));
+  router.post("/orders/:id/components/:componentId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateComponent));
   router.post("/orders/:id/components/:componentId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteComponent));
   router.post("/orders/:id/components/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.componentsStyleAi));
   router.post("/orders/:id/components/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.componentsStyleDefault));
@@ -188,6 +189,10 @@ function createReportServiceWebRouter(deps) {
   router.post("/spare-parts/equipment-links/auto-family", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.autoLinkSparePartsByFamily));
   router.post("/spare-parts/equipment-links/:equipmentId/:sparePartId/quantity", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateSparePartQuantityByEquipment));
   router.post("/spare-parts/equipment-links/:equipmentId/:sparePartId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.unlinkSparePartFromEquipment));
+  // Per-equipment spares (editable snapshots — new model)
+  router.post("/spare-parts/equipment-spares", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createEquipmentSpare));
+  router.post("/spare-parts/equipment-spares/:id/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveEquipmentSpare));
+  router.post("/spare-parts/equipment-spares/:id/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteEquipmentSpare));
 
   return router;
 }

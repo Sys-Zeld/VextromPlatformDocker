@@ -1079,15 +1079,21 @@ function mergeSameTitleMeasurementTables(html) {
     const blockHtml = source.slice(blocks[i].start, blocks[i].end);
     const titleMatch = /data-table-title="([^"]+)"/.exec(blockHtml);
     const title = titleMatch ? titleMatch[1] : null;
+    const blockType = getTableType(blockHtml);
 
     const group = [blocks[i]];
 
-    if (title) {
+    // Component tables are already split per equipment by renderComponentsInlineTable
+    // and must NEVER be merged — different equipment frequently share the same type
+    // name (used as data-table-title), which would otherwise collapse them into one.
+    if (title && blockType !== "components") {
       let j = i + 1;
       while (j < blocks.length) {
         const between = source.slice(group[group.length - 1].end, blocks[j].start);
         if (!isOnlyPaddingBetweenMeasurements(between)) break;
-        const nextTitleMatch = /data-table-title="([^"]+)"/.exec(source.slice(blocks[j].start, blocks[j].end));
+        const nextBlockHtml = source.slice(blocks[j].start, blocks[j].end);
+        if (getTableType(nextBlockHtml) !== blockType) break;
+        const nextTitleMatch = /data-table-title="([^"]+)"/.exec(nextBlockHtml);
         if ((nextTitleMatch ? nextTitleMatch[1] : null) !== title) break;
         group.push(blocks[j]);
         j++;

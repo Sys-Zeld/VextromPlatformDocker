@@ -335,7 +335,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-xl-6">
+    <div class="col-12">
       <div class="card app-card">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-3">
@@ -359,38 +359,79 @@
                 <% orderEquipments.forEach((item) => { %><option value="<%= item.equipment_id %>"><%= item.tag_number || '-' %></option><% }) %>
               </select>
             </div>
-            <div class="col-12 col-md-4"><input class="form-control" name="quantity" placeholder="Quantidade" /></div>
+            <div class="col-12 col-md-4"><input class="form-control" type="number" min="1" step="1" name="quantity" id="componentQuantityInput" placeholder="Quantidade" /></div>
             <div class="col-12 col-md-6">
               <select class="form-select" name="description" id="componentDescriptionSelect" required>
                 <option value="">Selecione a descricao (spare-part)</option>
               </select>
             </div>
-            <div class="col-12 col-md-6"><input class="form-control" name="part_number" id="componentPartNumberInput" placeholder="Part Number" readonly /></div>
+            <div class="col-12 col-md-6">
+              <div class="pn-autocomplete">
+                <input class="form-control" name="part_number" id="componentPartNumberInput" placeholder="Part Number (digite para pesquisar na base)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="componentPartNumberList" />
+                <ul class="pn-autocomplete-list d-none" id="componentPartNumberList" role="listbox"></ul>
+              </div>
+            </div>
             <div class="col-12"><textarea class="form-control" name="notes" rows="2" placeholder="Notas"></textarea></div>
             <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary btn-sm" type="submit">Adicionar componente</button></div>
           </form>
 
-          <div class="table-responsive mt-3">
-            <table class="table table-sm app-table mb-0">
-              <thead><tr><th>Categoria</th><th>Descricao</th><th>P/N</th><th>Qtd</th><th>Acoes</th></tr></thead>
-              <tbody>
-                <% if (!components.length) { %><tr><td colspan="5" class="text-center text-muted py-3">Sem componentes.</td></tr><% } %>
-                <% components.forEach((item) => { %>
-                  <tr>
-                    <td><%= item.category %></td>
-                    <td><%= item.description %></td>
-                    <td><%= item.part_number || "-" %></td>
-                    <td><%= item.quantity %></td>
-                    <td>
-                      <form method="post" action="/admin/report-service/orders/<%= order.id %>/components/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('Excluir este spare/componente da OS?');">
-                        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                        <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
-                      </form>
-                    </td>
-                  </tr>
-                <% }) %>
-              </tbody>
-            </table>
+          <div class="components-grid-wrap mt-3">
+            <div id="componentsGrid"></div>
+          </div>
+          <form method="post" id="deleteComponentForm" class="d-none">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          </form>
+
+          <%# ===== MODAL EDITAR COMPONENTE ===== %>
+          <div class="modal fade" id="editComponentModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <form method="post" id="editComponentForm">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Editar componente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                  </div>
+                  <div class="modal-body">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <div class="row g-2">
+                      <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1">Categoria</label>
+                        <select class="form-select" name="category" id="editCmpCategory">
+                          <% componentCategories.forEach((category) => { %><option value="<%= category %>"><%= category %></option><% }) %>
+                        </select>
+                      </div>
+                      <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1">Equipamento (TAG)</label>
+                        <select class="form-select" name="equipment_id" id="editCmpEquipment">
+                          <option value="">Sem equipamento</option>
+                          <% orderEquipments.forEach((item) => { %><option value="<%= item.equipment_id %>"><%= item.tag_number || '-' %></option><% }) %>
+                        </select>
+                      </div>
+                      <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1">Quantidade</label>
+                        <input class="form-control" type="number" min="1" step="1" name="quantity" id="editCmpQuantity" required />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label small mb-1">Descricao</label>
+                        <input class="form-control" name="description" id="editCmpDescription" required />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label small mb-1">Part Number</label>
+                        <input class="form-control" name="part_number" id="editCmpPartNumber" />
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label small mb-1">Notas</label>
+                        <textarea class="form-control" name="notes" id="editCmpNotes" rows="2"></textarea>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal">Cancelar</button>
+                    <button class="btn btn-primary btn-sm" type="submit">Salvar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -572,6 +613,13 @@
 </div>
 
 <style>
+  @import url("https://cdn.jsdelivr.net/npm/gridjs/dist/theme/mermaid.min.css");
+  .components-grid-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; width:100%; max-width:100%; }
+  .components-grid-wrap .gridjs-wrapper { border:0; box-shadow:none; }
+  .components-grid-wrap .gridjs-th, .components-grid-wrap .gridjs-td { border-color:color-mix(in srgb, var(--border) 58%, transparent); vertical-align:middle !important; padding:.3rem .5rem !important; line-height:1.15 !important; font-size:.8rem !important; }
+  .components-grid-wrap .gridjs-th { text-align:center !important; font-size:.82rem !important; font-weight:600; }
+  .components-grid-wrap .gridjs-table .gridjs-tbody > .gridjs-tr:nth-of-type(odd) > .gridjs-td { background-color:color-mix(in srgb, var(--surface-2) 78%, transparent) !important; }
+  .components-grid-wrap .gridjs-table .gridjs-tbody > .gridjs-tr:nth-of-type(even) > .gridjs-td { background-color:color-mix(in srgb, var(--surface-2) 92%, transparent) !important; }
   #cmpStyleModal .msm-header{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);color:#fff;padding:16px 20px;border-radius:0;}
   #cmpStyleModal .msm-preview-panel{flex:1;padding:16px;overflow-y:auto;border-right:1px solid #e2e8f0;background:#f8fafc;display:flex;flex-direction:column;}
   #cmpStyleModal .msm-paper{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:16px;flex:1;overflow-y:auto;position:relative;min-height:200px;}
@@ -593,17 +641,31 @@
   #cmpStyleModal .msm-unsaved{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#f59e0b;font-weight:600;}
   #cmpStyleModal .msm-unsaved-dot{width:6px;height:6px;border-radius:50%;background:#f59e0b;}
   @keyframes csmTyping{0%,80%,100%{transform:scale(.8);opacity:.5}40%{transform:scale(1.1);opacity:1}}
+  /* Autocomplete customizado do Part Number (lista com tom zebrado) */
+  .pn-autocomplete{position:relative;}
+  .pn-autocomplete-list{position:absolute;z-index:1056;top:calc(100% + 2px);left:0;right:0;margin:0;padding:4px 0;list-style:none;max-height:260px;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--border,#ced4da);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.18);}
+  .pn-autocomplete-item{padding:6px 12px;cursor:pointer;font-size:13px;line-height:1.3;display:flex;flex-direction:column;gap:1px;}
+  .pn-autocomplete-item:nth-child(odd){background:color-mix(in srgb, var(--surface-2,#f1f3f5) 80%, transparent);}
+  .pn-autocomplete-item:nth-child(even){background:var(--surface,#fff);}
+  .pn-autocomplete-item.is-active,.pn-autocomplete-item:hover{background:var(--bs-table-hover-bg, color-mix(in srgb, var(--surface-2,#e2e8f0) 95%, transparent));}
+  .pn-autocomplete-item .pn-code{font-weight:600;color:var(--text,#212529);}
+  .pn-autocomplete-item .pn-desc{font-size:11.5px;color:color-mix(in srgb, var(--text,#212529) 70%, transparent);}
+  .pn-autocomplete-empty{padding:6px 12px;font-size:12px;color:color-mix(in srgb, var(--text,#212529) 60%, transparent);}
 </style>
 
 <script>
   window.orderSparePartsByEquipment = <%- JSON.stringify(orderSparePartsByEquipment || {}).replace(/</g, "\\u003c") %>;
+  window.sparePartsCatalog = <%- JSON.stringify(sparePartsCatalog || []).replace(/</g, "\\u003c") %>;
 </script>
 <script>
   (function () {
     var equipmentSelect = document.getElementById("componentEquipmentSelect");
     var descriptionSelect = document.getElementById("componentDescriptionSelect");
     var partNumberInput = document.getElementById("componentPartNumberInput");
+    var quantityInput = document.getElementById("componentQuantityInput");
+    var pnListEl = document.getElementById("componentPartNumberList");
     var source = window.orderSparePartsByEquipment || {};
+    var catalog = Array.isArray(window.sparePartsCatalog) ? window.sparePartsCatalog : [];
     if (!equipmentSelect || !descriptionSelect || !partNumberInput) return;
 
     function esc(value) {
@@ -613,6 +675,36 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function normPn(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    // Quantidade do cadastro (vinculo equipamento <-> spare-part), indexada por P/N.
+    var qtyByPn = {};
+    Object.keys(source).forEach(function (key) {
+      var list = Array.isArray(source[key]) ? source[key] : [];
+      list.forEach(function (item) {
+        var pn = normPn(item.part_number);
+        if (pn && qtyByPn[pn] == null && item.quantity != null) {
+          qtyByPn[pn] = item.quantity;
+        }
+      });
+    });
+
+    // Catalogo completo indexado por P/N, para a busca manual.
+    var catalogByPn = {};
+    catalog.forEach(function (sp) {
+      var pn = normPn(sp.part_number);
+      if (pn && !catalogByPn[pn]) catalogByPn[pn] = sp;
+    });
+
+    function setQuantityFromPn(pn) {
+      var qty = qtyByPn[normPn(pn)];
+      if (qty != null && quantityInput) {
+        quantityInput.value = qty;
+      }
     }
 
     function fillDescriptions(equipmentId) {
@@ -631,6 +723,7 @@
         var opt = document.createElement("option");
         opt.value = String(item.description || "");
         opt.setAttribute("data-part-number", String(item.part_number || ""));
+        if (item.quantity != null) opt.setAttribute("data-quantity", String(item.quantity));
         var pn = item.part_number ? esc(item.part_number) + " - " : "";
         opt.innerHTML = pn + esc(item.description || "-");
         descriptionSelect.appendChild(opt);
@@ -640,13 +733,153 @@
       partNumberInput.value = "";
     }
 
+    // Garante que a descricao selecionada exista no select (usada pela busca manual de P/N).
+    function ensureDescriptionOption(description, pn) {
+      var desc = String(description || "");
+      for (var i = 0; i < descriptionSelect.options.length; i += 1) {
+        if (descriptionSelect.options[i].value === desc) {
+          descriptionSelect.selectedIndex = i;
+          return;
+        }
+      }
+      var opt = document.createElement("option");
+      opt.value = desc;
+      opt.setAttribute("data-part-number", String(pn || ""));
+      var prefix = pn ? esc(pn) + " - " : "";
+      opt.innerHTML = prefix + esc(desc || "-");
+      descriptionSelect.appendChild(opt);
+      descriptionSelect.value = desc;
+    }
+
     equipmentSelect.addEventListener("change", function () {
       fillDescriptions(equipmentSelect.value);
     });
 
     descriptionSelect.addEventListener("change", function () {
       var selected = descriptionSelect.options[descriptionSelect.selectedIndex];
-      partNumberInput.value = selected ? String(selected.getAttribute("data-part-number") || "") : "";
+      var pn = selected ? String(selected.getAttribute("data-part-number") || "") : "";
+      partNumberInput.value = pn;
+      // Quantidade do cadastro, mas o usuario pode alterar livremente.
+      var dataQty = selected ? selected.getAttribute("data-quantity") : null;
+      if (dataQty != null && quantityInput) {
+        quantityInput.value = dataQty;
+      } else {
+        setQuantityFromPn(pn);
+      }
+    });
+
+    // ---- Autocomplete customizado do Part Number (lista pesquisavel na base) ----
+    var activeIndex = -1;
+    var currentMatches = [];
+
+    function applySpare(match) {
+      partNumberInput.value = match.part_number || partNumberInput.value;
+      ensureDescriptionOption(match.description, match.part_number);
+      setQuantityFromPn(match.part_number);
+    }
+
+    function closeList() {
+      if (!pnListEl) return;
+      pnListEl.classList.add("d-none");
+      pnListEl.innerHTML = "";
+      partNumberInput.setAttribute("aria-expanded", "false");
+      activeIndex = -1;
+      currentMatches = [];
+    }
+
+    function filterCatalog(term) {
+      var q = normPn(term);
+      if (!q) return catalog.slice(0, 50);
+      return catalog.filter(function (sp) {
+        return normPn(sp.part_number).indexOf(q) !== -1 ||
+          String(sp.description || "").toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 50);
+    }
+
+    function highlight(idx) {
+      if (!pnListEl) return;
+      var items = pnListEl.querySelectorAll(".pn-autocomplete-item");
+      items.forEach(function (el, i) {
+        if (i === idx) {
+          el.classList.add("is-active");
+          el.scrollIntoView({ block: "nearest" });
+        } else {
+          el.classList.remove("is-active");
+        }
+      });
+    }
+
+    function renderList(term) {
+      if (!pnListEl) return;
+      currentMatches = filterCatalog(term);
+      activeIndex = -1;
+      pnListEl.innerHTML = "";
+
+      if (!currentMatches.length) {
+        var empty = document.createElement("li");
+        empty.className = "pn-autocomplete-empty";
+        empty.textContent = "Nenhum spare-part encontrado. P/N sera adicionado como digitado.";
+        pnListEl.appendChild(empty);
+      } else {
+        currentMatches.forEach(function (sp, i) {
+          var li = document.createElement("li");
+          li.className = "pn-autocomplete-item";
+          li.setAttribute("role", "option");
+          li.setAttribute("data-index", String(i));
+          li.innerHTML =
+            '<span class="pn-code">' + esc(sp.part_number || "-") + '</span>' +
+            '<span class="pn-desc">' + esc(sp.description || "") + '</span>';
+          li.addEventListener("mousedown", function (ev) {
+            ev.preventDefault(); // evita blur antes do clique
+            applySpare(sp);
+            closeList();
+          });
+          pnListEl.appendChild(li);
+        });
+      }
+
+      pnListEl.classList.remove("d-none");
+      partNumberInput.setAttribute("aria-expanded", "true");
+    }
+
+    partNumberInput.addEventListener("input", function () {
+      renderList(partNumberInput.value);
+    });
+
+    partNumberInput.addEventListener("focus", function () {
+      renderList(partNumberInput.value);
+    });
+
+    partNumberInput.addEventListener("keydown", function (ev) {
+      if (pnListEl.classList.contains("d-none")) return;
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        if (currentMatches.length) {
+          activeIndex = (activeIndex + 1) % currentMatches.length;
+          highlight(activeIndex);
+        }
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (currentMatches.length) {
+          activeIndex = (activeIndex - 1 + currentMatches.length) % currentMatches.length;
+          highlight(activeIndex);
+        }
+      } else if (ev.key === "Enter") {
+        if (activeIndex >= 0 && currentMatches[activeIndex]) {
+          ev.preventDefault();
+          applySpare(currentMatches[activeIndex]);
+          closeList();
+        }
+      } else if (ev.key === "Escape") {
+        closeList();
+      }
+    });
+
+    // Fecha ao clicar fora; aplica match exato se o usuario apenas digitou e saiu.
+    partNumberInput.addEventListener("blur", function () {
+      var match = catalogByPn[normPn(partNumberInput.value)];
+      if (match) applySpare(match); // P/N manual sem match: mantem o digitado.
+      window.setTimeout(closeList, 120);
     });
 
     fillDescriptions(equipmentSelect.value);
@@ -1676,6 +1909,119 @@
       setUnsaved(false);
       saveBtn.disabled = true;
       if (defaultBtn) defaultBtn.disabled = true;
+    });
+  })();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
+<script>
+  (function () {
+    // Components per equipment: Grid.js with pagination (max 20 per page).
+    var gridTarget = document.getElementById("componentsGrid");
+    if (!gridTarget) return;
+
+    var componentsData = <%- JSON.stringify(components || []).replace(/</g, "\\u003c") %>;
+    var orderId = <%- JSON.stringify(String(order.id)) %>;
+    var deleteForm = document.getElementById("deleteComponentForm");
+
+    function esc(v) {
+      return String(v == null ? "" : v)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    if (!componentsData.length) {
+      gridTarget.innerHTML = "<div class=\"text-center text-muted py-3\">Sem componentes.</div>";
+      return;
+    }
+    if (!window.gridjs || !window.gridjs.Grid) return;
+
+    function componentActions(item) {
+      var attrs = ""
+        + " data-id=\"" + esc(item.id) + "\""
+        + " data-category=\"" + esc(item.category || "") + "\""
+        + " data-equipment_id=\"" + esc(item.equipment_id == null ? "" : item.equipment_id) + "\""
+        + " data-quantity=\"" + Number(item.quantity || 1) + "\""
+        + " data-description=\"" + esc(item.description || "") + "\""
+        + " data-part_number=\"" + esc(item.part_number || "") + "\""
+        + " data-notes=\"" + esc(item.notes || "") + "\"";
+      return "<div class=\"d-flex gap-1 justify-content-center\">"
+        + "<button type=\"button\" class=\"btn btn-outline-primary btn-sm\" data-edit-component=\"" + esc(item.id) + "\"" + attrs + ">Editar</button>"
+        + "<button type=\"button\" class=\"btn btn-outline-danger btn-sm\" data-delete-component=\"" + esc(item.id) + "\">Excluir</button>"
+        + "</div>";
+    }
+
+    var data = componentsData.map(function (item) {
+      return {
+        category: esc(item.category || "-"),
+        tag: esc(item.equipment_tag || "-"),
+        description: esc(item.description || "-"),
+        partNumber: esc(item.part_number || "-"),
+        quantity: Number(item.quantity || 0),
+        actions: componentActions(item)
+      };
+    });
+
+    new window.gridjs.Grid({
+      columns: [
+        { id: "category", name: "Categoria", formatter: function (c) { return window.gridjs.html(c); } },
+        { id: "tag", name: "TAG", formatter: function (c) { return window.gridjs.html(c); } },
+        { id: "description", name: "Descricao", formatter: function (c) { return window.gridjs.html(c); } },
+        { id: "partNumber", name: "P/N", formatter: function (c) { return window.gridjs.html(c); } },
+        { id: "quantity", name: "Qtd", width: "70px" },
+        { id: "actions", name: "Acoes", sort: false, width: "150px", formatter: function (c) { return window.gridjs.html(c); } }
+      ],
+      data: data,
+      search: true,
+      sort: true,
+      pagination: { limit: 20, summary: false },
+      language: {
+        search: { placeholder: "Buscar..." },
+        loading: "Carregando...",
+        noRecordsFound: "Nenhum registro encontrado",
+        error: "Erro ao carregar"
+      }
+    }).render(gridTarget);
+
+    var editModalEl = document.getElementById("editComponentModal");
+    var editForm = document.getElementById("editComponentForm");
+
+    function openComponentEdit(btn) {
+      if (!editForm) return;
+      var id = btn.getAttribute("data-id");
+      editForm.action = "/admin/report-service/orders/" + encodeURIComponent(orderId) + "/components/" + encodeURIComponent(String(id)) + "/update";
+      var cat = document.getElementById("editCmpCategory");
+      var eqp = document.getElementById("editCmpEquipment");
+      // Match category case-insensitively: stored value is lowercased, but the
+      // option values keep their original casing (e.g. "Para_troca").
+      if (cat) {
+        var wanted = (btn.getAttribute("data-category") || "").toLowerCase();
+        cat.selectedIndex = 0;
+        for (var i = 0; i < cat.options.length; i += 1) {
+          if (cat.options[i].value.toLowerCase() === wanted) { cat.selectedIndex = i; break; }
+        }
+      }
+      if (eqp) eqp.value = btn.getAttribute("data-equipment_id") || "";
+      document.getElementById("editCmpQuantity").value = btn.getAttribute("data-quantity") || "1";
+      document.getElementById("editCmpDescription").value = btn.getAttribute("data-description") || "";
+      document.getElementById("editCmpPartNumber").value = btn.getAttribute("data-part_number") || "";
+      document.getElementById("editCmpNotes").value = btn.getAttribute("data-notes") || "";
+      if (window.bootstrap && editModalEl) {
+        window.bootstrap.Modal.getOrCreateInstance(editModalEl).show();
+      }
+    }
+
+    gridTarget.addEventListener("click", function (ev) {
+      var editBtn = ev.target.closest("[data-edit-component]");
+      if (editBtn) {
+        openComponentEdit(editBtn);
+        return;
+      }
+      var delBtn = ev.target.closest("[data-delete-component]");
+      if (!delBtn) return;
+      if (!window.confirm("Excluir este spare/componente da OS?")) return;
+      var id = delBtn.getAttribute("data-delete-component");
+      deleteForm.action = "/admin/report-service/orders/" + encodeURIComponent(orderId) + "/components/" + encodeURIComponent(String(id)) + "/delete";
+      deleteForm.submit();
     });
   })();
 </script>

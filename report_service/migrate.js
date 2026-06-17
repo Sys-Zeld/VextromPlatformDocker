@@ -114,6 +114,54 @@ async function migrateServiceReport() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_eq_spare_parts_equipment_id ON service_report_equipment_spare_parts (equipment_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_eq_spare_parts_spare_part_id ON service_report_equipment_spare_parts (spare_part_id);`);
 
+  // Per-equipment spare list: each row is an INDEPENDENT, editable snapshot of a
+  // spare-part for ONE equipment. The global service_report_spare_parts table is
+  // now used only as a catalog/library to "pull" from when associating.
+  // source_spare_part_id keeps traceability to the catalog row it originated from.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_equipment_spares (
+      id BIGSERIAL PRIMARY KEY,
+      equipment_id BIGINT NOT NULL REFERENCES service_report_equipments(id) ON DELETE CASCADE,
+      source_spare_part_id BIGINT REFERENCES service_report_spare_parts(id) ON DELETE SET NULL,
+      description TEXT NOT NULL DEFAULT '',
+      manufacturer TEXT NOT NULL DEFAULT '',
+      equipment_model TEXT NOT NULL DEFAULT '',
+      part_number TEXT NOT NULL DEFAULT '',
+      lead_time TEXT NOT NULL DEFAULT '',
+      is_obsolete BOOLEAN NOT NULL DEFAULT FALSE,
+      replaced_by_part_number TEXT NOT NULL DEFAULT '',
+      equipment_family TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_eq_spares_equipment_id ON service_report_equipment_spares (equipment_id);`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_eq_spares_source ON service_report_equipment_spares (source_spare_part_id);`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_eq_spares_eq_pn ON service_report_equipment_spares (equipment_id, LOWER(part_number)) WHERE part_number <> '';`);
+
+  // Non-destructive backfill: copy the current link table + catalog into the new
+  // per-equipment table. Guarded by NOT EXISTS so re-running migrate.js is safe.
+  // The old link table is intentionally kept intact for rollback safety.
+  await db.query(`
+    INSERT INTO service_report_equipment_spares (
+      equipment_id, source_spare_part_id, description, manufacturer, equipment_model,
+      part_number, lead_time, is_obsolete, replaced_by_part_number, equipment_family,
+      quantity, created_at, updated_at
+    )
+    SELECT
+      link.equipment_id, sp.id, sp.description, sp.manufacturer, sp.equipment_model,
+      sp.part_number, sp.lead_time, sp.is_obsolete, sp.replaced_by_part_number, sp.equipment_family,
+      COALESCE(link.quantity, 1), COALESCE(link.created_at, NOW()), NOW()
+    FROM service_report_equipment_spare_parts link
+    INNER JOIN service_report_spare_parts sp ON sp.id = link.spare_part_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM service_report_equipment_spares es
+      WHERE es.equipment_id = link.equipment_id
+        AND es.source_spare_part_id = sp.id
+    );
+  `);
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_orders (
       id BIGSERIAL PRIMARY KEY,

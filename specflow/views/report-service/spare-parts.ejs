@@ -36,6 +36,18 @@
   .spare-parts-grid-wrap .gridjs-table .gridjs-tbody > .gridjs-tr:nth-of-type(even) > .gridjs-td {
     background-color: color-mix(in srgb, var(--surface-2) 92%, transparent) !important;
   }
+
+  /* Autocomplete de Part Number (busca no catalogo) */
+  .pn-autocomplete{position:relative;}
+  .pn-autocomplete-list{position:absolute;z-index:1060;top:calc(100% + 2px);left:0;right:0;margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--border,#ced4da);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.18);}
+  .pn-autocomplete-item{padding:6px 12px;cursor:pointer;font-size:13px;line-height:1.3;display:flex;flex-direction:column;gap:1px;}
+  .pn-autocomplete-item:nth-child(odd){background:color-mix(in srgb, var(--surface-2,#f1f3f5) 80%, transparent);}
+  .pn-autocomplete-item.is-active,.pn-autocomplete-item:hover{background:var(--bs-table-hover-bg, color-mix(in srgb, var(--surface-2,#e2e8f0) 95%, transparent));}
+  .pn-autocomplete-item .pn-code{font-weight:600;color:var(--text,#212529);}
+  .pn-autocomplete-item .pn-desc{font-size:11.5px;color:color-mix(in srgb, var(--text,#212529) 70%, transparent);}
+  .pn-autocomplete-empty{padding:6px 12px;font-size:12px;color:color-mix(in srgb, var(--text,#212529) 60%, transparent);}
+  /* No modal de cadastro, a lista do P/N ocupa a largura total do popup */
+  #addEsPnList{left:0;right:0;width:auto;max-height:360px;}
 </style>
 <%
   const errorMessages = {
@@ -179,27 +191,11 @@
               <input type="hidden" name="link_mode" id="autoLinkMode" value="family" />
             </form>
 
-            <form method="post" action="/admin/report-service/spare-parts/equipment-links" class="row g-2 mb-3">
-              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-              <input type="hidden" name="equipment_id" value="<%= selectedEquipment.id %>" />
-              <div class="col-12 col-md-7">
-                <select class="form-select" name="spare_part_id" required>
-                  <option value=""><%= t("rs.spare.selectSpareToLink") %></option>
-                  <% (availableSpareParts || []).forEach((item) => { %>
-                    <option value="<%= item.id %>"><%= item.description || '-' %> - <%= item.part_number || '-' %></option>
-                  <% }) %>
-                  <% if (!(availableSpareParts || []).length) { %>
-                    <option value="" disabled><%= t("rs.spare.noSpareAvailable") %></option>
-                  <% } %>
-                </select>
-              </div>
-              <div class="col-12 col-md-2">
-                <input class="form-control" type="number" min="1" step="1" name="quantity" value="1" required />
-              </div>
-              <div class="col-12 col-md-3 d-flex justify-content-end">
-                <button class="btn btn-primary btn-sm" type="submit"><%= t("rs.spare.linkBtn") %></button>
-              </div>
-            </form>
+            <div class="d-flex justify-content-end mb-3">
+              <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#addEquipmentSpareModal">
+                &#43; <%= t("rs.spare.linkBtn") %>
+              </button>
+            </div>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
               <span class="small text-muted"><%= t("rs.spare.linkedSparePartsLabel") %></span>
@@ -215,8 +211,14 @@
               <span id="linkedSparePartsCounter" class="badge text-bg-secondary">Total: 0</span>
             </div>
             <div class="spare-parts-grid-wrap">
-              <div id="linkedSparePartsGrid"></div>
+              <div id="equipmentSparesGrid"></div>
             </div>
+
+            <%# Single hidden delete form reused by every row button %>
+            <form method="post" id="deleteEquipmentSpareForm" class="d-none">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <input type="hidden" name="equipment_id" value="<%= selectedEquipment.id %>" />
+            </form>
           <% } else { %>
             <div class="text-muted"><%= t("rs.spare.selectEquipHint") %></div>
           <% } %>
@@ -264,6 +266,255 @@
 <form method="post" id="deleteSparePartForm" class="d-none">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 </form>
+
+<%# ===== MODAL EDITAR SPARE-PART DO EQUIPAMENTO ===== %>
+<div class="modal fade" id="editEquipmentSpareModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" id="editEquipmentSpareForm">
+        <div class="modal-header">
+          <h5 class="modal-title"><%= t("rs.spare.editTitle") %></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<%= t('rs.cancel') %>"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <input type="hidden" name="equipment_id" value="<%= selectedEquipment ? selectedEquipment.id : '' %>" />
+          <div class="row g-2">
+            <div class="col-12 col-md-6"><input class="form-control" name="description" id="editEsDescription" placeholder="<%= t('rs.spare.descriptionPh') %>" required /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="part_number" id="editEsPartNumber" placeholder="<%= t('rs.spare.partNumberPh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" type="number" min="1" step="1" name="quantity" id="editEsQuantity" placeholder="<%= t('rs.spare.colQuantity') %>" required /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="manufacturer" id="editEsManufacturer" placeholder="<%= t('rs.spare.manufacturerPh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="equipment_model" id="editEsEquipmentModel" placeholder="<%= t('rs.spare.modelPh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="lead_time" id="editEsLeadTime" placeholder="<%= t('rs.spare.leadTimePh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="replaced_by_part_number" id="editEsReplacedBy" placeholder="<%= t('rs.spare.replacedByPh') %>" /></div>
+            <div class="col-12 col-md-8"><input class="form-control" name="equipment_family" id="editEsFamily" placeholder="<%= t('rs.spare.familyPh') %>" /></div>
+            <div class="col-12 col-md-4 d-flex align-items-center">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="editEsObsolete" name="is_obsolete" value="true" />
+                <label class="form-check-label" for="editEsObsolete"><%= t("rs.spare.obsolete") %></label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal"><%= t("rs.cancel") %></button>
+          <button class="btn btn-primary btn-sm" type="submit"><%= t("rs.save") %></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%# ===== MODAL CADASTRAR SPARE-PART DO EQUIPAMENTO ===== %>
+<% if (selectedEquipment) { %>
+<div class="modal fade" id="addEquipmentSpareModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" id="addEquipmentSpareForm" action="/admin/report-service/spare-parts/equipment-spares">
+        <div class="modal-header">
+          <h5 class="modal-title"><%= t("rs.spare.linkBtn") %></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<%= t('rs.cancel') %>"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <input type="hidden" name="equipment_id" value="<%= selectedEquipment.id %>" />
+          <input type="hidden" name="source_spare_part_id" id="addEsSource" value="" />
+          <div class="mb-3">
+            <label class="form-label small mb-1"><%= t("rs.spare.selectSpareToLink") %></label>
+            <select class="form-select" id="addEsCatalog">
+              <option value=""><%= t("rs.spare.manualEntry") %></option>
+              <% (spareParts || []).forEach((item) => { %>
+                <option value="<%= item.id %>"
+                  data-description="<%= item.description || '' %>"
+                  data-part_number="<%= item.part_number || '' %>"
+                  data-manufacturer="<%= item.manufacturer || '' %>"
+                  data-equipment_model="<%= item.equipment_model || '' %>"
+                  data-lead_time="<%= item.lead_time || '' %>"
+                  data-replaced_by_part_number="<%= item.replaced_by_part_number || '' %>"
+                  data-equipment_family="<%= item.equipment_family || '' %>"
+                  data-is_obsolete="<%= item.is_obsolete ? '1' : '0' %>">
+                  <%= item.description || '-' %> - <%= item.part_number || '-' %>
+                </option>
+              <% }) %>
+            </select>
+            <div class="form-text"><%= t("rs.spare.catalogHint") %></div>
+          </div>
+          <div class="mb-2 pn-autocomplete">
+            <input class="form-control" name="part_number" id="addEsPartNumber" placeholder="<%= t('rs.spare.partNumberPh') %>" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addEsPnList" />
+            <ul class="pn-autocomplete-list d-none" id="addEsPnList" role="listbox"></ul>
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-8"><input class="form-control" name="description" id="addEsDescription" placeholder="<%= t('rs.spare.descriptionPh') %>" required /></div>
+            <div class="col-12 col-md-4"><input class="form-control" type="number" min="1" step="1" name="quantity" id="addEsQuantity" placeholder="<%= t('rs.spare.colQuantity') %>" value="1" required /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="manufacturer" id="addEsManufacturer" placeholder="<%= t('rs.spare.manufacturerPh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="equipment_model" id="addEsEquipmentModel" placeholder="<%= t('rs.spare.modelPh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="lead_time" id="addEsLeadTime" placeholder="<%= t('rs.spare.leadTimePh') %>" /></div>
+            <div class="col-12 col-md-3"><input class="form-control" name="replaced_by_part_number" id="addEsReplacedBy" placeholder="<%= t('rs.spare.replacedByPh') %>" /></div>
+            <div class="col-12 col-md-8"><input class="form-control" name="equipment_family" id="addEsFamily" placeholder="<%= t('rs.spare.familyPh') %>" /></div>
+            <div class="col-12 col-md-4 d-flex align-items-center">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="addEsObsolete" name="is_obsolete" value="true" />
+                <label class="form-check-label" for="addEsObsolete"><%= t("rs.spare.obsolete") %></label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal"><%= t("rs.cancel") %></button>
+          <button class="btn btn-primary btn-sm" type="submit"><%= t("rs.save") %></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<script>
+  window._addEsCatalog = <%- JSON.stringify((spareParts || []).map(function (s) {
+    return {
+      id: s.id,
+      description: s.description || "",
+      part_number: s.part_number || "",
+      manufacturer: s.manufacturer || "",
+      equipment_model: s.equipment_model || "",
+      lead_time: s.lead_time || "",
+      replaced_by_part_number: s.replaced_by_part_number || "",
+      equipment_family: s.equipment_family || "",
+      is_obsolete: !!s.is_obsolete
+    };
+  })).replace(/</g, "\\u003c") %>;
+</script>
+<script>
+  (function () {
+    var catalog = document.getElementById("addEsCatalog");
+    var form = document.getElementById("addEquipmentSpareForm");
+    if (!catalog || !form) return;
+    var source = document.getElementById("addEsSource");
+    var pnInput = document.getElementById("addEsPartNumber");
+    var pnList = document.getElementById("addEsPnList");
+    var items = Array.isArray(window._addEsCatalog) ? window._addEsCatalog : [];
+
+    function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v || ""; }
+
+    function esc(v) {
+      return String(v == null ? "" : v)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // Fills every field from a catalog spare-part (object or <option>).
+    function applySpare(sp) {
+      if (source) source.value = sp.id || "";
+      setVal("addEsDescription", sp.description);
+      setVal("addEsPartNumber", sp.part_number);
+      setVal("addEsManufacturer", sp.manufacturer);
+      setVal("addEsEquipmentModel", sp.equipment_model);
+      setVal("addEsLeadTime", sp.lead_time);
+      setVal("addEsReplacedBy", sp.replaced_by_part_number);
+      setVal("addEsFamily", sp.equipment_family);
+      var obs = document.getElementById("addEsObsolete");
+      if (obs) obs.checked = !!sp.is_obsolete;
+      // Reflect the choice in the catalog dropdown too.
+      if (catalog && sp.id) catalog.value = String(sp.id);
+    }
+
+    catalog.addEventListener("change", function () {
+      var opt = catalog.options[catalog.selectedIndex];
+      if (!opt || !opt.value) { if (source) source.value = ""; return; }
+      applySpare({
+        id: opt.value,
+        description: opt.getAttribute("data-description"),
+        part_number: opt.getAttribute("data-part_number"),
+        manufacturer: opt.getAttribute("data-manufacturer"),
+        equipment_model: opt.getAttribute("data-equipment_model"),
+        lead_time: opt.getAttribute("data-lead_time"),
+        replaced_by_part_number: opt.getAttribute("data-replaced_by_part_number"),
+        equipment_family: opt.getAttribute("data-equipment_family"),
+        is_obsolete: opt.getAttribute("data-is_obsolete") === "1"
+      });
+    });
+
+    // ---- Autocomplete de Part Number (busca no catalogo) ----
+    var matches = [];
+    var activeIndex = -1;
+
+    function closeList() {
+      if (!pnList) return;
+      pnList.classList.add("d-none");
+      pnList.innerHTML = "";
+      pnInput.setAttribute("aria-expanded", "false");
+      matches = []; activeIndex = -1;
+    }
+
+    function norm(v) { return String(v || "").trim().toLowerCase(); }
+
+    function filterCatalog(term) {
+      var q = norm(term);
+      if (!q) return [];
+      return items.filter(function (sp) {
+        return norm(sp.part_number).indexOf(q) !== -1 || norm(sp.description).indexOf(q) !== -1;
+      }).slice(0, 50);
+    }
+
+    function highlight(idx) {
+      var els = pnList.querySelectorAll(".pn-autocomplete-item");
+      els.forEach(function (el, i) {
+        if (i === idx) { el.classList.add("is-active"); el.scrollIntoView({ block: "nearest" }); }
+        else el.classList.remove("is-active");
+      });
+    }
+
+    function renderList(term) {
+      if (!pnList) return;
+      matches = filterCatalog(term);
+      activeIndex = -1;
+      pnList.innerHTML = "";
+      if (!matches.length) { closeList(); return; }
+      matches.forEach(function (sp, i) {
+        var li = document.createElement("li");
+        li.className = "pn-autocomplete-item";
+        li.setAttribute("role", "option");
+        li.setAttribute("data-index", String(i));
+        li.innerHTML = '<span class="pn-code">' + esc(sp.part_number || "-") + '</span>'
+          + '<span class="pn-desc">' + esc(sp.description || "") + '</span>';
+        li.addEventListener("mousedown", function (ev) {
+          ev.preventDefault();
+          applySpare(sp);
+          closeList();
+        });
+        pnList.appendChild(li);
+      });
+      pnList.classList.remove("d-none");
+      pnInput.setAttribute("aria-expanded", "true");
+    }
+
+    if (pnInput && pnList) {
+      pnInput.addEventListener("input", function () {
+        // Manual typing: treat as independent registration until a match is chosen.
+        if (source) source.value = "";
+        if (catalog) catalog.selectedIndex = 0;
+        renderList(pnInput.value);
+      });
+      pnInput.addEventListener("keydown", function (ev) {
+        if (pnList.classList.contains("d-none")) return;
+        if (ev.key === "ArrowDown") { ev.preventDefault(); if (matches.length) { activeIndex = (activeIndex + 1) % matches.length; highlight(activeIndex); } }
+        else if (ev.key === "ArrowUp") { ev.preventDefault(); if (matches.length) { activeIndex = (activeIndex - 1 + matches.length) % matches.length; highlight(activeIndex); } }
+        else if (ev.key === "Enter") { if (activeIndex >= 0 && matches[activeIndex]) { ev.preventDefault(); applySpare(matches[activeIndex]); closeList(); } }
+        else if (ev.key === "Escape") { closeList(); }
+      });
+      pnInput.addEventListener("blur", function () {
+        // Exact PN match on blur fills the rest automatically.
+        var exact = items.find(function (sp) { return norm(sp.part_number) === norm(pnInput.value) && sp.part_number; });
+        if (exact) applySpare(exact);
+        window.setTimeout(closeList, 120);
+      });
+    }
+
+    // Editing the description by hand also detaches from the catalog source.
+    var descEl = document.getElementById("addEsDescription");
+    if (descEl) descEl.addEventListener("input", function () { if (source) source.value = ""; if (catalog) catalog.selectedIndex = 0; });
+  })();
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -426,22 +677,20 @@
 </script>
 <script>
   (function () {
-    var linkedTarget = document.getElementById("linkedSparePartsGrid");
-    if (!linkedTarget || !window.gridjs || !window.gridjs.Grid) return;
-
+    // Per-equipment spares: Grid.js with pagination (max 20 per page).
+    var gridTarget = document.getElementById("equipmentSparesGrid");
     var linkedData = <%- JSON.stringify(linkedSpareParts || []).replace(/</g, "\\u003c") %>;
-    var equipmentId = <%- JSON.stringify((selectedEquipment && selectedEquipment.id) ? String(selectedEquipment.id) : "") %>;
-    var csrfToken  = <%- JSON.stringify(csrfToken || "") %>;
 
     var i18n = {
-      save: <%- JSON.stringify(t("rs.save")) %>,
       colId: "ID",
       colDescription: <%- JSON.stringify(t("rs.spare.colDescription")) %>,
       colPartNumber: <%- JSON.stringify(t("rs.spare.colPartNumber")) %>,
       colManufacturer: <%- JSON.stringify(t("rs.spare.colManufacturer")) %>,
+      colModel: <%- JSON.stringify(t("rs.spare.colModel")) %>,
       colQuantity: <%- JSON.stringify(t("rs.spare.colQuantity")) %>,
       colObsolete: <%- JSON.stringify(t("rs.spare.colObsolete")) %>,
       colActions: <%- JSON.stringify(t("rs.actions")) %>,
+      edit: <%- JSON.stringify(t("rs.edit")) %>,
       unlinkBtn: <%- JSON.stringify(t("rs.spare.unlinkBtn")) %>,
       confirmUnlink: <%- JSON.stringify(t("rs.spare.confirmUnlink")) %>,
       yes: <%- JSON.stringify(t("rs.spare.yes")) %>,
@@ -453,35 +702,44 @@
       noLinked: <%- JSON.stringify(t("rs.spare.noLinked")) %>
     };
 
+    // Keep raw data + i18n available for the export/print helpers below.
     window._linkedSparePartsRaw = linkedData;
     window._linkedSparePartsI18n = i18n;
 
+    var counter = document.getElementById("linkedSparePartsCounter");
+    var total = linkedData.length;
+    if (counter) counter.textContent = "Total: " + total;
+
+    if (!gridTarget) return;
+
     if (!linkedData.length) {
-      linkedTarget.innerHTML = "<div class=\"text-center text-muted py-4\">" + i18n.noLinked + "</div>";
+      gridTarget.innerHTML = "<div class=\"text-center text-muted py-4\">" + i18n.noLinked + "</div>";
       return;
     }
+    if (!window.gridjs || !window.gridjs.Grid) return;
 
     function esc(v) {
-      return String(v || "")
+      return String(v == null ? "" : v)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
         .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
-    function qtyCell(row) {
-      var url = "/admin/report-service/spare-parts/equipment-links/" + esc(equipmentId) + "/" + esc(row.id) + "/quantity";
-      return "<form method=\"post\" action=\"" + url + "\" class=\"d-flex align-items-center gap-1\" style=\"min-width:130px;\">"
-        + "<input type=\"hidden\" name=\"_csrf\" value=\"" + esc(csrfToken) + "\" />"
-        + "<input class=\"form-control form-control-sm\" type=\"number\" min=\"1\" step=\"1\" name=\"quantity\" value=\"" + Number(row.quantity || 1) + "\" required style=\"width:70px;\" />"
-        + "<button class=\"btn btn-outline-primary btn-sm\" type=\"submit\">" + i18n.save + "</button>"
-        + "</form>";
-    }
-
-    function deleteCell(row) {
-      var url = "/admin/report-service/spare-parts/equipment-links/" + esc(equipmentId) + "/" + esc(row.id) + "/delete";
-      return "<form method=\"post\" action=\"" + url + "\" onsubmit=\"return confirm('" + i18n.confirmUnlink.replace(/'/g, "\\'") + "');\">"
-        + "<input type=\"hidden\" name=\"_csrf\" value=\"" + esc(csrfToken) + "\" />"
-        + "<button class=\"btn btn-outline-danger btn-sm\" type=\"submit\">" + i18n.unlinkBtn + "</button>"
-        + "</form>";
+    function actionButtons(row) {
+      var attrs = ""
+        + " data-id=\"" + esc(row.id) + "\""
+        + " data-description=\"" + esc(row.description || "") + "\""
+        + " data-part_number=\"" + esc(row.part_number || "") + "\""
+        + " data-manufacturer=\"" + esc(row.manufacturer || "") + "\""
+        + " data-equipment_model=\"" + esc(row.equipment_model || "") + "\""
+        + " data-lead_time=\"" + esc(row.lead_time || "") + "\""
+        + " data-replaced_by_part_number=\"" + esc(row.replaced_by_part_number || "") + "\""
+        + " data-equipment_family=\"" + esc(row.equipment_family || "") + "\""
+        + " data-is_obsolete=\"" + (row.is_obsolete ? "1" : "0") + "\""
+        + " data-quantity=\"" + Number(row.quantity || 1) + "\"";
+      return "<div class=\"d-flex gap-1\">"
+        + "<button type=\"button\" class=\"btn btn-outline-primary btn-sm\" data-edit-equipment-spare=\"" + esc(row.id) + "\"" + attrs + ">" + esc(i18n.edit) + "</button>"
+        + "<button type=\"button\" class=\"btn btn-outline-danger btn-sm\" data-delete-equipment-spare=\"" + esc(row.id) + "\">" + esc(i18n.unlinkBtn) + "</button>"
+        + "</div>";
     }
 
     var data = linkedData.map(function (row) {
@@ -490,24 +748,12 @@
         description: esc(row.description || "-"),
         partNumber: esc(row.part_number || "-"),
         manufacturer: esc(row.manufacturer || "-"),
-        quantity: qtyCell(row),
+        model: esc(row.equipment_model || "-"),
         obsolete: row.is_obsolete ? i18n.yes : i18n.no,
-        actions: deleteCell(row)
+        quantity: Number(row.quantity || 1),
+        actions: actionButtons(row)
       };
     });
-
-    var linkedCounter = document.getElementById("linkedSparePartsCounter");
-
-    function updateLinkedCounter(total, filtered) {
-      if (!linkedCounter) return;
-      if (filtered !== undefined && filtered !== total) {
-        linkedCounter.textContent = "Total: " + filtered + " / " + total;
-      } else {
-        linkedCounter.textContent = "Total: " + total;
-      }
-    }
-
-    updateLinkedCounter(data.length);
 
     new window.gridjs.Grid({
       columns: [
@@ -515,33 +761,60 @@
         { id: "description", name: i18n.colDescription, formatter: function (c) { return window.gridjs.html(c); } },
         { id: "partNumber", name: i18n.colPartNumber, formatter: function (c) { return window.gridjs.html(c); } },
         { id: "manufacturer", name: i18n.colManufacturer, formatter: function (c) { return window.gridjs.html(c); } },
-        { id: "quantity", name: i18n.colQuantity, sort: false, formatter: function (c) { return window.gridjs.html(c); } },
+        { id: "model", name: i18n.colModel, formatter: function (c) { return window.gridjs.html(c); } },
         { id: "obsolete", name: i18n.colObsolete, width: "90px" },
-        { id: "actions", name: i18n.colActions, sort: false, formatter: function (c) { return window.gridjs.html(c); } }
+        { id: "quantity", name: i18n.colQuantity, width: "80px" },
+        { id: "actions", name: i18n.colActions, sort: false, width: "150px", formatter: function (c) { return window.gridjs.html(c); } }
       ],
       data: data,
       search: true,
       sort: true,
-      pagination: { limit: 15, summary: false },
+      pagination: { limit: 20, summary: false },
       language: {
         search: { placeholder: i18n.filterPh },
         loading: i18n.loading,
         noRecordsFound: i18n.noRecords,
         error: i18n.error
       }
-    }).render(linkedTarget);
+    }).render(gridTarget);
 
-    // Atualiza contador quando GridJS re-renderiza (busca / paginação)
-    (new MutationObserver(function () {
-      var tbody = linkedTarget.querySelector(".gridjs-tbody");
-      if (!tbody) return;
-      var rows = tbody.querySelectorAll(".gridjs-tr");
-      var noResults = tbody.querySelector(".gridjs-notfound");
-      var visible = noResults ? 0 : rows.length;
-      var searchInput = linkedTarget.querySelector(".gridjs-search-input");
-      var hasFilter = searchInput && searchInput.value.trim().length > 0;
-      updateLinkedCounter(data.length, hasFilter ? visible : data.length);
-    })).observe(linkedTarget, { childList: true, subtree: true });
+    // Edit (modal) + delete, delegated on the grid container.
+    var editModalEl = document.getElementById("editEquipmentSpareModal");
+    var editForm = document.getElementById("editEquipmentSpareForm");
+    var deleteForm = document.getElementById("deleteEquipmentSpareForm");
+
+    function openEditModal(btn) {
+      if (!editForm) return;
+      var id = btn.getAttribute("data-id");
+      editForm.action = "/admin/report-service/spare-parts/equipment-spares/" + encodeURIComponent(String(id)) + "/update";
+      document.getElementById("editEsDescription").value = btn.getAttribute("data-description") || "";
+      document.getElementById("editEsPartNumber").value = btn.getAttribute("data-part_number") || "";
+      document.getElementById("editEsQuantity").value = btn.getAttribute("data-quantity") || "1";
+      document.getElementById("editEsManufacturer").value = btn.getAttribute("data-manufacturer") || "";
+      document.getElementById("editEsEquipmentModel").value = btn.getAttribute("data-equipment_model") || "";
+      document.getElementById("editEsLeadTime").value = btn.getAttribute("data-lead_time") || "";
+      document.getElementById("editEsReplacedBy").value = btn.getAttribute("data-replaced_by_part_number") || "";
+      document.getElementById("editEsFamily").value = btn.getAttribute("data-equipment_family") || "";
+      document.getElementById("editEsObsolete").checked = btn.getAttribute("data-is_obsolete") === "1";
+      if (window.bootstrap && editModalEl) {
+        window.bootstrap.Modal.getOrCreateInstance(editModalEl).show();
+      }
+    }
+
+    gridTarget.addEventListener("click", function (ev) {
+      var editBtn = ev.target.closest("[data-edit-equipment-spare]");
+      if (editBtn) {
+        openEditModal(editBtn);
+        return;
+      }
+      var delBtn = ev.target.closest("[data-delete-equipment-spare]");
+      if (delBtn) {
+        if (!window.confirm(i18n.confirmUnlink)) return;
+        var delId = delBtn.getAttribute("data-delete-equipment-spare");
+        deleteForm.action = "/admin/report-service/spare-parts/equipment-spares/" + encodeURIComponent(String(delId)) + "/delete";
+        deleteForm.submit();
+      }
+    });
   })();
 </script>
 <script>
@@ -1079,17 +1352,6 @@
     var raw = window._linkedSparePartsRaw || [];
     var i18n = window._linkedSparePartsI18n || {};
 
-    // Read current quantity values from DOM inputs (user may have changed them)
-    var qtyMap = {};
-    var grid = document.getElementById("linkedSparePartsGrid");
-    if (grid) {
-      grid.querySelectorAll(".gridjs-tbody .gridjs-tr").forEach(function (tr, idx) {
-        var input = tr.querySelector("input[type='number']");
-        var row = raw[idx];
-        if (input && row) qtyMap[Number(row.id)] = input.value;
-      });
-    }
-
     var equipmentInfo = (function () {
       var el = document.querySelector(".alert.alert-light.border");
       return el ? el.innerText.replace(/\s+/g, " ").trim() : "";
@@ -1110,7 +1372,7 @@
           row.description || "-",
           row.part_number || "-",
           row.manufacturer || "-",
-          qtyMap[Number(row.id)] !== undefined ? qtyMap[Number(row.id)] : Number(row.quantity || 1),
+          Number(row.quantity || 1),
           row.is_obsolete ? (i18n.yes || "Sim") : (i18n.no || "Não")
         ];
       });
@@ -1544,9 +1806,10 @@
         if (data.skippedExisting > 0) skipParts.push(data.skippedExisting + " PN j\u00e1 cadastrado" + (data.skippedExisting > 1 ? "s" : ""));
         if (data.skippedIntraJson > 0) skipParts.push(data.skippedIntraJson + " PN duplicado" + (data.skippedIntraJson > 1 ? "s" : "") + " no JSON");
         var skipMsg = skipParts.length ? " &mdash; Ignorados: <strong>" + data.skipped + "</strong> (" + skipParts.join(", ") + ")" : (data.skipped > 0 ? " &mdash; Ignorados: <strong>" + data.skipped + "</strong>" : "");
-        var linkedMsg = (data.linked > 0) ? " &mdash; Vinculados ao equipamento: <strong>" + data.linked + "</strong>" : "";
-        importResult.innerHTML = "<span class='text-success'>\u2705 Importados: <strong>" + data.inserted + "</strong>" + skipMsg + linkedMsg + "</span>";
-        if (data.inserted > 0) {
+        var linkedMsg = (data.linked > 0) ? " &mdash; Associados ao equipamento: <strong>" + data.linked + "</strong>" : "";
+        var updatedMsg = (data.updated > 0) ? " &mdash; Atualizados: <strong>" + data.updated + "</strong>" : "";
+        importResult.innerHTML = "<span class='text-success'>\u2705 Importados: <strong>" + data.inserted + "</strong>" + updatedMsg + skipMsg + linkedMsg + "</span>";
+        if (data.inserted > 0 || data.updated > 0) {
           setTimeout(function () { window.location.href = "/admin/report-service/spare-parts?created=1"; }, 1600);
         }
       })

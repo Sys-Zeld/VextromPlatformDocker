@@ -594,7 +594,8 @@ function createReportWebController(deps) {
       technicians,
       instruments,
       images,
-      alberLeituras
+      alberLeituras,
+      allSpareParts
     ] = await Promise.all([
       repo.listCustomers(),
       repo.listSites(order.customer_id ? { customerId: order.customer_id } : {}),
@@ -609,7 +610,8 @@ function createReportWebController(deps) {
       repo.listTechniciansByOrder(orderId),
       repo.listInstrumentsByOrder(orderId),
       repo.listImages(report.id),
-      repo.listLeiturasAlberByReport(report.id)
+      repo.listLeiturasAlberByReport(report.id),
+      repo.listSpareParts()
     ]);
     const equipments = (allEquipments || []).filter((equipment) => {
       const sameCustomer = Number(equipment.customer_id) === Number(order.customer_id);
@@ -622,7 +624,7 @@ function createReportWebController(deps) {
     const orderEquipmentIds = (orderEquipments || [])
       .map((item) => Number(item.equipment_id))
       .filter((id) => Number.isInteger(id) && id > 0);
-    const linkedSpareParts = await repo.listSparePartsByEquipmentIds(orderEquipmentIds);
+    const linkedSpareParts = await repo.listEquipmentSparesByEquipmentIds(orderEquipmentIds);
     const orderSparePartsByEquipment = linkedSpareParts.reduce((acc, item) => {
       const key = String(item.equipment_id || "");
       if (!key) return acc;
@@ -630,6 +632,14 @@ function createReportWebController(deps) {
       acc[key].push(item);
       return acc;
     }, {});
+    // Lightweight catalog of every spare-part, used for the manual P/N search
+    // in the components form (search across the whole base, not only the
+    // spares linked to the selected equipment).
+    const sparePartsCatalog = (allSpareParts || []).map((item) => ({
+      id: item.id,
+      part_number: item.part_number || "",
+      description: item.description || ""
+    }));
     const defaultMeasurementStyleConfig = await getDefaultMeasurementStyleConfig();
     const styledMeasurements = applyDefaultMeasurementStyle(measurements, defaultMeasurementStyleConfig);
     const defaultAlberStyleConfig = await getDefaultAlberStyleConfig();
@@ -652,7 +662,8 @@ function createReportWebController(deps) {
       technicians,
       instruments,
       images,
-      orderSparePartsByEquipment
+      orderSparePartsByEquipment,
+      sparePartsCatalog
     };
   }
 
@@ -1271,8 +1282,14 @@ function createReportWebController(deps) {
         ? equipments.filter((item) => Number(item.customer_id) === selectedCustomerId)
         : equipments;
 
-      const linkedSpareParts = selectedEquipment ? await repo.listSparePartsByEquipment(selectedEquipment.id) : [];
-      const linkedIds = new Set(linkedSpareParts.map((item) => Number(item.id)));
+      const linkedSpareParts = selectedEquipment ? await repo.listEquipmentSpares(selectedEquipment.id) : [];
+      // De-dup the catalog "available to pull" list by PN and by source catalog id,
+      // since per-equipment spares carry their own id (not the catalog id).
+      const linkedSourceIds = new Set(
+        linkedSpareParts
+          .map((item) => Number(item.source_spare_part_id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      );
       const linkedPns = new Set(
         linkedSpareParts
           .map((item) => normalizePartNumberToken(item.part_number))
@@ -1280,7 +1297,7 @@ function createReportWebController(deps) {
       );
       const availableSpareParts = selectedEquipment
         ? spareParts.filter((item) => {
-            if (linkedIds.has(Number(item.id))) return false;
+            if (linkedSourceIds.has(Number(item.id))) return false;
             const pn = normalizePartNumberToken(item.part_number);
             if (pn && linkedPns.has(pn)) return false;
             return true;
@@ -1433,44 +1450,39 @@ function createReportWebController(deps) {
         equipmentModel: sanitizeInput(String(item.equipment_model || "")).trim(),
         leadTime: sanitizeInput(String(item.lead_time || "")).trim(),
         isObsolete: item.is_obsolete === true || String(item.is_obsolete).toLowerCase() === "true",
-        replacedByPartNumber: sanitizeInput(String(item.replaced_by_part_number || "")).trim()
+        replacedByPartNumber: sanitizeInput(String(item.replaced_by_part_number || "")).trim(),
+        quantity: Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1
       })).filter((item) => item.description);
 
       if (!normalized.length) {
         return res.status(422).json({ ok: false, message: "Nenhum spare part com descricao valida para importar." });
       }
 
-      const result = await repo.bulkCreateSpareParts(normalized);
-
-      let linked = 0;
+      // With an equipment selected: write to the equipment's own list AND upsert
+      // the global catalog (decision: association + catalog).
       if (hasEquipment) {
-        // IDs recém-inseridos
-        const newIds = (result.items || []).map((item) => Number(item.id));
-
-        // IDs de PNs já existentes que foram pulados no bulk (precisamos vincular também)
-        const allPartNumbers = normalized
-          .map((item) => String(item.partNumber || "").trim())
-          .filter(Boolean);
-        const existingRows = allPartNumbers.length > 0
-          ? await repo.getSparePartsByPartNumbers(allPartNumbers)
-          : [];
-        const existingIds = existingRows.map((r) => Number(r.id));
-
-        const allIds = [...new Set([...newIds, ...existingIds])];
-        for (const id of allIds) {
-          // eslint-disable-next-line no-await-in-loop
-          await repo.linkSparePartToEquipmentIfMissing(equipmentId, id);
-          linked++;
-        }
+        const result = await repo.bulkUpsertEquipmentSpares(equipmentId, normalized);
+        return res.json({
+          ok: true,
+          inserted: result.inserted,
+          updated: result.updated,
+          skipped: 0,
+          skippedIntraJson: 0,
+          skippedExisting: 0,
+          linked: result.linked
+        });
       }
 
+      // No equipment: behave as before — populate only the global catalog.
+      const result = await repo.bulkCreateSpareParts(normalized);
       return res.json({
         ok: true,
         inserted: result.inserted,
+        updated: 0,
         skipped: result.skipped,
         skippedIntraJson: result.skippedIntraJson,
         skippedExisting: result.skippedExisting,
-        linked
+        linked: 0
       });
     },
 
@@ -1513,7 +1525,7 @@ function createReportWebController(deps) {
         return res.status(422).json({ ok: false, message: "Nenhuma linha com descrição válida." });
       }
 
-      const result = await repo.bulkUpsertLinkedSpareParts(equipmentId, normalized);
+      const result = await repo.bulkUpsertEquipmentSpares(equipmentId, normalized);
 
       return res.json({
         ok: true,
@@ -1556,20 +1568,111 @@ function createReportWebController(deps) {
         return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_not_found`);
       }
 
-      // Block if equipment already has a spare part with the same PN
-      if (sparePart.part_number) {
-        const alreadyLinked = await repo.listSparePartsByEquipment(equipmentId);
-        const pnLower = normalizePartNumberToken(sparePart.part_number);
-        const conflict = alreadyLinked.find(
-          (item) => normalizePartNumberToken(item.part_number) === pnLower
-        );
-        if (conflict) {
+      try {
+        // Pull a snapshot of the catalog spare into the equipment's own list.
+        await repo.associateSparePartToEquipment(equipmentId, sparePartId, quantity);
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
           return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=pn_duplicate`);
         }
+        if (err && err.code === "spare_part_not_found") {
+          return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_not_found`);
+        }
+        throw err;
       }
-
-      await repo.linkSparePartToEquipment(equipmentId, sparePartId, quantity);
       return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&linked=1`);
+    },
+
+    // ── Per-equipment spares (new model: editable snapshots) ──────────────────
+    async createEquipmentSpare(req, res) {
+      const equipmentId = Number(req.body.equipment_id);
+      if (!Number.isInteger(equipmentId) || equipmentId <= 0) {
+        return res.redirect("/admin/report-service/spare-parts?error=equipment_invalid");
+      }
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) {
+        return res.redirect("/admin/report-service/spare-parts?error=equipment_not_found");
+      }
+      const description = sanitizeInput(String(req.body.description || "")).trim();
+      if (!description) {
+        return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_invalid`);
+      }
+      const sourceId = Number(req.body.source_spare_part_id);
+      const payload = {
+        description,
+        manufacturer: sanitizeInput(String(req.body.manufacturer || "")).trim(),
+        equipmentModel: sanitizeInput(String(req.body.equipment_model || "")).trim(),
+        partNumber: sanitizeInput(String(req.body.part_number || "")).trim(),
+        leadTime: sanitizeInput(String(req.body.lead_time || "")).trim(),
+        isObsolete: req.body.is_obsolete === "true" || req.body.is_obsolete === "on" || req.body.is_obsolete === true,
+        replacedByPartNumber: sanitizeInput(String(req.body.replaced_by_part_number || "")).trim(),
+        equipmentFamily: sanitizeInput(String(req.body.equipment_family || "")).trim(),
+        quantity: Number(req.body.quantity || 1)
+      };
+      try {
+        await repo.createEquipmentSpare(
+          equipmentId,
+          payload,
+          Number.isInteger(sourceId) && sourceId > 0 ? sourceId : null
+        );
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
+          return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=pn_duplicate`);
+        }
+        throw err;
+      }
+      return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&linked=1`);
+    },
+
+    async saveEquipmentSpare(req, res) {
+      const equipmentId = Number(req.body.equipment_id);
+      const spareId = Number(req.params.id);
+      if (!Number.isInteger(equipmentId) || equipmentId <= 0) {
+        return res.redirect("/admin/report-service/spare-parts?error=equipment_invalid");
+      }
+      if (!Number.isInteger(spareId) || spareId <= 0) {
+        return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_invalid`);
+      }
+      const description = sanitizeInput(String(req.body.description || "")).trim();
+      if (!description) {
+        return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_invalid`);
+      }
+      const payload = {
+        description,
+        manufacturer: sanitizeInput(String(req.body.manufacturer || "")).trim(),
+        equipmentModel: sanitizeInput(String(req.body.equipment_model || "")).trim(),
+        partNumber: sanitizeInput(String(req.body.part_number || "")).trim(),
+        leadTime: sanitizeInput(String(req.body.lead_time || "")).trim(),
+        isObsolete: req.body.is_obsolete === "true" || req.body.is_obsolete === "on" || req.body.is_obsolete === true,
+        replacedByPartNumber: sanitizeInput(String(req.body.replaced_by_part_number || "")).trim(),
+        equipmentFamily: sanitizeInput(String(req.body.equipment_family || "")).trim(),
+        quantity: Number(req.body.quantity || 1)
+      };
+      try {
+        const updated = await repo.updateEquipmentSpare(spareId, payload);
+        if (!updated) {
+          return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_not_found`);
+        }
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
+          return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=pn_duplicate`);
+        }
+        throw err;
+      }
+      return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&qty_saved=1`);
+    },
+
+    async deleteEquipmentSpare(req, res) {
+      const equipmentId = Number(req.body.equipment_id);
+      const spareId = Number(req.params.id);
+      if (!Number.isInteger(equipmentId) || equipmentId <= 0) {
+        return res.redirect("/admin/report-service/spare-parts?error=equipment_invalid");
+      }
+      if (!Number.isInteger(spareId) || spareId <= 0) {
+        return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&error=spare_part_invalid`);
+      }
+      await repo.deleteEquipmentSpare(spareId);
+      return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&unlinked=1`);
     },
 
     async unlinkSparePartFromEquipment(req, res) {
@@ -1646,8 +1749,12 @@ function createReportWebController(deps) {
         return res.redirect(`/admin/report-service/spare-parts?equipment_id=${equipmentId}&auto_no_match=1&link_mode=${linkMode}`);
       }
 
-      const alreadyLinkedRows = await repo.listSparePartsByEquipment(equipmentId);
-      const alreadyLinkedIds = new Set(alreadyLinkedRows.map((row) => Number(row.id)));
+      const alreadyLinkedRows = await repo.listEquipmentSpares(equipmentId);
+      const alreadyLinkedSourceIds = new Set(
+        alreadyLinkedRows
+          .map((row) => Number(row.source_spare_part_id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      );
       const alreadyLinkedPns = new Set(
         alreadyLinkedRows
           .map((row) => normalizePartNumberToken(row.part_number))
@@ -1657,10 +1764,11 @@ function createReportWebController(deps) {
       for (const item of matching) {
         const itemId = Number(item.id);
         const itemPn = normalizePartNumberToken(item.part_number);
-        if (!alreadyLinkedIds.has(itemId) && (!itemPn || !alreadyLinkedPns.has(itemPn))) {
+        if (!alreadyLinkedSourceIds.has(itemId) && (!itemPn || !alreadyLinkedPns.has(itemPn))) {
+          // Pull a snapshot of the catalog spare into the equipment's own list.
           // eslint-disable-next-line no-await-in-loop
-          await repo.linkSparePartToEquipmentIfMissing(equipmentId, itemId, 1);
-          alreadyLinkedIds.add(itemId);
+          await repo.associateSparePartToEquipment(equipmentId, itemId, 1);
+          alreadyLinkedSourceIds.add(itemId);
           if (itemPn) alreadyLinkedPns.add(itemPn);
           linkedCount += 1;
         }
@@ -3128,6 +3236,31 @@ function createReportWebController(deps) {
       if (!await ensureOrderEditable(req, res, orderId)) return;
       const report = await service.ensureReportForOrder(orderId);
       await service.createComponent(report.id, {
+        category: req.body.category,
+        equipmentId: req.body.equipment_id,
+        quantity: req.body.quantity,
+        description: req.body.description,
+        partNumber: req.body.part_number,
+        notes: req.body.notes,
+        sortOrder: req.body.sort_order
+      });
+      return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async updateComponent(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const componentId = Number(req.params.componentId);
+      if (!Number.isInteger(componentId) || componentId <= 0) {
+        return res.status(422).send("Componente invalido.");
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      const components = await repo.listComponents(report.id);
+      const exists = components.some((item) => Number(item.id) === componentId);
+      if (!exists) {
+        return res.status(404).send("Componente nao encontrado nesta OS.");
+      }
+      await service.updateComponent(componentId, {
         category: req.body.category,
         equipmentId: req.body.equipment_id,
         quantity: req.body.quantity,
