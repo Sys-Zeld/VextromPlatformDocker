@@ -154,6 +154,7 @@
           <option value="nova_os" <%= (emailTemplateEditorValues && emailTemplateEditorValues.template_purpose === 'nova_os') ? 'selected' : '' %>><%= t("admin.rs.purposeNovaOs") %></option>
           <option value="relatorio_assinado" <%= (emailTemplateEditorValues && emailTemplateEditorValues.template_purpose === 'relatorio_assinado') ? 'selected' : '' %>><%= t("admin.rs.purposeRelatorioAssinado") %></option>
           <option value="envio_assinatura" <%= (emailTemplateEditorValues && emailTemplateEditorValues.template_purpose === 'envio_assinatura') ? 'selected' : '' %>><%= t("admin.rs.purposeEnvioAssinatura") %></option>
+          <option value="notificacao_envio_assinatura" <%= (emailTemplateEditorValues && emailTemplateEditorValues.template_purpose === 'notificacao_envio_assinatura') ? 'selected' : '' %>><%= t("admin.rs.purposeNotificacaoEnvioAssinatura") %></option>
         </select>
       </div>
       <div class="col-12 col-md-5">
@@ -233,10 +234,11 @@
                   var purposeKeyMap = {
                     nova_os: "admin.rs.purposeNovaOsShort",
                     relatorio_assinado: "admin.rs.purposeRelatorioAssinadoShort",
-                    envio_assinatura: "admin.rs.purposeEnvioAssinaturaShort"
+                    envio_assinatura: "admin.rs.purposeEnvioAssinaturaShort",
+                    notificacao_envio_assinatura: "admin.rs.purposeNotificacaoEnvioAssinaturaShort"
                   };
                   var purposeKey = purposeKeyMap[template.purpose] || "admin.rs.purposeGeneral";
-                  var purposeBadgeClass = template.purpose === 'nova_os' ? 'text-bg-primary' : template.purpose === 'relatorio_assinado' ? 'text-bg-info text-dark' : template.purpose === 'envio_assinatura' ? 'text-bg-warning text-dark' : 'text-bg-secondary';
+                  var purposeBadgeClass = template.purpose === 'nova_os' ? 'text-bg-primary' : template.purpose === 'relatorio_assinado' ? 'text-bg-info text-dark' : template.purpose === 'envio_assinatura' ? 'text-bg-warning text-dark' : template.purpose === 'notificacao_envio_assinatura' ? 'text-bg-dark' : 'text-bg-secondary';
                 %>
                 <span class="badge <%= purposeBadgeClass %>"><%= t(purposeKey) %></span>
               </td>

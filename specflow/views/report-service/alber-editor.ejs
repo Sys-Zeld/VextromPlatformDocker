@@ -118,7 +118,7 @@
         <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">← Ensaios/Medições</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
       </div>
     </div>
   </div>

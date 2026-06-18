@@ -163,6 +163,7 @@ async function createOrder(payload) {
         customer_id,
         site_id,
         title,
+        proposal_number,
         description,
         status,
         opening_date,
@@ -172,7 +173,7 @@ async function createOrder(payload) {
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -181,6 +182,7 @@ async function createOrder(payload) {
       payload.customerId,
       payload.siteId,
       payload.title,
+      payload.proposalNumber || "",
       payload.description || "",
       payload.status,
       payload.openingDate,
@@ -200,11 +202,12 @@ async function updateOrder(id, payload) {
         customer_id = $2,
         site_id = $3,
         title = $4,
-        description = $5,
-        status = $6,
-        opening_date = $7,
-        closing_date = $8,
-        updated_by = $9,
+        proposal_number = $5,
+        description = $6,
+        status = $7,
+        opening_date = $8,
+        closing_date = $9,
+        updated_by = $10,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
@@ -214,6 +217,7 @@ async function updateOrder(id, payload) {
       payload.customerId,
       payload.siteId,
       payload.title,
+      payload.proposalNumber || "",
       payload.description || "",
       payload.status,
       payload.openingDate,
@@ -1615,7 +1619,7 @@ async function ensureDefaultSections(serviceReportId) {
   };
   const defaultSections = [
     { key: "scope", title: "ESCOPO", sortOrder: 1 },
-    { key: "technical_description", title: "DESCRIÇÃO TECNICA", sortOrder: 2 },
+    { key: "technical_description", title: "DESCRIÇÃO TÉCNICA", sortOrder: 2 },
     { key: "recommendations", title: "RECOMENDAÇÕES", sortOrder: 3 },
     { key: "conclusion", title: "CONCLUSÃO", sortOrder: 4 }
   ];
@@ -2227,6 +2231,14 @@ async function listGlobalTechnicians() {
   return result.rows;
 }
 
+async function getGlobalTechnicianById(id) {
+  const result = await db.query(
+    `SELECT * FROM service_report_global_technicians WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
 async function createGlobalTechnician(payload) {
   const result = await db.query(
     `INSERT INTO service_report_global_technicians (name, role, company, email, phone, is_lead, created_at, updated_at)
@@ -2268,13 +2280,15 @@ async function listGlobalInstruments() {
 async function createGlobalInstrument(payload) {
   const result = await db.query(
     `INSERT INTO service_report_global_instruments (
-       name, model, serial_number, responsible_technician_id, last_calibration_date, calibration_due_date, notes, created_at, updated_at
+       name, model, serial_number, certificate_number, certificate_link, responsible_technician_id, last_calibration_date, calibration_due_date, notes, created_at, updated_at
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
     [
       payload.name,
       payload.model || "",
       payload.serialNumber || "",
+      payload.certificateNumber || "",
+      payload.certificateLink || "",
       toInt(payload.responsibleTechnicianId),
       payload.lastCalibrationDate || null,
       payload.calibrationDueDate || null,
@@ -2287,13 +2301,15 @@ async function createGlobalInstrument(payload) {
 async function updateGlobalInstrument(id, payload) {
   const result = await db.query(
     `UPDATE service_report_global_instruments
-     SET name=$2, model=$3, serial_number=$4, responsible_technician_id=$5, last_calibration_date=$6, calibration_due_date=$7, notes=$8, updated_at=NOW()
+     SET name=$2, model=$3, serial_number=$4, certificate_number=$5, certificate_link=$6, responsible_technician_id=$7, last_calibration_date=$8, calibration_due_date=$9, notes=$10, updated_at=NOW()
      WHERE id=$1 RETURNING *`,
     [
       id,
       payload.name,
       payload.model || "",
       payload.serialNumber || "",
+      payload.certificateNumber || "",
+      payload.certificateLink || "",
       toInt(payload.responsibleTechnicianId),
       payload.lastCalibrationDate || null,
       payload.calibrationDueDate || null,
@@ -2306,6 +2322,119 @@ async function updateGlobalInstrument(id, payload) {
 async function deleteGlobalInstrument(id) {
   const result = await db.query(
     `DELETE FROM service_report_global_instruments WHERE id=$1`, [id]
+  );
+  return result.rowCount > 0;
+}
+
+// ---- Global Tools ----
+
+async function listGlobalTools() {
+  const result = await db.query(
+    `SELECT tools.*, tech.name AS technician_name
+     FROM service_report_global_tools tools
+     LEFT JOIN service_report_global_technicians tech ON tech.id = tools.technician_id
+     ORDER BY tech.name ASC NULLS LAST, tools.item ASC, tools.id ASC`
+  );
+  return result.rows;
+}
+
+async function listGlobalToolsByTechnician(technicianId) {
+  const result = await db.query(
+    `SELECT tools.*, tech.name AS technician_name
+     FROM service_report_global_tools tools
+     INNER JOIN service_report_global_technicians tech ON tech.id = tools.technician_id
+     WHERE tools.technician_id = $1
+     ORDER BY tools.item ASC, tools.id ASC`,
+    [technicianId]
+  );
+  return result.rows;
+}
+
+function normalizeToolQuantity(value) {
+  const quantity = Number(value);
+  return Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+}
+
+async function getNextGlobalToolItem(technicianId) {
+  const result = await db.query(
+    `
+      SELECT COALESCE(MAX(
+        CASE WHEN item ~ '^[0-9]+$' THEN item::int ELSE 0 END
+      ), 0)::int AS last_item
+      FROM service_report_global_tools
+      WHERE technician_id = $1
+    `,
+    [technicianId]
+  );
+  return String(Number(result.rows[0]?.last_item || 0) + 1);
+}
+
+async function createGlobalTool(payload) {
+  const technicianId = toInt(payload.technicianId);
+  const item = String(payload.item || "").trim() || await getNextGlobalToolItem(technicianId);
+  const result = await db.query(
+    `INSERT INTO service_report_global_tools (
+       technician_id, item, quantity, description, serial_number, notes, created_at, updated_at
+     )
+    VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) RETURNING *`,
+    [
+      technicianId,
+      item,
+      normalizeToolQuantity(payload.quantity),
+      payload.description || "",
+      payload.serialNumber || "",
+      payload.notes || ""
+    ]
+  );
+  return result.rows[0];
+}
+
+async function updateGlobalTool(id, payload) {
+  const result = await db.query(
+    `UPDATE service_report_global_tools
+     SET technician_id=$2, item=$3, quantity=$4, description=$5, serial_number=$6, notes=$7, updated_at=NOW()
+     WHERE id=$1 RETURNING *`,
+    [
+      id,
+      toInt(payload.technicianId),
+      payload.item,
+      normalizeToolQuantity(payload.quantity),
+      payload.description || "",
+      payload.serialNumber || "",
+      payload.notes || ""
+    ]
+  );
+  return result.rows[0] || null;
+}
+
+async function updateGlobalToolForTechnician(id, technicianId, payload) {
+  const result = await db.query(
+    `UPDATE service_report_global_tools
+     SET quantity=$3, description=$4, serial_number=$5, notes=$6, updated_at=NOW()
+     WHERE id=$1 AND technician_id=$2 RETURNING *`,
+    [
+      id,
+      technicianId,
+      normalizeToolQuantity(payload.quantity),
+      payload.description || "",
+      payload.serialNumber || "",
+      payload.notes || ""
+    ]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteGlobalTool(id) {
+  const result = await db.query(
+    `DELETE FROM service_report_global_tools WHERE id=$1`, [id]
+  );
+  return result.rowCount > 0;
+}
+
+async function deleteGlobalToolForTechnician(id, technicianId) {
+  const result = await db.query(
+    `DELETE FROM service_report_global_tools WHERE id=$1 AND technician_id=$2`,
+    [id, technicianId]
   );
   return result.rowCount > 0;
 }
@@ -2418,6 +2547,8 @@ async function createInstrument(payload) {
         name,
         model,
         serial_number,
+        certificate_number,
+        certificate_link,
         responsible_technician_id,
         last_calibration_date,
         calibration_due_date,
@@ -2425,7 +2556,7 @@ async function createInstrument(payload) {
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -2433,6 +2564,8 @@ async function createInstrument(payload) {
       payload.name,
       payload.model || "",
       payload.serialNumber || "",
+      payload.certificateNumber || "",
+      payload.certificateLink || "",
       toInt(payload.responsibleTechnicianId),
       payload.lastCalibrationDate || null,
       payload.calibrationDueDate,
@@ -2518,13 +2651,15 @@ async function updateInstrument(id, serviceReportId, payload) {
   const result = await db.query(
     `
       UPDATE service_report_instruments
-      SET name = $3, model = $4, serial_number = $5, responsible_technician_id = $6, last_calibration_date = $7, calibration_due_date = $8, notes = $9, updated_at = NOW()
+      SET name = $3, model = $4, serial_number = $5, certificate_number = $6, certificate_link = $7, responsible_technician_id = $8, last_calibration_date = $9, calibration_due_date = $10, notes = $11, updated_at = NOW()
       WHERE id = $1 AND service_report_id = $2
       RETURNING *
     `,
     [
       id, serviceReportId,
       payload.name, payload.model || "", payload.serialNumber || "",
+      payload.certificateNumber || "",
+      payload.certificateLink || "",
       toInt(payload.responsibleTechnicianId),
       payload.lastCalibrationDate || null,
       payload.calibrationDueDate || null,
@@ -3212,6 +3347,7 @@ module.exports = {
   createSignature,
   deleteSignature,
   listGlobalTechnicians,
+  getGlobalTechnicianById,
   createGlobalTechnician,
   updateGlobalTechnician,
   deleteGlobalTechnician,
@@ -3219,6 +3355,13 @@ module.exports = {
   createGlobalInstrument,
   updateGlobalInstrument,
   deleteGlobalInstrument,
+  listGlobalTools,
+  listGlobalToolsByTechnician,
+  createGlobalTool,
+  updateGlobalTool,
+  updateGlobalToolForTechnician,
+  deleteGlobalTool,
+  deleteGlobalToolForTechnician,
   listTechniciansByOrder,
   linkTechnicianToOrder,
   unlinkTechnicianFromOrder,

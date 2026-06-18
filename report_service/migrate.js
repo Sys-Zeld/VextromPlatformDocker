@@ -180,6 +180,7 @@ async function migrateServiceReport() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await db.query(`ALTER TABLE service_report_orders ADD COLUMN IF NOT EXISTS proposal_number TEXT NOT NULL DEFAULT '';`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_orders_customer_id ON service_report_orders (customer_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_orders_site_id ON service_report_orders (site_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_orders_status ON service_report_orders (status);`);
@@ -495,6 +496,8 @@ async function migrateServiceReport() {
       name TEXT NOT NULL,
       model TEXT NOT NULL DEFAULT '',
       serial_number TEXT NOT NULL DEFAULT '',
+      certificate_number TEXT NOT NULL DEFAULT '',
+      certificate_link TEXT NOT NULL DEFAULT '',
       responsible_technician_id BIGINT REFERENCES service_report_global_technicians(id) ON DELETE SET NULL,
       last_calibration_date DATE,
       calibration_due_date DATE,
@@ -503,8 +506,40 @@ async function migrateServiceReport() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_global_tools (
+      id BIGSERIAL PRIMARY KEY,
+      technician_id BIGINT,
+      item TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      description TEXT NOT NULL DEFAULT '',
+      serial_number TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`ALTER TABLE service_report_global_tools ADD COLUMN IF NOT EXISTS technician_id BIGINT;`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_global_tools_technician_id ON service_report_global_tools (technician_id);`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_global_tools_item ON service_report_global_tools (LOWER(item));`);
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'sr_global_tools_technician_fkey'
+      ) THEN
+        ALTER TABLE service_report_global_tools
+          ADD CONSTRAINT sr_global_tools_technician_fkey
+          FOREIGN KEY (technician_id)
+          REFERENCES service_report_global_technicians(id)
+          ON DELETE CASCADE;
+      END IF;
+    END $$;
+  `);
   await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS responsible_technician_id BIGINT;`);
   await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS last_calibration_date DATE;`);
+  await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS certificate_number TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_global_instruments ADD COLUMN IF NOT EXISTS certificate_link TEXT NOT NULL DEFAULT '';`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_global_instruments_resp_tech ON service_report_global_instruments (responsible_technician_id);`);
   await db.query(`
     DO $$
@@ -523,6 +558,8 @@ async function migrateServiceReport() {
 
   await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS responsible_technician_id BIGINT;`);
   await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS last_calibration_date DATE;`);
+  await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS certificate_number TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_instruments ADD COLUMN IF NOT EXISTS certificate_link TEXT NOT NULL DEFAULT '';`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_instruments_resp_tech ON service_report_instruments (responsible_technician_id);`);
   await db.query(`
     DO $$

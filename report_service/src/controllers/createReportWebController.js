@@ -362,6 +362,19 @@ function createReportWebController(deps) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ""));
   }
 
+  function dedupeEmailList(items) {
+    const seen = new Set();
+    const result = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const email = String(item || "").trim();
+      const key = email.toLowerCase();
+      if (!email || seen.has(key)) return;
+      seen.add(key);
+      result.push(email);
+    });
+    return result;
+  }
+
   function sanitizeSubjectHeaderValue(value) {
     return String(value || "").replace(/[\r\n]+/g, " ").trim();
   }
@@ -487,6 +500,7 @@ function createReportWebController(deps) {
         return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
       })(),
       status: order.status || "",
+      nr_proposta: order.proposal_number || "",
       tecnicos: techNames
     };
   }
@@ -497,8 +511,12 @@ function createReportWebController(deps) {
       relatorio_numero: String(report.report_number || ""),
       cliente: order.customer_name || "",
       local: order.site_name || "",
+      nr_proposta: order.proposal_number || "",
       link_relatorio: signedLink || "",
-      signatario: String(extra.signatario || "")
+      signatario: String(extra.signatario || ""),
+      signatario_email: String(extra.signatario_email || ""),
+      tecnicos: String(extra.tecnicos || ""),
+      emails_notificados: String(extra.emails_notificados || "")
     };
   }
 
@@ -1082,7 +1100,7 @@ function createReportWebController(deps) {
         return acc;
       }, {});
       return res.render("report-service/orders", {
-        pageTitle: "Service Report - Ordens de Servico",
+        pageTitle: "Service Report - Ordens de Serviço",
         orders: ordersView,
         customers,
         sites,
@@ -1106,6 +1124,7 @@ function createReportWebController(deps) {
         customerId: req.body.customer_id,
         siteId: req.body.site_id,
         title: req.body.title,
+        proposalNumber: req.body.proposal_number,
         description: req.body.description,
         status: req.body.status,
         openingDate: req.body.opening_date,
@@ -1139,6 +1158,7 @@ function createReportWebController(deps) {
         customerId: order.customer_id,
         siteId: order.site_id,
         title: sanitizeInput(req.body.title),
+        proposalNumber: sanitizeInput(req.body.proposal_number),
         description: sanitizeInput(req.body.description),
         status: order.status,
         openingDate: sanitizeInput(req.body.opening_date) || order.opening_date || null,
@@ -2496,8 +2516,10 @@ function createReportWebController(deps) {
       const emailErrorKey = sanitizeInput(req.query.email_error).toLowerCase();
       const signLinkEmailErrorMap = {
         invalid_signer_email: "Informe um e-mail valido para o signatario.",
+        invalid_notification_email: "Existe e-mail invalido nos destinatarios da notificacao.",
         smtp: "Configuracao SMTP incompleta no modulo Service Report.",
         send_failed: "Link criado, mas houve falha ao enviar e-mail para o signatario.",
+        notification_failed: "Link criado e enviado ao signatario, mas houve falha ao enviar a notificacao.",
         translate_failed: "Falha ao traduzir o relatorio antes de enviar para assinatura.",
         ai_unavailable: "Servico de IA indisponivel para traducao."
       };
@@ -3621,6 +3643,12 @@ function createReportWebController(deps) {
       if (!isValidEmailAddress(signerEmail)) {
         return res.redirect(`/admin/report-service/orders/${orderId}/report-editor?sign_link_email_error=invalid_signer_email`);
       }
+      const notifyFlags = [].concat(req.body.notify_technicians || []).map((item) => String(item));
+      const notifyTechnicians = notifyFlags.length ? notifyFlags.includes("1") : true;
+      const extraNotificationEmails = parseEmailList(req.body.notification_emails);
+      if (extraNotificationEmails.some((email) => !isValidEmailAddress(email))) {
+        return res.redirect(`/admin/report-service/orders/${orderId}/report-editor?sign_link_email_error=invalid_notification_email`);
+      }
       const report = data.report;
       const token = uuidv4();
       await repo.createSignRequest({
@@ -3652,8 +3680,22 @@ function createReportWebController(deps) {
           emailSettings.defaultTemplateId,
           "envio_assinatura"
         );
+        const technicianEmails = notifyTechnicians
+          ? (Array.isArray(data.technicians) ? data.technicians : [])
+            .map((t) => String(t.email || "").trim())
+            .filter((email) => isValidEmailAddress(email))
+          : [];
+        const notificationRecipients = dedupeEmailList([...technicianEmails, ...extraNotificationEmails])
+          .filter((email) => email.toLowerCase() !== signerEmail.toLowerCase());
+        const technicianNames = (Array.isArray(data.technicians) ? data.technicians : [])
+          .map((t) => String(t.name || "").trim())
+          .filter(Boolean)
+          .join(", ");
         const vars = buildSignedReportTemplateVariables(data.order, report, signLink, {
-          signatario: sanitizeInput(req.body.signer_name) || ""
+          signatario: sanitizeInput(req.body.signer_name) || "",
+          signatario_email: signerEmail,
+          tecnicos: technicianNames,
+          emails_notificados: notificationRecipients.join(", ")
         });
         const orderDisplay = data.order.service_order_display || data.order.service_order_code || `OS-${orderId}`;
         const subject = sanitizeSubjectHeaderValue(
@@ -3673,6 +3715,33 @@ function createReportWebController(deps) {
           subject,
           html: htmlBody
         });
+        if (notificationRecipients.length) {
+          try {
+            const notificationTemplate = getTemplateByPurpose(
+              emailSettings.emailTemplates,
+              emailSettings.defaultTemplateId,
+              "notificacao_envio_assinatura"
+            );
+            const notificationSubject = sanitizeSubjectHeaderValue(
+              notificationTemplate && notificationTemplate.subject
+                ? renderEmailPlaceholder(notificationTemplate.subject, vars)
+                : `Relatorio enviado para assinatura - ${report.report_number || orderDisplay}`
+            );
+            const notificationHtml = notificationTemplate && notificationTemplate.html
+              ? `<!doctype html><html><body>${renderEmailPlaceholder(notificationTemplate.html, vars)}</body></html>`
+              : `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;"><p style="margin:0 0 12px 0;">O relatorio foi enviado para o cliente responsavel para assinatura.</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${escapeHtml(orderDisplay)}</p><p style="margin:0 0 8px 0;"><strong>Relatorio:</strong> ${escapeHtml(report.report_number || "-")}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${escapeHtml(data.order.customer_name || "-")}</p><p style="margin:0 0 8px 0;"><strong>Local:</strong> ${escapeHtml(data.order.site_name || "-")}</p><p style="margin:0 0 8px 0;"><strong>Cliente responsavel:</strong> ${escapeHtml(vars.signatario || "-")} (${escapeHtml(signerEmail)})</p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo modulo Service Report.</p></body></html>`;
+            await transporter.sendMail({
+              from: emailSettings.smtp.from,
+              to: notificationRecipients,
+              subject: notificationSubject,
+              html: notificationHtml
+            });
+          } catch (_notificationErr) {
+            // eslint-disable-next-line no-console
+            console.error("[report-service] Link de assinatura enviado ao signatario, mas houve falha ao notificar tecnicos/destinatarios adicionais.", _notificationErr);
+            return res.redirect(`/admin/report-service/orders/${orderId}/report-editor?signed_link=1&sign_link_email_sent=1&sign_link_email_error=notification_failed`);
+          }
+        }
         return res.redirect(`/admin/report-service/orders/${orderId}/report-editor?signed_link=1&sign_link_email_sent=1`);
       } catch (_err) {
         // eslint-disable-next-line no-console
@@ -3997,7 +4066,7 @@ function createReportWebController(deps) {
       return res.redirect(`${redirectBase}?saved=1`);
     },
 
-    // ---- Cadastro global de tecnicos e instrumentos ----
+    // ---- Cadastro global de tecnicos, instrumentos e ferramentas ----
 
     async listAssetsGlobal(req, res) {
       const [technicians, instruments] = await Promise.all([
@@ -4050,6 +4119,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        certificateNumber: sanitizeInput(req.body.certificate_number),
+        certificateLink: sanitizeInput(req.body.certificate_link),
         responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
         lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
@@ -4064,6 +4135,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        certificateNumber: sanitizeInput(req.body.certificate_number),
+        certificateLink: sanitizeInput(req.body.certificate_link),
         responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
         lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
@@ -4075,6 +4148,68 @@ function createReportWebController(deps) {
     async deleteGlobalInstrument(req, res) {
       await repo.deleteGlobalInstrument(Number(req.params.instrId));
       return res.redirect("/admin/report-service/assets?saved=1");
+    },
+
+    async createGlobalTool(req, res) {
+      const routeTechId = Number(req.params.techId || 0);
+      const technicianId = routeTechId || Number(req.body.technician_id || 0);
+      if (!Number.isInteger(technicianId) || technicianId <= 0) return res.status(422).send("Tecnico obrigatorio.");
+      await repo.createGlobalTool({
+        technicianId,
+        item: sanitizeInput(req.body.item),
+        quantity: Number(req.body.quantity || 1),
+        description: sanitizeInput(req.body.description),
+        serialNumber: sanitizeInput(req.body.serial_number),
+        notes: sanitizeInput(req.body.notes)
+      });
+      return routeTechId
+        ? res.redirect(`/admin/report-service/assets/technicians/${routeTechId}/tools?saved=1`)
+        : res.redirect("/admin/report-service/assets?saved=1");
+    },
+
+    async updateGlobalTool(req, res) {
+      const toolId = Number(req.params.toolId);
+      const routeTechId = Number(req.params.techId || 0);
+      const technicianId = routeTechId || Number(req.body.technician_id || 0);
+      if (!Number.isInteger(technicianId) || technicianId <= 0) return res.status(422).send("Tecnico obrigatorio.");
+      const payload = {
+        technicianId,
+        item: sanitizeInput(req.body.item),
+        quantity: Number(req.body.quantity || 1),
+        description: sanitizeInput(req.body.description),
+        serialNumber: sanitizeInput(req.body.serial_number),
+        notes: sanitizeInput(req.body.notes)
+      };
+      if (routeTechId) {
+        await repo.updateGlobalToolForTechnician(toolId, routeTechId, payload);
+        return res.redirect(`/admin/report-service/assets/technicians/${routeTechId}/tools?saved=1`);
+      }
+      await repo.updateGlobalTool(toolId, payload);
+      return res.redirect("/admin/report-service/assets?saved=1");
+    },
+
+    async deleteGlobalTool(req, res) {
+      const routeTechId = Number(req.params.techId || 0);
+      if (routeTechId) {
+        await repo.deleteGlobalToolForTechnician(Number(req.params.toolId), routeTechId);
+        return res.redirect(`/admin/report-service/assets/technicians/${routeTechId}/tools?saved=1`);
+      }
+      await repo.deleteGlobalTool(Number(req.params.toolId));
+      return res.redirect("/admin/report-service/assets?saved=1");
+    },
+
+    async technicianToolsPage(req, res) {
+      const techId = Number(req.params.techId);
+      const technician = await repo.getGlobalTechnicianById(techId);
+      if (!technician) return res.status(404).send("Tecnico nao encontrado.");
+      const tools = await repo.listGlobalToolsByTechnician(techId);
+      return res.render("report-service/technician-tools", {
+        pageTitle: `Ferramentas - ${technician.name}`,
+        technician,
+        tools,
+        saved: req.query.saved === "1",
+        csrfToken: req.csrfToken()
+      });
     },
 
     // ---- Vinculo de tecnicos/instrumentos com OS ----
@@ -4180,6 +4315,8 @@ function createReportWebController(deps) {
         name: sanitizeInput(req.body.name),
         model: sanitizeInput(req.body.model),
         serialNumber: sanitizeInput(req.body.serial_number),
+        certificateNumber: sanitizeInput(req.body.certificate_number),
+        certificateLink: sanitizeInput(req.body.certificate_link),
         responsibleTechnicianId: Number(req.body.responsible_technician_id || 0),
         lastCalibrationDate: sanitizeInput(req.body.last_calibration_date) || null,
         calibrationDueDate: sanitizeInput(req.body.calibration_due_date) || null,
@@ -4324,7 +4461,7 @@ function createReportWebController(deps) {
       const cacheVersion = encodeURIComponent(String(model.generatedAt || Date.now()));
       const availableTemplates = getReportTemplateOptions();
       const currentTemplateName = (availableTemplates.find((item) => item.key === templateKey) || {}).name || templateKey;
-      const pageTitle = `Preview HTML (${currentTemplateName}) - ${payload.report && payload.report.report_number ? payload.report.report_number : "Service Report"}`;
+      const pageTitle = `Preview Relatório (${currentTemplateName}) - ${payload.report && payload.report.report_number ? payload.report.report_number : "Service Report"}`;
 
       const fullHtml = `<!DOCTYPE html>
 <html lang="pt-BR">

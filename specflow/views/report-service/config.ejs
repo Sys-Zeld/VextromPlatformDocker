@@ -1,4 +1,4 @@
-<%- include("../partials/head", { pageTitle }) %>
+﻿<%- include("../partials/head", { pageTitle }) %>
 <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet" />
 <link href="https://cdn.jsdelivr.net/npm/quill-better-table@1.2.10/dist/quill-better-table.css" rel="stylesheet" />
 <link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
@@ -9,7 +9,7 @@
     margin-bottom: 8px;
   }
 
-  /* #default-*-editor agora É o ql-container */
+  /* #default-*-editor agora é o ql-container */
   #default-scope-editor,
   #default-recommendations-editor {
     height: auto;
@@ -30,18 +30,18 @@
 <section class="card app-card mb-3">
   <div class="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <div>
-      <h1 class="h5 app-card-title mb-1">Config Report</h1>
-      <p class="text-muted mb-0">Defina o template padrao e os logos usados no preview/generacao do Report Service.</p>
+      <h1 class="h5 app-card-title mb-1"><%= t("rs.config.title") %></h1>
+      <p class="text-muted mb-0"><%= t("rs.config.subtitle") %></p>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-outline-primary btn-sm" href="/admin/report-service/table-styles">Ajuste tabelas</a>
-      <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders">Voltar para ordens</a>
+      <a class="btn btn-outline-primary btn-sm" href="/admin/report-service/table-styles"><%= t("rs.nav.tableStyles") %></a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.nav.backOrders") %></a>
     </div>
   </div>
 </section>
 
 <% if (saved) { %>
-  <div class="alert alert-success">Configuracoes salvas com sucesso.</div>
+  <div class="alert alert-success"><%= t("rs.config.saved") %></div>
 <% } %>
 
 <section class="card app-card mb-3">
@@ -49,17 +49,17 @@
     <form method="post" action="/admin/report-service/config" class="row g-3" id="config-form">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <div class="col-12 d-flex justify-content-end report-config-save-row">
-        <button class="btn btn-primary btn-sm" type="submit" id="btn-save">Salvar configuracao padrao</button>
+        <button class="btn btn-primary btn-sm" type="submit" id="btn-save"><%= t("rs.config.saveDefault") %></button>
       </div>
 
       <div class="col-12 col-lg-4">
-        <label class="form-label">Template padrao do report</label>
+        <label class="form-label"><%= t("rs.config.defaultTemplate") %></label>
         <select class="form-select" name="template_key" required>
           <% (reportConfig.templateOptions || []).forEach((item) => { %>
             <option value="<%= item.key %>" <%= item.key === reportConfig.templateKey ? "selected" : "" %>><%= item.name %></option>
           <% }) %>
         </select>
-        <div class="form-text">Cada template possui rota/codigo de renderizacao proprio no preview HTML.</div>
+        <div class="form-text"><%= t("rs.config.templateHelp") %></div>
       </div>
 
       <!-- Logo Vextrom -->
@@ -73,29 +73,29 @@
                  alt="Logo Vextrom"
                  style="max-height:56px;max-width:100%;object-fit:contain"
                  onerror="this.style.display='none';document.getElementById('preview-vextrom-empty').style.display='block'" />
-            <span id="preview-vextrom-empty" class="text-muted small" style="display:none">Nao foi possivel carregar a imagem</span>
+            <span id="preview-vextrom-empty" class="text-muted small" style="display:none"><%= t("rs.config.logoLoadError") %></span>
           </div>
         <% } else { %>
           <div class="mb-2 p-2 border rounded text-center" style="background:var(--app-bg,#f8f9fa);min-height:60px">
             <img id="preview-vextrom" src="" alt="" style="max-height:56px;max-width:100%;object-fit:contain;display:none" />
-            <span id="preview-vextrom-empty" class="text-muted small">Nenhuma logo definida</span>
+            <span id="preview-vextrom-empty" class="text-muted small"><%= t("rs.config.noLogo") %></span>
           </div>
         <% } %>
 
         <div class="input-group mb-1">
           <input class="form-control form-control-sm" id="input-logo-vextrom" name="logo_vextrom"
                  value="<%= reportConfig.logoVextrom || '' %>" placeholder="/public/img/logo-vextrom.svg" />
-          <label class="btn btn-outline-secondary btn-sm" for="file-vextrom" title="Importar arquivo de logo">
+          <label class="btn btn-outline-secondary btn-sm" for="file-vextrom" title="<%= t('rs.config.importLogoTitle') %>">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
               <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
             </svg>
-            Importar
+            <%= t("rs.config.import") %>
           </label>
           <input type="file" id="file-vextrom" accept=".svg,.png,.jpg,.jpeg" class="d-none"
                  onchange="handleLogoUpload('vextrom', this)" />
         </div>
-        <div id="status-vextrom" class="form-text">PNG, JPG ou SVG — max 5 MB. Ou informe uma URL/caminho publico.</div>
+        <div id="status-vextrom" class="form-text"><%= t("rs.config.uploadHint") %></div>
       </div>
 
       <!-- Logo Chloride -->
@@ -109,34 +109,34 @@
                  alt="Logo Chloride"
                  style="max-height:56px;max-width:100%;object-fit:contain"
                  onerror="this.style.display='none';document.getElementById('preview-chloride-empty').style.display='block'" />
-            <span id="preview-chloride-empty" class="text-muted small" style="display:none">Nao foi possivel carregar a imagem</span>
+            <span id="preview-chloride-empty" class="text-muted small" style="display:none"><%= t("rs.config.logoLoadError") %></span>
           </div>
         <% } else { %>
           <div class="mb-2 p-2 border rounded text-center" style="background:var(--app-bg,#f8f9fa);min-height:60px">
             <img id="preview-chloride" src="" alt="" style="max-height:56px;max-width:100%;object-fit:contain;display:none" />
-            <span id="preview-chloride-empty" class="text-muted small">Nenhuma logo definida</span>
+            <span id="preview-chloride-empty" class="text-muted small"><%= t("rs.config.noLogo") %></span>
           </div>
         <% } %>
 
         <div class="input-group mb-1">
           <input class="form-control form-control-sm" id="input-logo-chloride" name="logo_chloride"
                  value="<%= reportConfig.logoChloride || '' %>" placeholder="https://... ou /public/img/..." />
-          <label class="btn btn-outline-secondary btn-sm" for="file-chloride" title="Importar arquivo de logo">
+          <label class="btn btn-outline-secondary btn-sm" for="file-chloride" title="<%= t('rs.config.importLogoTitle') %>">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
               <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
             </svg>
-            Importar
+            <%= t("rs.config.import") %>
           </label>
           <input type="file" id="file-chloride" accept=".svg,.png,.jpg,.jpeg" class="d-none"
                  onchange="handleLogoUpload('chloride', this)" />
         </div>
-        <div id="status-chloride" class="form-text">PNG, JPG ou SVG — max 5 MB. Ou informe uma URL/caminho publico.</div>
+        <div id="status-chloride" class="form-text"><%= t("rs.config.uploadHint") %></div>
       </div>
 
       <!-- Logo da Capa (cover-logo-image) -->
       <div class="col-12 col-lg-4">
-        <label class="form-label">Logo da capa (cover-logo-image)</label>
+        <label class="form-label"><%= t("rs.config.coverLogo") %></label>
 
         <% if (reportConfig.logoCover) { %>
           <div class="mb-2 p-2 border rounded text-center" style="background:var(--app-bg,#f8f9fa);min-height:60px">
@@ -145,36 +145,36 @@
                  alt="Logo da capa"
                  style="max-height:56px;max-width:100%;object-fit:contain"
                  onerror="this.style.display='none';document.getElementById('preview-cover-empty').style.display='block'" />
-            <span id="preview-cover-empty" class="text-muted small" style="display:none">Nao foi possivel carregar a imagem</span>
+            <span id="preview-cover-empty" class="text-muted small" style="display:none"><%= t("rs.config.logoLoadError") %></span>
           </div>
         <% } else { %>
           <div class="mb-2 p-2 border rounded text-center" style="background:var(--app-bg,#f8f9fa);min-height:60px">
             <img id="preview-cover" src="" alt="" style="max-height:56px;max-width:100%;object-fit:contain;display:none" />
-            <span id="preview-cover-empty" class="text-muted small">Nenhuma logo definida</span>
+            <span id="preview-cover-empty" class="text-muted small"><%= t("rs.config.noLogo") %></span>
           </div>
         <% } %>
 
         <div class="input-group mb-1">
           <input class="form-control form-control-sm" id="input-logo-cover" name="logo_cover"
                  value="<%= reportConfig.logoCover || '' %>" placeholder="https://... ou /public/img/..." />
-          <label class="btn btn-outline-secondary btn-sm" for="file-cover" title="Importar arquivo de logo da capa">
+          <label class="btn btn-outline-secondary btn-sm" for="file-cover" title="<%= t('rs.config.importCoverLogoTitle') %>">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
               <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
             </svg>
-            Importar
+            <%= t("rs.config.import") %>
           </label>
           <input type="file" id="file-cover" accept=".svg,.png,.jpg,.jpeg" class="d-none"
                  onchange="handleLogoUpload('cover', this)" />
         </div>
-        <div id="status-cover" class="form-text">PNG, JPG ou SVG â€” max 5 MB. Ou informe uma URL/caminho publico.</div>
+        <div id="status-cover" class="form-text"><%= t("rs.config.uploadHint") %></div>
       </div>
 
       <!-- Rodape HTML -->
       <div class="col-12">
-        <label class="form-label">Rodape do relatorio (HTML)</label>
+        <label class="form-label"><%= t("rs.config.footerLabel") %></label>
         <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;font-size:0.75rem;color:#6b7280;">
-          O HTML abaixo e inserido no rodape de cada pagina do relatorio. Use as classes <code>report-footer-inner</code>, <code>report-footer-col</code> e <code>rf-icon</code> para manter o layout padrao em duas colunas.
+          <%- t("rs.config.footerHelp") %>
         </div>
         <textarea
           name="footer_html"
@@ -184,8 +184,8 @@
           style="font-size:0.72rem;resize:vertical;"
         ><%= reportConfig.footerHtml || '' %></textarea>
         <div class="d-flex gap-2 mt-2">
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="previewFooter()">Previsualizar</button>
-          <button type="button" class="btn btn-outline-danger btn-sm" onclick="resetFooter()">Restaurar padrao</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="previewFooter()"><%= t("rs.config.preview") %></button>
+          <button type="button" class="btn btn-outline-danger btn-sm" onclick="resetFooter()"><%= t("rs.config.restoreDefault") %></button>
         </div>
         <div id="footer-preview-wrap" class="mt-2" style="display:none;">
           <div class="border rounded p-2" style="background:#fff;font-size:0.7rem;color:#6e7e74;">
@@ -197,14 +197,14 @@
       <div class="col-12">
         <div class="card app-card">
           <div class="card-body">
-            <label class="form-label">Capitulo padrao: ESCOPO</label>
+            <label class="form-label"><%= t("rs.config.scopeChapter") %></label>
             <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;font-size:0.75rem;color:#6b7280;">
-              Conteudo padrao aplicado ao capitulo <strong>ESCOPO</strong> na criacao de novos relatorios.
+              <%- t("rs.config.defaultChapterHelp", { chapter: "ESCOPO" }) %>
             </div>
             <div class="d-flex gap-2 mb-2">
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="edit-scope-btn">Editar</button>
-              <button type="button" class="btn btn-primary btn-sm" id="save-scope-btn">Salvar</button>
-              <button type="button" class="btn btn-outline-danger btn-sm" id="reset-scope-btn">Restaurar padrao</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="edit-scope-btn"><%= t("rs.edit") %></button>
+              <button type="button" class="btn btn-primary btn-sm" id="save-scope-btn"><%= t("rs.save") %></button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="reset-scope-btn"><%= t("rs.config.restoreDefault") %></button>
             </div>
             <div class="report-quill-editor">
               <div id="default-scope-editor"></div>
@@ -217,7 +217,7 @@
       <div class="col-12">
         <div class="card app-card">
           <div class="card-body">
-            <label class="form-label">Capitulo padrao: RECOMENDACOES</label>
+            <label class="form-label"><%= t("rs.config.recommendationsChapter") %></label>
             <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;font-size:0.75rem;color:#6b7280;">
               Conteudo padrao aplicado ao capitulo <strong>RECOMENDACOES</strong> na criacao de novos relatorios.
             </div>
@@ -490,3 +490,4 @@ if (configForm) {
 </script>
 
 <%- include("../partials/footer") %>
+

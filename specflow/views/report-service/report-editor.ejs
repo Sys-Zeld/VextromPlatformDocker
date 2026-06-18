@@ -88,20 +88,20 @@
   <div class="card app-card token-hero-card">
     <div class="card-body token-hero-body">
       <div class="token-hero-copy">
-        <span class="token-hero-eyebrow">EDITAR RELATÓRIO</span>
+        <span class="token-hero-eyebrow"><%= t("rs.editor.eyebrow") %></span>
         <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
         <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
       </div>
       <div class="token-hero-actions">
-        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders">Ordens</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics">Relatório/Dashboard</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
+        <span class="badge text-bg-secondary"><%= t("rs.badge.status") %>: <%= order.status || "draft" %></span>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.nav.orders") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics"><%= t("rs.nav.dashboard") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>"><%= t("rs.nav.editOrder") %></a>
         <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#tagsSupportModal">Tag's</button>
-        <a class="btn btn-outline-secondary btn-sm" href="<%= templatePreviewRoute || (`/admin/report-service/orders/${order.id}/preview-html/template/${templateKey || 'modern'}`) %>" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-secondary btn-sm" href="<%= templatePreviewRoute || (`/admin/report-service/orders/${order.id}/preview-html/template/${templateKey || 'modern'}`) %>" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/pdf-history">Historico PDF</a>
         <% if (String(order.status || "").toLowerCase() === "valid") { %>
-          <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report">Assinar Relatorio</a>
+          <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report"><%= t("rs.nav.signReport") %></a>
         <% } %>
         <button
           class="btn btn-outline-primary btn-sm"
@@ -120,27 +120,27 @@
     </div>
   </div>
 
-  <% if (saved) { %><div class="alert alert-success mb-0">Capitulo salvo com sucesso.</div><% } %>
-  <% if (editLocked) { %><div class="alert alert-warning mb-0">OS aprovada. Edicao bloqueada. Revalide a OS na tela da OS para liberar.</div><% } %>
-  <% if (revalidated) { %><div class="alert alert-success mb-0">OS revalidada com sucesso. Status atualizado para <strong>valid</strong>.</div><% } %>
-  <% if (revalidateError === 'forbidden_admin') { %><div class="alert alert-warning mb-0">Somente usuario com perfil <strong>admin</strong> pode revalidar OS.</div><% } %>
-  <% if (revalidateError === 'invalid_state') { %><div class="alert alert-warning mb-0">A OS precisa estar com status <strong>approved</strong> para revalidar.</div><% } %>
-  <% if (signRequestUpdated) { %><div class="alert alert-success mb-0">Dados do signatario atualizados com sucesso.</div><% } %>
-  <% if (signRequestEditBlocked) { %><div class="alert alert-warning mb-0">Nao e permitido editar links que ja foram assinados/cancelados.</div><% } %>
-  <% if (emailSent) { %><div class="alert alert-success mb-0">Relatorio assinado enviado por e-mail com sucesso.</div><% } %>
+  <% if (saved) { %><div class="alert alert-success mb-0"><%= t("rs.editor.chapterSaved") %></div><% } %>
+  <% if (editLocked) { %><div class="alert alert-warning mb-0"><%= t("rs.editor.editLocked") %></div><% } %>
+  <% if (revalidated) { %><div class="alert alert-success mb-0"><%- t("rs.editor.revalidated") %></div><% } %>
+  <% if (revalidateError === 'forbidden_admin') { %><div class="alert alert-warning mb-0"><%- t("rs.editor.revalidateAdminOnly") %></div><% } %>
+  <% if (revalidateError === 'invalid_state') { %><div class="alert alert-warning mb-0"><%- t("rs.editor.revalidateInvalidState") %></div><% } %>
+  <% if (signRequestUpdated) { %><div class="alert alert-success mb-0"><%= t("rs.editor.signerUpdated") %></div><% } %>
+  <% if (signRequestEditBlocked) { %><div class="alert alert-warning mb-0"><%= t("rs.editor.signRequestEditBlocked") %></div><% } %>
+  <% if (emailSent) { %><div class="alert alert-success mb-0"><%= t("rs.editor.signedReportEmailSent") %></div><% } %>
   <% if (emailError) { %><div class="alert alert-danger mb-0"><%= emailError %></div><% } %>
   <% if (translated) { %>
     <div class="alert alert-success mb-0">
-      Relatorio traduzido com sucesso para
-      <strong><%= (reportLanguages && reportLanguages[translatedTo] && reportLanguages[translatedTo].label) || ((reportLanguages && reportLanguages[reportLanguage] && reportLanguages[reportLanguage].label) || "Idioma selecionado") %></strong>.
+      <%= t("rs.editor.translatedSuccess") %>
+      <strong><%= (reportLanguages && reportLanguages[translatedTo] && reportLanguages[translatedTo].label) || ((reportLanguages && reportLanguages[reportLanguage] && reportLanguages[reportLanguage].label) || t("rs.editor.selectedLanguage")) %></strong>.
     </div>
   <% } %>
   <% if (translationError) { %><div class="alert alert-danger mb-0"><%= translationError %></div><% } %>
-  <% if (signLocked) { %><div class="alert alert-warning mb-0">Assinatura do relatorio liberada apenas para OS com status <strong>valid</strong>.</div><% } %>
-  <% if (validationSuccess) { %><div class="alert alert-success mb-0">OS validada com sucesso. Status atualizado para <strong>valid</strong>.</div><% } %>
+  <% if (signLocked) { %><div class="alert alert-warning mb-0"><%- t("rs.editor.signLocked") %></div><% } %>
+  <% if (validationSuccess) { %><div class="alert alert-success mb-0"><%- t("rs.editor.validationSuccess") %></div><% } %>
   <% if (validationError && osValidation && !osValidation.valid) { %>
     <div class="alert alert-danger mb-0">
-      <div class="fw-semibold mb-1">Nao foi possivel validar a OS. Pendencias:</div>
+      <div class="fw-semibold mb-1"><%= t("rs.editor.validationFailedTitle") %></div>
       <ul class="mb-0">
         <% (osValidation.missing || []).forEach((item) => { %>
           <li><%= item %></li>
@@ -153,8 +153,8 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Tabela de apoio de tags do relatório</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          <h5 class="modal-title"><%= t("rs.editor.tagsModalTitle") %></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<%= t('rs.cancel') %>"></button>
         </div>
         <div class="modal-body">
           <div class="table-responsive">
@@ -162,9 +162,9 @@
               <thead>
                 <tr>
                   <th style="white-space:nowrap;">Tag</th>
-                  <th>Descrição</th>
-                  <th>IDs/Valores registrados</th>
-                  <th>Exemplo</th>
+                  <th><%= t("rs.editor.tagsDescription") %></th>
+                  <th><%= t("rs.editor.tagsRegisteredValues") %></th>
+                  <th><%= t("rs.editor.tagsExample") %></th>
                 </tr>
               </thead>
               <tbody>
@@ -1034,6 +1034,17 @@
                 <div class="col-12 col-md-6">
                   <label class="form-label mb-1 small">Observações</label>
                   <input class="form-control form-control-sm" name="notes" placeholder="Opcional" />
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input type="hidden" name="notify_technicians" value="0" />
+                    <input class="form-check-input" type="checkbox" id="notifyTechnicians" name="notify_technicians" value="1" checked />
+                    <label class="form-check-label small" for="notifyTechnicians">Notificar técnicos vinculados à OS</label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label mb-1 small">E-mails adicionais para notificação</label>
+                  <input class="form-control form-control-sm" name="notification_emails" type="text" placeholder="email1@empresa.com; email2@empresa.com" />
                 </div>
                 <div class="col-12">
                   <button class="btn btn-primary btn-sm" type="submit">Gerar link de assinatura</button>

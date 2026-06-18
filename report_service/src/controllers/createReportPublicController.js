@@ -628,6 +628,69 @@ ${autoPrint ? `
         userAgent
       });
 
+      // Notify all OS technicians that the report was signed (best-effort: never
+      // blocks the signature flow if the e-mail fails).
+      try {
+        const emailSettings = await getReportServiceEmailSettings();
+        if (emailSettings.smtp && emailSettings.smtp.host && emailSettings.smtp.from && signRequest.order_id) {
+          const technicians = await repo.listTechniciansByOrder(signRequest.order_id);
+          const technicianList = Array.isArray(technicians) ? technicians : [];
+          const seen = new Set();
+          const technicianEmails = technicianList
+            .map((tec) => String(tec.email || "").trim())
+            .filter((email) => isValidEmailAddress(email))
+            .filter((email) => {
+              const lower = email.toLowerCase();
+              if (seen.has(lower)) return false;
+              seen.add(lower);
+              return true;
+            });
+          if (technicianEmails.length) {
+            const transporter = nodemailer.createTransport({
+              host: emailSettings.smtp.host,
+              port: emailSettings.smtp.port,
+              secure: emailSettings.smtp.secure,
+              auth: emailSettings.smtp.user
+                ? { user: emailSettings.smtp.user, pass: emailSettings.smtp.pass }
+                : undefined
+            });
+            const signedLink = `${resolveRequestBaseUrl(req)}/r/signed/${encodeURIComponent(token)}`;
+            const technicianNames = technicianList
+              .map((tec) => String(tec.name || "").trim())
+              .filter(Boolean)
+              .join(", ");
+            const signedTemplate = getTemplateByPurpose(
+              emailSettings.emailTemplates,
+              emailSettings.defaultTemplateId,
+              "relatorio_assinado"
+            );
+            const signedVars = {
+              ...buildSignedReportTemplateVariables(signRequest, signedLink),
+              signatario: signerName,
+              tecnicos: technicianNames
+            };
+            const orderLabel = signRequest.service_order_code || signRequest.order_title || `OS-${signRequest.order_id || ""}`;
+            const subject = sanitizeSubjectHeaderValue(
+              signedTemplate && signedTemplate.subject
+                ? renderEmailPlaceholder(signedTemplate.subject, signedVars)
+                : `Relatorio assinado - ${signRequest.report_number || orderLabel}`
+            );
+            const htmlBody = signedTemplate && signedTemplate.html
+              ? `<!doctype html><html><body>${renderEmailPlaceholder(signedTemplate.html, signedVars)}</body></html>`
+              : `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;"><p style="margin:0 0 12px 0;">O relatorio foi assinado pelo cliente responsavel.</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${escapeHtml(orderLabel)}</p><p style="margin:0 0 8px 0;"><strong>Relatorio:</strong> ${escapeHtml(signRequest.report_number || "-")}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${escapeHtml(signRequest.customer_name || "-")}</p><p style="margin:0 0 8px 0;"><strong>Assinado por:</strong> ${escapeHtml(signerName || "-")}</p><p style="margin:16px 0;"><a href="${escapeHtml(signedLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#14532d;color:#fff;text-decoration:none;font-weight:600;">Abrir relatorio assinado</a></p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo modulo Service Report.</p></body></html>`;
+            await transporter.sendMail({
+              from: emailSettings.smtp.from,
+              to: technicianEmails,
+              subject,
+              html: htmlBody
+            });
+          }
+        }
+      } catch (_notifyErr) {
+        // eslint-disable-next-line no-console
+        console.error("[report-service] Assinatura registrada, mas houve falha ao notificar os tecnicos da OS.", _notifyErr);
+      }
+
       generateAndSavePdfForReport(signRequest.service_report_id).catch((err) => {
         // eslint-disable-next-line no-console
         console.error("[report-service] Erro ao gerar PDF automatico apos assinatura:", err.message);

@@ -27,8 +27,8 @@
         <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
         <% if (order.opening_date) { %><span class="badge text-bg-light border">Abertura: <%= formatDateShort(order.opening_date) %></span><% } %>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor"><%= t("rs.nav.editReport") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
         <a class="btn btn-outline-primary btn-sm" href="/admin/report-service/orders/<%= order.id %>/alber">
           Leituras Alber<% if ((alberLeituras || []).length) { %> (<%= alberLeituras.length %>)<% } %>
         </a>

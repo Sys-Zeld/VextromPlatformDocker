@@ -183,12 +183,22 @@ async function getHoursByTechnician(filters) {
   const result = await db.query(
     `
       SELECT
-        COALESCE(NULLIF(TRIM(t.technician_name), ''), '(sem tecnico)') AS technician_name,
-        COALESCE(SUM(${workedHoursSql("t")}), 0)::numeric(12,2) AS total_hours
-      FROM service_report_timesheet_entries t
-      INNER JOIN service_report_orders o ON o.id = t.service_order_id
+        gt.id AS technician_id,
+        COALESCE(NULLIF(TRIM(gt.name), ''), '(sem tecnico)') AS technician_name,
+        COALESCE(SUM(ts.total_hours), 0)::numeric(12,2) AS total_hours
+      FROM service_report_order_technicians ot
+      INNER JOIN service_report_global_technicians gt ON gt.id = ot.technician_id
+      INNER JOIN service_report_orders o ON o.id = ot.order_id
+      LEFT JOIN (
+        SELECT
+          t.service_order_id,
+          SUM(${workedHoursSql("t")}) AS total_hours
+        FROM service_report_timesheet_entries t
+        GROUP BY t.service_order_id
+      ) ts ON ts.service_order_id = o.id
       WHERE ${orderFilterSql("o")}
-      GROUP BY COALESCE(NULLIF(TRIM(t.technician_name), ''), '(sem tecnico)')
+      GROUP BY gt.id, COALESCE(NULLIF(TRIM(gt.name), ''), '(sem tecnico)')
+      HAVING COALESCE(SUM(ts.total_hours), 0) > 0
       ORDER BY total_hours DESC, technician_name ASC
       LIMIT 50
     `,
@@ -201,18 +211,18 @@ async function getTopSpareParts(filters) {
   const result = await db.query(
     `
       SELECT
-        sp.id,
-        sp.part_number,
-        sp.description,
+        MIN(es.id) AS id,
+        COALESCE(NULLIF(TRIM(es.part_number), ''), '-') AS part_number,
+        COALESCE(NULLIF(TRIM(es.description), ''), '(sem descricao)') AS description,
         COALESCE(SUM(es.quantity), 0)::int AS qty_used
-      FROM service_report_spare_parts sp
-      INNER JOIN service_report_equipment_spare_parts es ON es.spare_part_id = sp.id
-      INNER JOIN service_report_equipments e ON e.id = es.equipment_id
-      INNER JOIN service_report_order_equipments oe ON oe.equipment_id = e.id
+      FROM service_report_equipment_spares es
+      INNER JOIN service_report_order_equipments oe ON oe.equipment_id = es.equipment_id
       INNER JOIN service_report_orders o ON o.id = oe.service_order_id
       WHERE ${orderFilterSql("o")}
-      GROUP BY sp.id, sp.part_number, sp.description
-      ORDER BY qty_used DESC, sp.description ASC
+      GROUP BY
+        COALESCE(NULLIF(TRIM(es.part_number), ''), '-'),
+        COALESCE(NULLIF(TRIM(es.description), ''), '(sem descricao)')
+      ORDER BY qty_used DESC, description ASC
       LIMIT 50
     `,
     filterParams(filters)

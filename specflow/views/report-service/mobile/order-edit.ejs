@@ -393,6 +393,7 @@
       <% const fields = [
         ['OS', order.service_order_number || '-'],
         ['Título', order.title || '-'],
+        ['NR. Proposta', order.proposal_number || '-'],
         ['Cliente', order.customer_name || '-'],
         ['Site', order.site_name || '-'],
         ['Abertura', fmt(order.opening_date || order.created_at)],

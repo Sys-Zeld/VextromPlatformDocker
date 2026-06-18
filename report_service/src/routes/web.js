@@ -111,6 +111,10 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/send-signed-email", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.sendSignedReportByEmail));
   router.post("/orders/:id/send-os-email", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.sendOsCreatedEmail));
   router.get("/assets", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.listAssetsGlobal));
+  router.get("/assets/technicians/:techId/tools", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.technicianToolsPage));
+  router.post("/assets/technicians/:techId/tools", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createGlobalTool));
+  router.post("/assets/technicians/:techId/tools/:toolId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateGlobalTool));
+  router.post("/assets/technicians/:techId/tools/:toolId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteGlobalTool));
   router.post("/assets/technicians", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createGlobalTechnician));
   router.post("/assets/technicians/:techId/update", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateGlobalTechnician));
   router.post("/assets/technicians/:techId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteGlobalTechnician));

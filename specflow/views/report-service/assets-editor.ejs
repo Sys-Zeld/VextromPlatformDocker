@@ -22,9 +22,9 @@
       </div>
       <div class="token-hero-actions">
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.orders.pageTitle") %></a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/assets">Cadastro Global</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>"><%= t("rs.orders.btnEdit") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor"><%= t("rs.orders.btnOpenEditor") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/assets"><%= t("rs.orders.navGlobalRegistry") %></a>
       </div>
     </div>
   </div>
@@ -46,7 +46,7 @@
                 <option value=""><%= t("rs.assets.selectToLink") %></option>
                 <% allTechnicians.forEach((tech) => { %>
                   <% if (!linkedTechSet.has(tech.id)) { %>
-                    <option value="<%= tech.id %>"><%= tech.name %><% if (tech.role) { %> — <%= tech.role %><% } %><% if (tech.company) { %> (<%= tech.company %>)<% } %></option>
+                    <option value="<%= tech.id %>"><%= tech.name %><% if (tech.role) { %> &mdash; <%= tech.role %><% } %><% if (tech.company) { %> (<%= tech.company %>)<% } %></option>
                   <% } %>
                 <% }) %>
               </select>
@@ -74,7 +74,7 @@
                     </td>
                     <td><%= tech.role || "-" %></td>
                     <td><%= tech.company || "-" %></td>
-                    <td><%= tech.is_lead ? "Sim" : "-" %></td>
+                    <td><%= tech.is_lead ? t("rs.yes") : "-" %></td>
                     <td>
                       <form method="post" action="/admin/report-service/orders/<%= order.id %>/assets/technicians/<%= tech.id %>/unlink" class="m-0" onsubmit="return confirm('<%= t('rs.assets.confirmUnlinkTech') %>');">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
@@ -103,7 +103,7 @@
                 <option value=""><%= t("rs.assets.selectToLink") %></option>
                 <% allInstruments.forEach((instr) => { %>
                   <% if (!linkedInstrSet.has(instr.id)) { %>
-                    <option value="<%= instr.id %>"><%= instr.name %><% if (instr.model) { %> — <%= instr.model %><% } %><% if (instr.serial_number) { %> (<%= instr.serial_number %>)<% } %></option>
+                    <option value="<%= instr.id %>"><%= instr.name %><% if (instr.model) { %> &mdash; <%= instr.model %><% } %><% if (instr.serial_number) { %> (<%= instr.serial_number %>)<% } %></option>
                   <% } %>
                 <% }) %>
               </select>
@@ -116,11 +116,11 @@
           <div class="table-responsive">
             <table class="table table-sm app-table mb-0">
               <thead>
-                <tr><th><%= t("rs.name") %></th><th><%= t("rs.assets.colModel") %></th><th><%= t("rs.assets.colSerial") %></th><th><%= t("rs.assets.colResponsible") %></th><th><%= t("rs.assets.colLastCalibration") %></th><th><%= t("rs.assets.colCalibration") %></th><th></th></tr>
+                <tr><th><%= t("rs.name") %></th><th><%= t("rs.assets.colModel") %></th><th><%= t("rs.assets.colSerial") %></th><th><%= t("rs.assets.colCertificate") %></th><th><%= t("rs.assets.colResponsible") %></th><th><%= t("rs.assets.colLastCalibration") %></th><th><%= t("rs.assets.colCalibration") %></th><th></th></tr>
               </thead>
               <tbody>
                 <% if (!linkedInstrs.length) { %>
-                  <tr><td colspan="7" class="text-center text-muted py-3"><%= t("rs.assets.noInstrumentLinked") %></td></tr>
+                  <tr><td colspan="8" class="text-center text-muted py-3"><%= t("rs.assets.noInstrumentLinked") %></td></tr>
                 <% } %>
                 <% linkedInstrs.forEach((instr) => { %>
                   <tr>
@@ -130,6 +130,10 @@
                     </td>
                     <td><%= instr.model || "-" %></td>
                     <td><%= instr.serial_number || "-" %></td>
+                    <td>
+                      <%= instr.certificate_number || "-" %>
+                      <% if (instr.certificate_link) { %><br /><a href="<%= instr.certificate_link %>" target="_blank" rel="noopener"><small><%= t("rs.assets.openCertificate") %></small></a><% } %>
+                    </td>
                     <td><%= instr.responsible_technician_name || "-" %></td>
                     <td><%= formatDateOnly(instr.last_calibration_date) %></td>
                     <td><%= formatDateOnly(instr.calibration_due_date) %></td>

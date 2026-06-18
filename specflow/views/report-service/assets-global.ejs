@@ -1,6 +1,7 @@
 <%- include("../partials/head", { pageTitle }) %>
 <link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
 <%
+  const tr = t;
   function formatDateOnly(value) {
     if (!value) return "-";
     const raw = String(value).trim();
@@ -15,17 +16,17 @@
     <div class="card-body token-hero-body">
       <div class="token-hero-copy">
         <span class="token-hero-eyebrow">SERVICE REPORT</span>
-        <h1 class="h4 app-card-title mb-1">Equipe Tecnica e Instrumentos</h1>
-        <p class="text-muted mb-0">Cadastro global — vincule aos relatorios via Editar OS</p>
+        <h1 class="h4 app-card-title mb-1"><%= t("rs.assets.globalPageTitle") %></h1>
+        <p class="text-muted mb-0"><%= t("rs.assets.globalPageSubtitle") %></p>
       </div>
       <div class="token-hero-actions">
         <a class="btn btn-outline-secondary btn-sm" href="/admin/hub">Service Hub</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders">Ordens</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.nav.orders") %></a>
       </div>
     </div>
   </div>
 
-  <% if (saved) { %><div class="alert alert-success mb-0">Dados salvos com sucesso.</div><% } %>
+  <% if (saved) { %><div class="alert alert-success mb-0"><%= t("rs.assets.savedSuccess") %></div><% } %>
 
   <div class="row g-3 mt-0">
 
@@ -33,67 +34,67 @@
     <div class="col-12 col-xl-6">
       <div class="card app-card">
         <div class="card-body">
-          <h2 class="h6 app-card-title mb-3">Equipe Tecnica</h2>
+          <h2 class="h6 app-card-title mb-3"><%= t("rs.assets.techTeamTitle") %></h2>
 
           <form method="post" action="/admin/report-service/assets/technicians" class="row g-2 mb-4" id="technician-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="name" placeholder="Nome *" required id="techName" />
+              <input type="text" class="form-control form-control-sm" name="name" placeholder="<%= t('rs.assets.namePh') %>" required id="techName" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="role" placeholder="Funcao / Cargo" id="techRole" />
+              <input type="text" class="form-control form-control-sm" name="role" placeholder="<%= t('rs.assets.rolePh') %>" id="techRole" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="company" placeholder="Empresa" id="techCompany" />
+              <input type="text" class="form-control form-control-sm" name="company" placeholder="<%= t('rs.assets.companyPh') %>" id="techCompany" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="email" placeholder="E-mail" id="techEmail" />
+              <input type="text" class="form-control form-control-sm" name="email" placeholder="<%= t('rs.assets.emailPh') %>" id="techEmail" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="phone" placeholder="Telefone" id="techPhone" />
+              <input type="text" class="form-control form-control-sm" name="phone" placeholder="<%= t('rs.assets.phonePh') %>" id="techPhone" />
             </div>
             <div class="col-12 col-sm-6 d-flex align-items-center">
               <div class="form-check mb-0">
                 <input class="form-check-input" type="checkbox" name="is_lead" id="techIsLead" />
-                <label class="form-check-label small" for="techIsLead">Lider de equipe</label>
+                <label class="form-check-label small" for="techIsLead"><%= t("rs.assets.leadLabel") %></label>
               </div>
             </div>
             <div class="col-12 d-flex gap-2">
-              <button class="btn btn-primary btn-sm" type="submit" id="techSubmitBtn">Adicionar</button>
-              <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="techCancelBtn">Cancelar</button>
+              <button class="btn btn-primary btn-sm" type="submit" id="techSubmitBtn"><%= t("rs.add") %></button>
+              <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="techCancelBtn"><%= t("rs.cancel") %></button>
             </div>
           </form>
 
           <div class="table-responsive">
             <table class="table table-sm app-table mb-0">
               <thead>
-                <tr><th>Nome</th><th>Funcao</th><th>Empresa</th><th>Lider</th><th>Acoes</th></tr>
+                <tr><th><%= t("rs.name") %></th><th><%= t("rs.assets.colRole") %></th><th><%= t("rs.assets.colCompany") %></th><th><%= t("rs.assets.colLeader") %></th><th><%= t("rs.actions") %></th></tr>
               </thead>
               <tbody>
                 <% if (!technicians.length) { %>
-                  <tr><td colspan="5" class="text-center text-muted py-3">Nenhum tecnico cadastrado.</td></tr>
+                  <tr><td colspan="5" class="text-center text-muted py-3"><%= t("rs.assets.noTechnicianRegistered") %></td></tr>
                 <% } %>
                 <% technicians.forEach((t) => { %>
                   <tr>
                     <td>
-                      <%= t.name %>
+                      <a href="/admin/report-service/assets/technicians/<%= t.id %>/tools"><%= t.name %></a>
                       <% if (t.email) { %><br /><small class="text-muted"><%= t.email %></small><% } %>
                       <% if (t.phone) { %><br /><small class="text-muted"><%= t.phone %></small><% } %>
                     </td>
                     <td><%= t.role || "-" %></td>
                     <td><%= t.company || "-" %></td>
-                    <td><%= t.is_lead ? "Sim" : "-" %></td>
+                    <td><%= t.is_lead ? tr("rs.yes") : "-" %></td>
                     <td>
                       <div class="d-flex gap-1">
                         <button class="btn btn-outline-primary btn-sm" type="button" data-tech-edit
                           data-id="<%= t.id %>" data-name="<%= t.name %>"
                           data-role="<%= t.role || '' %>" data-company="<%= t.company || '' %>"
                           data-email="<%= t.email || '' %>" data-phone="<%= t.phone || '' %>"
-                          data-is-lead="<%= t.is_lead ? 'true' : 'false' %>">Editar</button>
-                        <form method="post" action="/admin/report-service/assets/technicians/<%= t.id %>/delete" class="m-0" onsubmit="return confirm('Excluir tecnico?');">
+                          data-is-lead="<%= t.is_lead ? 'true' : 'false' %>"><%= tr("rs.edit") %></button>
+                        <form method="post" action="/admin/report-service/assets/technicians/<%= t.id %>/delete" class="m-0" onsubmit="return confirm('<%= tr('rs.assets.confirmDeleteTechnician') %>');">
                           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                          <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                          <button class="btn btn-outline-danger btn-sm" type="submit"><%= tr("rs.delete") %></button>
                         </form>
                       </div>
                     </td>
@@ -110,53 +111,59 @@
     <div class="col-12 col-xl-6">
       <div class="card app-card">
         <div class="card-body">
-          <h2 class="h6 app-card-title mb-3">Instrumentos</h2>
+          <h2 class="h6 app-card-title mb-3"><%= t("rs.assets.instrumentsTitle") %></h2>
 
           <form method="post" action="/admin/report-service/assets/instruments" class="row g-2 mb-4" id="instrument-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="name" placeholder="Nome do instrumento *" required id="instrName" />
+              <input type="text" class="form-control form-control-sm" name="name" placeholder="<%= t('rs.assets.instrumentNamePh') %>" required id="instrName" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="model" placeholder="Modelo" id="instrModel" />
+              <input type="text" class="form-control form-control-sm" name="model" placeholder="<%= t('rs.assets.instrumentModelPh') %>" id="instrModel" />
             </div>
             <div class="col-12 col-sm-6">
-              <input type="text" class="form-control form-control-sm" name="serial_number" placeholder="Numero de serie" id="instrSerial" />
+              <input type="text" class="form-control form-control-sm" name="serial_number" placeholder="<%= t('rs.assets.instrumentSerialPh') %>" id="instrSerial" />
+            </div>
+            <div class="col-12 col-sm-6">
+              <input type="text" class="form-control form-control-sm" name="certificate_number" placeholder="<%= t('rs.assets.certificateNumberPh') %>" id="instrCertificateNumber" />
+            </div>
+            <div class="col-12 col-sm-6">
+              <input type="url" class="form-control form-control-sm" name="certificate_link" placeholder="<%= t('rs.assets.certificateLinkPh') %>" id="instrCertificateLink" />
             </div>
             <div class="col-12 col-sm-6">
               <select class="form-select form-select-sm" name="responsible_technician_id" id="instrResponsibleTech">
-                <option value="">Resp. por Instrumento</option>
+                <option value=""><%= t("rs.assets.responsibleInstrumentPh") %></option>
                 <% technicians.forEach((tech) => { %>
                   <option value="<%= tech.id %>"><%= tech.name %><% if (tech.role) { %> - <%= tech.role %><% } %></option>
                 <% }) %>
               </select>
             </div>
             <div class="col-12 col-sm-6">
-              <label class="form-label small mb-0 text-muted">Data ultima calibracao</label>
+              <label class="form-label small mb-0 text-muted"><%= t("rs.assets.lastCalibrationLabel") %></label>
               <input type="date" class="form-control form-control-sm" name="last_calibration_date" id="instrLastCalDate" />
             </div>
             <div class="col-12 col-sm-6">
-              <label class="form-label small mb-0 text-muted">Validade calibracao</label>
+              <label class="form-label small mb-0 text-muted"><%= t("rs.assets.calibrationDueLabel") %></label>
               <input type="date" class="form-control form-control-sm" name="calibration_due_date" id="instrCalDate" />
             </div>
             <div class="col-12">
-              <input type="text" class="form-control form-control-sm" name="notes" placeholder="Observacoes" id="instrNotes" />
+              <input type="text" class="form-control form-control-sm" name="notes" placeholder="<%= t('rs.assets.notesPh') %>" id="instrNotes" />
             </div>
             <div class="col-12 d-flex gap-2">
-              <button class="btn btn-primary btn-sm" type="submit" id="instrSubmitBtn">Adicionar</button>
-              <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="instrCancelBtn">Cancelar</button>
+              <button class="btn btn-primary btn-sm" type="submit" id="instrSubmitBtn"><%= t("rs.add") %></button>
+              <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="instrCancelBtn"><%= t("rs.cancel") %></button>
             </div>
           </form>
 
           <div class="table-responsive">
             <table class="table table-sm app-table mb-0">
               <thead>
-                <tr><th>Nome</th><th>Modelo</th><th>Serie</th><th>Responsavel</th><th>Ult. Calibracao</th><th>Val. Calibracao</th><th>Acoes</th></tr>
+                <tr><th><%= t("rs.name") %></th><th><%= t("rs.assets.colModel") %></th><th><%= t("rs.assets.colSerial") %></th><th><%= t("rs.assets.colCertificate") %></th><th><%= t("rs.assets.colResponsible") %></th><th><%= t("rs.assets.colLastCalibration") %></th><th><%= t("rs.assets.colCalibration") %></th><th><%= t("rs.actions") %></th></tr>
               </thead>
               <tbody>
                 <% if (!instruments.length) { %>
-                  <tr><td colspan="7" class="text-center text-muted py-3">Nenhum instrumento cadastrado.</td></tr>
+                  <tr><td colspan="8" class="text-center text-muted py-3"><%= t("rs.assets.noInstrumentRegistered") %></td></tr>
                 <% } %>
                 <% instruments.forEach((instr) => { %>
                   <tr>
@@ -166,6 +173,10 @@
                     </td>
                     <td><%= instr.model || "-" %></td>
                     <td><%= instr.serial_number || "-" %></td>
+                    <td>
+                      <%= instr.certificate_number || "-" %>
+                      <% if (instr.certificate_link) { %><br /><a href="<%= instr.certificate_link %>" target="_blank" rel="noopener"><small><%= t("rs.assets.openCertificate") %></small></a><% } %>
+                    </td>
                     <td><%= instr.responsible_technician_name || "-" %></td>
                     <td><%= formatDateOnly(instr.last_calibration_date) %></td>
                     <td><%= formatDateOnly(instr.calibration_due_date) %></td>
@@ -174,13 +185,15 @@
                         <button class="btn btn-outline-primary btn-sm" type="button" data-instr-edit
                           data-id="<%= instr.id %>" data-name="<%= instr.name %>"
                           data-model="<%= instr.model || '' %>" data-serial="<%= instr.serial_number || '' %>"
+                          data-certificate-number="<%= instr.certificate_number || '' %>"
+                          data-certificate-link="<%= instr.certificate_link || '' %>"
                           data-responsible-tech-id="<%= instr.responsible_technician_id || '' %>"
                           data-last-cal-date="<%= instr.last_calibration_date ? String(instr.last_calibration_date).slice(0,10) : '' %>"
                           data-cal-date="<%= instr.calibration_due_date ? String(instr.calibration_due_date).slice(0,10) : '' %>"
-                          data-notes="<%= instr.notes || '' %>">Editar</button>
-                        <form method="post" action="/admin/report-service/assets/instruments/<%= instr.id %>/delete" class="m-0" onsubmit="return confirm('Excluir instrumento?');">
+                          data-notes="<%= instr.notes || '' %>"><%= t("rs.edit") %></button>
+                        <form method="post" action="/admin/report-service/assets/instruments/<%= instr.id %>/delete" class="m-0" onsubmit="return confirm('<%= t('rs.assets.confirmDeleteInstrument') %>');">
                           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                          <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                          <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("rs.delete") %></button>
                         </form>
                       </div>
                     </td>
@@ -200,6 +213,10 @@
 
 <script>
 (function () {
+  var i18n = {
+    add: <%- JSON.stringify(t("rs.add")) %>,
+    save: <%- JSON.stringify(t("rs.save")) %>
+  };
   var techForm = document.getElementById("technician-form");
   var techSubmitBtn = document.getElementById("techSubmitBtn");
   var techCancelBtn = document.getElementById("techCancelBtn");
@@ -207,7 +224,7 @@
   function resetTechForm() {
     techForm.action = "/admin/report-service/assets/technicians";
     techForm.reset();
-    techSubmitBtn.textContent = "Adicionar";
+    techSubmitBtn.textContent = i18n.add;
     techCancelBtn.classList.add("d-none");
   }
 
@@ -221,7 +238,7 @@
       document.getElementById("techPhone").value = d.phone || "";
       document.getElementById("techIsLead").checked = d.isLead === "true";
       techForm.action = "/admin/report-service/assets/technicians/" + d.id + "/update";
-      techSubmitBtn.textContent = "Salvar";
+      techSubmitBtn.textContent = i18n.save;
       techCancelBtn.classList.remove("d-none");
       techForm.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -236,7 +253,7 @@
   function resetInstrForm() {
     instrForm.action = "/admin/report-service/assets/instruments";
     instrForm.reset();
-    instrSubmitBtn.textContent = "Adicionar";
+    instrSubmitBtn.textContent = i18n.add;
     instrCancelBtn.classList.add("d-none");
   }
 
@@ -246,12 +263,14 @@
       document.getElementById("instrName").value = d.name || "";
       document.getElementById("instrModel").value = d.model || "";
       document.getElementById("instrSerial").value = d.serial || "";
+      document.getElementById("instrCertificateNumber").value = d.certificateNumber || "";
+      document.getElementById("instrCertificateLink").value = d.certificateLink || "";
       document.getElementById("instrResponsibleTech").value = d.responsibleTechId || "";
       document.getElementById("instrLastCalDate").value = d.lastCalDate || "";
       document.getElementById("instrCalDate").value = d.calDate || "";
       document.getElementById("instrNotes").value = d.notes || "";
       instrForm.action = "/admin/report-service/assets/instruments/" + d.id + "/update";
-      instrSubmitBtn.textContent = "Salvar";
+      instrSubmitBtn.textContent = i18n.save;
       instrCancelBtn.classList.remove("d-none");
       instrForm.scrollIntoView({ behavior: "smooth", block: "start" });
     });

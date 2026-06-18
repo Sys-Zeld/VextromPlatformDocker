@@ -1,0 +1,278 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
+<style>
+  @import url("https://cdn.jsdelivr.net/npm/gridjs/dist/theme/mermaid.min.css");
+</style>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow"><%= t("rs.tools.eyebrow") %></span>
+        <h1 class="h4 app-card-title mb-1"><%= technician.name %></h1>
+        <p class="text-muted mb-0"><%= technician.role || "-" %><% if (technician.company) { %> - <%= technician.company %><% } %></p>
+      </div>
+      <div class="token-hero-actions">
+        <button class="btn btn-primary btn-sm" type="button" id="printToolsBtn"><%= t("rs.tools.printList") %></button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="exportToolsXlsxBtn"><%= t("rs.tools.exportXlsx") %></button>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/assets"><%= t("rs.assets.globalPageTitle") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.nav.orders") %></a>
+      </div>
+    </div>
+  </div>
+
+  <% if (saved) { %><div class="alert alert-success mb-0"><%= t("rs.assets.savedSuccess") %></div><% } %>
+
+  <div class="card app-card">
+    <div class="card-body">
+      <h2 class="h6 app-card-title mb-3"><%= t("rs.tools.formTitle") %></h2>
+
+      <form method="post" action="/admin/report-service/assets/technicians/<%= technician.id %>/tools" class="row g-2 mb-4" id="tool-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <div class="col-6 col-md-1">
+          <input type="number" class="form-control form-control-sm" name="quantity" placeholder="<%= t('rs.tools.quantityPh') %>" required min="1" step="1" id="toolQuantity" value="1" />
+        </div>
+        <div class="col-12 col-md-3">
+          <input type="text" class="form-control form-control-sm" name="description" placeholder="<%= t('rs.tools.descriptionPh') %>" id="toolDescription" maxlength="500" />
+        </div>
+        <div class="col-12 col-md-2">
+          <input type="text" class="form-control form-control-sm" name="serial_number" placeholder="<%= t('rs.tools.serialPh') %>" id="toolSerial" maxlength="160" />
+        </div>
+        <div class="col-12 col-md-3">
+          <input type="text" class="form-control form-control-sm" name="notes" placeholder="<%= t('rs.tools.notesPh') %>" id="toolNotes" maxlength="500" />
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary btn-sm" type="submit" id="toolSubmitBtn"><%= t("rs.add") %></button>
+          <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="toolCancelBtn"><%= t("rs.cancel") %></button>
+        </div>
+      </form>
+
+      <div id="toolsGrid"></div>
+    </div>
+  </div>
+</section>
+
+<%- include("../partials/footer") %>
+
+<script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function () {
+  var csrfToken = <%- JSON.stringify(csrfToken || "") %>;
+  var technicianId = <%- JSON.stringify(technician.id) %>;
+  var technicianName = <%- JSON.stringify(technician.name || "") %>;
+  var tools = <%- JSON.stringify(tools || []).replace(/</g, "\\u003c") %>;
+  var toolForm = document.getElementById("tool-form");
+  var toolSubmitBtn = document.getElementById("toolSubmitBtn");
+  var toolCancelBtn = document.getElementById("toolCancelBtn");
+  var toolsGrid = document.getElementById("toolsGrid");
+  var printBtn = document.getElementById("printToolsBtn");
+  var exportBtn = document.getElementById("exportToolsXlsxBtn");
+  var i18n = {
+    add: <%- JSON.stringify(t("rs.add")) %>,
+    save: <%- JSON.stringify(t("rs.save")) %>,
+    edit: <%- JSON.stringify(t("rs.edit")) %>,
+    delete: <%- JSON.stringify(t("rs.delete")) %>,
+    confirmDelete: <%- JSON.stringify(t("rs.tools.confirmDelete")) %>,
+    xlsxLoadError: <%- JSON.stringify(t("rs.tools.xlsxLoadError")) %>,
+    headers: <%- JSON.stringify(t("rs.tools.headers").split("|")) %>,
+    sheetName: <%- JSON.stringify(t("rs.tools.sheetName")) %>,
+    printTitle: <%- JSON.stringify(t("rs.tools.printTitle", { technician: "__TECH__" })) %>,
+    printHeading: <%- JSON.stringify(t("rs.tools.printHeading")) %>,
+    technicianLabel: <%- JSON.stringify(t("rs.tools.technicianLabel")) %>,
+    generatedAt: <%- JSON.stringify(t("rs.tools.generatedAt")) %>,
+    filterLabel: <%- JSON.stringify(t("rs.tools.filterLabel")) %>,
+    records: <%- JSON.stringify(t("rs.tools.records", { count: "__COUNT__" })) %>,
+    noToolsFound: <%- JSON.stringify(t("rs.tools.noToolsFound")) %>,
+    popupBlocked: <%- JSON.stringify(t("rs.tools.popupBlocked")) %>,
+    noTools: <%- JSON.stringify(t("rs.tools.noTools")) %>,
+    colActions: <%- JSON.stringify(t("rs.actions")) %>
+  };
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function resetToolForm() {
+    toolForm.action = "/admin/report-service/assets/technicians/" + encodeURIComponent(String(technicianId)) + "/tools";
+    toolForm.reset();
+    document.getElementById("toolQuantity").value = "1";
+    toolSubmitBtn.textContent = i18n.add;
+    toolCancelBtn.classList.add("d-none");
+  }
+
+  function openToolEdit(item) {
+    if (!item || !toolForm) return;
+    document.getElementById("toolQuantity").value = item.quantity || 1;
+    document.getElementById("toolDescription").value = item.description || "";
+    document.getElementById("toolSerial").value = item.serial_number || "";
+    document.getElementById("toolNotes").value = item.notes || "";
+    toolForm.action = "/admin/report-service/assets/technicians/" + encodeURIComponent(String(technicianId)) + "/tools/" + encodeURIComponent(String(item.id)) + "/update";
+    toolSubmitBtn.textContent = i18n.save;
+    toolCancelBtn.classList.remove("d-none");
+    toolForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function buildToolActions(item) {
+    var id = encodeURIComponent(String(item.id || ""));
+    return ""
+      + "<div class=\"d-flex gap-1 flex-wrap\">"
+      + "<button class=\"btn btn-outline-primary btn-sm\" type=\"button\" data-tool-edit=\"" + id + "\">" + escapeHtml(i18n.edit) + "</button>"
+      + "<form method=\"post\" action=\"/admin/report-service/assets/technicians/" + encodeURIComponent(String(technicianId)) + "/tools/" + id + "/delete\" class=\"m-0\" onsubmit=\"return confirm(" + JSON.stringify(i18n.confirmDelete) + ");\">"
+      + "<input type=\"hidden\" name=\"_csrf\" value=\"" + escapeHtml(csrfToken) + "\" />"
+      + "<button class=\"btn btn-outline-danger btn-sm\" type=\"submit\">" + escapeHtml(i18n.delete) + "</button>"
+      + "</form>"
+      + "</div>";
+  }
+
+  function getSearchTerm() {
+    var searchInput = toolsGrid ? toolsGrid.querySelector(".gridjs-search-input") : null;
+    return searchInput ? String(searchInput.value || "").trim() : "";
+  }
+
+  function getFilteredTools() {
+    var searchTerm = getSearchTerm().toLowerCase();
+    if (!searchTerm) return tools.slice();
+    return tools.filter(function(item) {
+      return [
+        item.item,
+        item.quantity,
+        item.description,
+        item.serial_number,
+        item.notes
+      ].some(function(value) {
+        return String(value || "").toLowerCase().indexOf(searchTerm) !== -1;
+      });
+    });
+  }
+
+  function toolRows(rows) {
+    return rows.map(function(item) {
+      return [
+        item.item || "",
+        item.quantity || 1,
+        item.description || "",
+        item.serial_number || "",
+        item.notes || ""
+      ];
+    });
+  }
+
+  function safeFilename(value) {
+    return String(value || "technician")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "technician";
+  }
+
+  function exportToolsXlsx() {
+    if (!window.XLSX) {
+      alert(i18n.xlsxLoadError);
+      return;
+    }
+    var headers = i18n.headers;
+    var rows = toolRows(getFilteredTools());
+    var ws = window.XLSX.utils.aoa_to_sheet([headers].concat(rows));
+    ws["!cols"] = [
+      { wch: 28 },
+      { wch: 8 },
+      { wch: 42 },
+      { wch: 22 },
+      { wch: 42 }
+    ];
+    var wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, i18n.sheetName);
+    window.XLSX.writeFile(wb, "ferramentas-" + safeFilename(technicianName) + ".xlsx");
+  }
+
+  function printTools() {
+    var rows = toolRows(getFilteredTools());
+    var headers = i18n.headers;
+    var now = new Date().toLocaleString("pt-BR");
+    var searchTerm = getSearchTerm();
+    var esc = escapeHtml;
+    var headerHtml = headers.map(function(label) { return "<th>" + esc(label) + "</th>"; }).join("");
+    var rowsHtml = rows.length
+      ? rows.map(function(row) {
+          return "<tr>" + row.map(function(value) { return "<td>" + esc(value || "-") + "</td>"; }).join("") + "</tr>";
+        }).join("")
+      : "<tr><td colspan=\"5\" style=\"text-align:center;color:#6b7280;padding:14px;\">" + esc(i18n.noToolsFound) + "</td></tr>";
+    var html = "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>" + esc(i18n.printTitle.replace("__TECH__", technicianName)) + "</title>"
+      + "<style>"
+      + "*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}"
+      + "body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#1f2937;padding:24px;}"
+      + ".banner{background:#1f4f46;color:#fff;border-radius:8px;padding:14px 20px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;}"
+      + ".banner h1{font-size:16px;margin-bottom:4px;}.sub{font-size:10px;opacity:.8;}.meta{font-size:10px;opacity:.75;text-align:right;white-space:nowrap;}"
+      + ".filter,.count{font-size:10px;color:#6b7280;margin-bottom:8px;}"
+      + "table{width:100%;border-collapse:collapse;}th{background:#f3f4f6;border:1px solid #d1d5db;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;}td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top;}"
+      + "@media print{body{padding:12px;}.banner{border-radius:0;}}"
+      + "</style></head><body>"
+      + "<div class=\"banner\"><div><div class=\"sub\">SERVICE REPORT</div><h1>" + esc(i18n.printHeading) + "</h1><div class=\"sub\">" + esc(i18n.technicianLabel) + ": " + esc(technicianName) + "</div></div><div class=\"meta\">" + esc(i18n.generatedAt) + ":<br/>" + esc(now) + "</div></div>"
+      + (searchTerm ? "<p class=\"filter\">" + esc(i18n.filterLabel) + ": <strong>" + esc(searchTerm) + "</strong></p>" : "")
+      + "<p class=\"count\">" + esc(i18n.records.replace("__COUNT__", String(rows.length))) + "</p>"
+      + "<table><thead><tr>" + headerHtml + "</tr></thead><tbody>" + rowsHtml + "</tbody></table>"
+      + "</body></html>";
+    var win = window.open("", "_blank");
+    if (!win) {
+      alert(i18n.popupBlocked);
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  if (toolsGrid && window.gridjs && window.gridjs.Grid) {
+    if (!tools.length) {
+      toolsGrid.innerHTML = "<div class=\"text-center text-muted py-3\">" + escapeHtml(i18n.noTools) + "</div>";
+    } else {
+      new window.gridjs.Grid({
+        columns: [
+          { id: "item", name: i18n.headers[0] },
+          { id: "quantity", name: i18n.headers[1] },
+          { id: "description", name: i18n.headers[2] },
+          { id: "serial_number", name: i18n.headers[3] },
+          { id: "notes", name: i18n.headers[4] },
+          { id: "actions", name: i18n.colActions, sort: false, formatter: function(cell) { return window.gridjs.html(cell); } }
+        ],
+        data: tools.map(function(item) {
+          return {
+            item: item.item || "-",
+            quantity: item.quantity || 1,
+            description: item.description || "-",
+            serial_number: item.serial_number || "-",
+            notes: item.notes || "-",
+            actions: buildToolActions(item)
+          };
+        }),
+        search: true,
+        sort: true,
+        pagination: { limit: 10, summary: false }
+      }).render(toolsGrid);
+    }
+  }
+
+  if (toolsGrid) {
+    toolsGrid.addEventListener("click", function(event) {
+      var editBtn = event.target && event.target.closest ? event.target.closest("[data-tool-edit]") : null;
+      if (!editBtn) return;
+      var id = Number(editBtn.getAttribute("data-tool-edit") || 0);
+      var item = (tools || []).find(function(row) { return Number(row.id) === id; });
+      openToolEdit(item);
+    });
+  }
+
+  if (toolCancelBtn) toolCancelBtn.addEventListener("click", resetToolForm);
+  if (exportBtn) exportBtn.addEventListener("click", exportToolsXlsx);
+  if (printBtn) printBtn.addEventListener("click", printTools);
+})();
+</script>

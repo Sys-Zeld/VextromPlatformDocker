@@ -35,6 +35,7 @@ const DEFAULTS = {
     serviceOrderCode: "SR-DEFAULT-2026-0001",
     year: 2026,
     title: "Ordem Padrao Report Service",
+    proposalNumber: "",
     description: MARKER,
     status: "draft",
     openingDate: "2026-01-01",
@@ -251,11 +252,12 @@ async function ensureOrder(customerId, siteId) {
           customer_id = $3,
           site_id = $4,
           title = $5,
-          description = $6,
-          status = $7,
-          opening_date = $8,
-          closing_date = $9,
-          updated_by = $10,
+          proposal_number = $6,
+          description = $7,
+          status = $8,
+          opening_date = $9,
+          closing_date = $10,
+          updated_by = $11,
           updated_at = NOW()
         WHERE id = $1
       `,
@@ -265,6 +267,7 @@ async function ensureOrder(customerId, siteId) {
         customerId,
         siteId,
         DEFAULTS.order.title,
+        DEFAULTS.order.proposalNumber,
         DEFAULTS.order.description,
         DEFAULTS.order.status,
         DEFAULTS.order.openingDate,
@@ -279,9 +282,9 @@ async function ensureOrder(customerId, siteId) {
     `
       INSERT INTO service_report_orders (
         service_order_code, year, customer_id, site_id, title, description, status,
-        opening_date, closing_date, created_by, updated_by, created_at, updated_at
+        proposal_number, opening_date, closing_date, created_by, updated_by, created_at, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
       RETURNING id
     `,
     [
@@ -292,6 +295,7 @@ async function ensureOrder(customerId, siteId) {
       DEFAULTS.order.title,
       DEFAULTS.order.description,
       DEFAULTS.order.status,
+      DEFAULTS.order.proposalNumber,
       DEFAULTS.order.openingDate,
       DEFAULTS.order.closingDate,
       DEFAULTS.order.createdBy,

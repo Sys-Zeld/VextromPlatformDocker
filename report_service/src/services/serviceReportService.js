@@ -93,6 +93,9 @@ function normalizeSignerType(value) {
 }
 
 async function createOrder(input = {}) {
+  const proposalNumber = Object.prototype.hasOwnProperty.call(input, "proposalNumber")
+    ? input.proposalNumber
+    : input.proposal_number;
   const customerId = repo.toInt(input.customerId);
   if (!customerId) {
     const err = new Error("OS requer cliente.");
@@ -120,6 +123,7 @@ async function createOrder(input = {}) {
     customerId,
     siteId: repo.toInt(input.siteId),
     title: sanitizeText(input.title) || `Ordem ${serviceOrderCode}`,
+    proposalNumber: sanitizeText(proposalNumber),
     description: sanitizeText(input.description),
     status: ensureStatus(input.status, ORDER_STATUSES, "draft"),
     openingDate: input.openingDate || null,
@@ -148,6 +152,8 @@ async function updateOrder(id, input = {}) {
     throw err;
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+  const hasProposalNumber = hasOwn(input, "proposalNumber") || hasOwn(input, "proposal_number");
+  const proposalNumber = hasOwn(input, "proposalNumber") ? input.proposalNumber : input.proposal_number;
   const customerId = repo.toInt(hasOwn(input, "customerId") ? input.customerId : existing.customer_id);
   const siteId = repo.toInt(hasOwn(input, "siteId") ? input.siteId : existing.site_id);
   if (!customerId) {
@@ -159,6 +165,7 @@ async function updateOrder(id, input = {}) {
     customerId,
     siteId,
     title: sanitizeText(input.title || existing.title),
+    proposalNumber: sanitizeText(hasProposalNumber ? proposalNumber : existing.proposal_number),
     description: sanitizeText(input.description || existing.description),
     status: ensureStatus(input.status || existing.status, ORDER_STATUSES, "draft"),
     openingDate: input.openingDate || existing.opening_date || null,

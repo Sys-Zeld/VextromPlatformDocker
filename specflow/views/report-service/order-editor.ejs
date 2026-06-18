@@ -73,19 +73,20 @@
         <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
       </div>
       <div class="token-hero-actions">
-        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
-        <% if (order.opening_date) { %><span class="badge text-bg-light border">Abertura: <%= formatDateShort(order.opening_date) %></span><% } %>
+        <span class="badge text-bg-secondary"><%= t("rs.badge.status") %>: <%= order.status || "draft" %></span>
+        <% if (order.opening_date) { %><span class="badge text-bg-light border"><%= t("rs.badge.opening") %>: <%= formatDateShort(order.opening_date) %></span><% } %>
+        <% if (order.proposal_number) { %><span class="badge text-bg-light border">NR. Proposta: <%= order.proposal_number %></span><% } %>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/hub">Service Hub</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders">Ordens</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics">Relatório/Dashboard</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/config">Config Report</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">Ensaio/Medições</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/assets">Equipe / Instrum. OS</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/assets">Cadastro Global</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener">Preview HTML</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders"><%= t("rs.nav.orders") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics"><%= t("rs.nav.dashboard") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/config"><%= t("rs.nav.config") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor"><%= t("rs.nav.editReport") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements"><%= t("rs.nav.measurements") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/assets"><%= t("rs.nav.orderAssets") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/assets"><%= t("rs.nav.globalRegistry") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
         <% if (String(order.status || "").toLowerCase() === "valid") { %>
-          <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report">Assinar Relatorio</a>
+          <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report"><%= t("rs.nav.signReport") %></a>
         <% } %>
         <% if (String(order.status || "").toLowerCase() === "approved" && isSystemAdmin) { %>
           <details class="d-inline-block">
@@ -106,21 +107,21 @@
     </div>
   </div>
 
-  <% if (saved) { %><div class="alert alert-success mb-0">Dados salvos com sucesso.</div><% } %>
+  <% if (saved) { %><div class="alert alert-success mb-0"><%= t("rs.assets.savedSuccess") %></div><% } %>
   <% if (osEmailSent) { %><div class="alert alert-success mb-0">E-mail da OS enviado com sucesso para os tecnicos.</div><% } %>
   <% if (osEmailError === 'no_recipients') { %><div class="alert alert-danger mb-0">Nenhum destinatario valido. Verifique se os tecnicos da OS possuem e-mail cadastrado.</div><% } %>
   <% if (osEmailError === 'invalid_cc') { %><div class="alert alert-danger mb-0">Existe e-mail invalido no campo CC.</div><% } %>
   <% if (osEmailError === 'smtp') { %><div class="alert alert-danger mb-0">Configuracao SMTP indisponivel. Configure o SMTP no modulo Manutencao Report Service.</div><% } %>
   <% if (osEmailError === 'send_failed') { %><div class="alert alert-danger mb-0">Falha ao enviar o e-mail da OS. Verifique a configuracao SMTP.</div><% } %>
-  <% if (editLocked) { %><div class="alert alert-warning mb-0">OS aprovada. Edicao bloqueada. Use <strong>Revalidar OS</strong> para liberar.</div><% } %>
-  <% if (revalidated) { %><div class="alert alert-success mb-0">OS revalidada com sucesso. Status atualizado para <strong>valid</strong>.</div><% } %>
-  <% if (revalidateError === 'forbidden_admin') { %><div class="alert alert-warning mb-0">Somente usuario com perfil <strong>admin</strong> pode revalidar OS.</div><% } %>
-  <% if (revalidateError === 'invalid_state') { %><div class="alert alert-warning mb-0">A OS precisa estar com status <strong>approved</strong> para revalidar.</div><% } %>
-  <% if (signLocked) { %><div class="alert alert-warning mb-0">Assinatura do relatorio liberada apenas para OS com status <strong>valid</strong>.</div><% } %>
-  <% if (validationSuccess) { %><div class="alert alert-success mb-0">OS validada com sucesso. Status atualizado para <strong>valid</strong>.</div><% } %>
+  <% if (editLocked) { %><div class="alert alert-warning mb-0"><%= t("rs.orders.editLocked") %></div><% } %>
+  <% if (revalidated) { %><div class="alert alert-success mb-0"><%- t("rs.editor.revalidated") %></div><% } %>
+  <% if (revalidateError === 'forbidden_admin') { %><div class="alert alert-warning mb-0"><%- t("rs.editor.revalidateAdminOnly") %></div><% } %>
+  <% if (revalidateError === 'invalid_state') { %><div class="alert alert-warning mb-0"><%- t("rs.editor.revalidateInvalidState") %></div><% } %>
+  <% if (signLocked) { %><div class="alert alert-warning mb-0"><%- t("rs.editor.signLocked") %></div><% } %>
+  <% if (validationSuccess) { %><div class="alert alert-success mb-0"><%- t("rs.editor.validationSuccess") %></div><% } %>
   <% if (validationError && osValidation && !osValidation.valid) { %>
     <div class="alert alert-danger mb-0">
-      <div class="fw-semibold mb-1">Nao foi possivel validar a OS. Pendencias:</div>
+      <div class="fw-semibold mb-1"><%= t("rs.editor.validationFailedTitle") %></div>
       <ul class="mb-0">
         <% (osValidation.missing || []).forEach((item) => { %>
           <li><%= item %></li>

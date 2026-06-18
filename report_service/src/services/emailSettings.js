@@ -27,7 +27,7 @@ function parsePortSetting(value, fallback = 587) {
   return parsed;
 }
 
-const VALID_PURPOSES = ["general", "nova_os", "relatorio_assinado", "envio_assinatura"];
+const VALID_PURPOSES = ["general", "nova_os", "relatorio_assinado", "envio_assinatura", "notificacao_envio_assinatura"];
 
 function normalizeTemplateRecord(input, index = 0) {
   const source = input && typeof input === "object" ? input : {};

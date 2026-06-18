@@ -38,9 +38,14 @@
   const dq     = dashboard.dataQuality || {};
 
   const statusLabels = {
-    draft: "Rascunho", valid: "Válida", in_progress: "Em Execução",
-    waiting_review: "Aguard. Revisão", approved: "Aprovada",
-    issued: "Emitida", closed: "Encerrada", cancelled: "Cancelada"
+    draft: t("rs.status.draft"),
+    valid: t("rs.status.valid"),
+    in_progress: t("rs.status.in_progress"),
+    waiting_review: t("rs.status.waiting_review"),
+    approved: t("rs.status.approved"),
+    issued: t("rs.status.issued"),
+    closed: t("rs.status.closed"),
+    cancelled: t("rs.status.cancelled")
   };
 
   const topHours = Math.max(Number(kpis.total_hours || 0), 1);
@@ -58,16 +63,16 @@
       </div>
       <div>
         <span class="dash-banner-eyebrow">Service Report</span>
-        <h1>Relatório / Dashboard</h1>
-        <p>Indicadores gerenciais e operacionais em tempo real.</p>
+        <h1><%= t("rs.analytics.title") %></h1>
+        <p><%= t("rs.analytics.subtitle") %></p>
       </div>
     </div>
     <div class="dash-banner-actions">
-      <a class="btn-ghost" href="/admin/report-service/orders">Ordens</a>
-      <a class="btn-ghost" href="/admin/report-service/customers">Clientes</a>
+      <a class="btn-ghost" href="/admin/report-service/orders"><%= t("rs.nav.orders") %></a>
+      <a class="btn-ghost" href="/admin/report-service/customers"><%= t("rs.orders.navCustomers") %></a>
       <a class="btn-ghost" href="/admin/report-service/spare-parts">Spare-Parts</a>
       <a class="btn-accent" href="/admin/report-service/analytics/export-pdf?<%= query %>">
-        ↓ Exportar PDF
+        &#8595; <%= t("rs.analytics.exportPdf") %>
       </a>
     </div>
   </div>
@@ -76,39 +81,39 @@
   <div class="dash-filter-card">
     <div class="dash-filter-title">
       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/></svg>
-      Filtros
+      <%= t("rs.analytics.filters") %>
     </div>
     <form method="get" action="/admin/report-service/analytics" class="row g-2 align-items-end">
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Data início</label>
+        <label class="form-label small mb-1"><%= t("rs.analytics.dateFrom") %></label>
         <input class="form-control form-control-sm" type="date" name="date_from" value="<%= filters.dateFrom || '' %>" />
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Data fim</label>
+        <label class="form-label small mb-1"><%= t("rs.analytics.dateTo") %></label>
         <input class="form-control form-control-sm" type="date" name="date_to" value="<%= filters.dateTo || '' %>" />
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Cliente</label>
+        <label class="form-label small mb-1"><%= t("rs.customer") %></label>
         <select class="form-select form-select-sm" name="customer_id">
-          <option value="">Todos</option>
+          <option value=""><%= t("rs.analytics.all") %></option>
           <% (options.customers || []).forEach((c) => { %>
             <option value="<%= c.id %>" <%= Number(filters.customerId) === Number(c.id) ? "selected" : "" %>><%= c.name %></option>
           <% }) %>
         </select>
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Site</label>
+        <label class="form-label small mb-1"><%= t("rs.site") %></label>
         <select class="form-select form-select-sm" name="site_id">
-          <option value="">Todos</option>
+          <option value=""><%= t("rs.analytics.all") %></option>
           <% (options.sites || []).forEach((s) => { %>
             <option value="<%= s.id %>" <%= Number(filters.siteId) === Number(s.id) ? "selected" : "" %>><%= s.site_name %></option>
           <% }) %>
         </select>
       </div>
       <div class="col-6 col-md-2">
-        <label class="form-label small mb-1">Técnico</label>
+        <label class="form-label small mb-1"><%= t("rs.analytics.technician") %></label>
         <select class="form-select form-select-sm" name="technician_id">
-          <option value="">Todos</option>
+          <option value=""><%= t("rs.analytics.all") %></option>
           <% (options.technicians || []).forEach((t) => { %>
             <option value="<%= t.id %>" <%= Number(filters.technicianId) === Number(t.id) ? "selected" : "" %>><%= t.name %></option>
           <% }) %>
@@ -117,15 +122,15 @@
       <div class="col-6 col-md-2">
         <label class="form-label small mb-1">Status</label>
         <select class="form-select form-select-sm" name="order_status">
-          <option value="">Todos</option>
+          <option value=""><%= t("rs.analytics.all") %></option>
           <% ["draft","valid","in_progress","waiting_review","approved","issued","closed","cancelled"].forEach((st) => { %>
             <option value="<%= st %>" <%= filters.orderStatus === st ? "selected" : "" %>><%= statusLabels[st] || st %></option>
           <% }) %>
         </select>
       </div>
       <div class="col-12 d-flex gap-2 pt-1">
-        <button class="btn btn-primary btn-sm" type="submit">Aplicar</button>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics">Limpar filtros</a>
+        <button class="btn btn-primary btn-sm" type="submit"><%= t("rs.analytics.apply") %></button>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/analytics"><%= t("rs.analytics.clearFilters") %></a>
       </div>
     </form>
   </div>
@@ -133,7 +138,7 @@
   <!-- ── KPIs: Ordens ────────────────────────────────────────────────────── -->
   <div>
     <div class="dash-section-heading mb-2">
-      <span class="dash-section-label">Ordens de Serviço</span>
+      <span class="dash-section-label"><%= t("rs.analytics.serviceOrders") %></span>
       <div class="dash-section-heading-line"></div>
     </div>
     <div class="dash-kpis dash-kpis-9">

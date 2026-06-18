@@ -55,32 +55,32 @@
   <div class="card app-card token-hero-card">
     <div class="card-body token-hero-body">
       <div class="token-hero-copy">
-        <span class="token-hero-eyebrow">ASSINATURA VEXTROM</span>
+        <span class="token-hero-eyebrow"><%= t("rs.sign.eyebrow") %></span>
         <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
         <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
       </div>
       <div class="token-hero-actions">
-        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Voltar OS</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor">Editar Relatorio</a>
+        <span class="badge text-bg-secondary"><%= t("rs.badge.status") %>: <%= order.status || "draft" %></span>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>"><%= t("rs.nav.backOrder") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor"><%= t("rs.nav.editReport") %></a>
       </div>
     </div>
   </div>
 
-  <% if (signed) { %><div class="alert alert-success mb-0">Relatorio assinado com sucesso.</div><% } %>
-  <% if (signError) { %><div class="alert alert-danger mb-0">Desenhe a assinatura antes de confirmar.</div><% } %>
+  <% if (signed) { %><div class="alert alert-success mb-0"><%= t("rs.sign.signedSuccess") %></div><% } %>
+  <% if (signError) { %><div class="alert alert-danger mb-0"><%= t("rs.sign.drawRequired") %></div><% } %>
 
   <div class="row g-3">
     <div class="col-12 col-xl-7">
       <div class="card app-card">
         <div class="card-body">
-          <h2 class="h6 app-card-title mb-3">Assinar relatorio (Tecnico Vextrom)</h2>
+          <h2 class="h6 app-card-title mb-3"><%= t("rs.sign.formTitle") %></h2>
           <form method="post" action="/admin/report-service/orders/<%= order.id %>/sign-report" class="row g-2">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <div class="col-12">
-              <label class="form-label">Tecnicos associados na OS</label>
+              <label class="form-label"><%= t("rs.sign.linkedTechnicians") %></label>
               <select class="form-select" id="linkedTechnicianSelect">
-                <option value="">Selecione um tecnico da OS</option>
+                <option value=""><%= t("rs.sign.selectTechnician") %></option>
                 <% (technicians || []).forEach((tech) => { %>
                   <option
                     value="<%= tech.name || '' %>"
@@ -91,23 +91,23 @@
                 <% }) %>
               </select>
               <% if (!(technicians || []).length) { %>
-                <div class="form-text text-warning">Nao ha tecnicos associados a esta OS.</div>
+                <div class="form-text text-warning"><%= t("rs.sign.noTechnicians") %></div>
               <% } %>
             </div>
-            <div class="col-12 col-md-6"><input class="form-control" name="signer_name" id="signerNameInput" placeholder="Nome do tecnico" required /></div>
-            <div class="col-12 col-md-6"><input class="form-control" name="signer_role" id="signerRoleInput" placeholder="Cargo / Funcao" /></div>
-            <div class="col-12"><input class="form-control" name="signer_company" id="signerCompanyInput" value="Vextrom" placeholder="Empresa" /></div>
+            <div class="col-12 col-md-6"><input class="form-control" name="signer_name" id="signerNameInput" placeholder="<%= t('rs.sign.signerNamePh') %>" required /></div>
+            <div class="col-12 col-md-6"><input class="form-control" name="signer_role" id="signerRoleInput" placeholder="<%= t('rs.sign.signerRolePh') %>" /></div>
+            <div class="col-12"><input class="form-control" name="signer_company" id="signerCompanyInput" value="Vextrom" placeholder="<%= t('rs.sign.companyPh') %>" /></div>
             <div class="col-12">
-              <label class="form-label">Assinatura (canvas)</label>
+              <label class="form-label"><%= t("rs.sign.canvasLabel") %></label>
               <div class="sign-canvas-wrap" style="height:160px;">
                 <canvas id="signatureCanvas" height="160"></canvas>
-                <span class="sign-canvas-hint" id="canvasHint">Assine aqui</span>
-                <button type="button" class="sign-canvas-clear" id="clearCanvas">Limpar</button>
+                <span class="sign-canvas-hint" id="canvasHint"><%= t("rs.sign.signHere") %></span>
+                <button type="button" class="sign-canvas-clear" id="clearCanvas"><%= t("rs.sign.clear") %></button>
               </div>
               <input type="hidden" name="signature_data" id="signatureDataInput" />
             </div>
             <div class="col-12 d-flex justify-content-end">
-              <button class="btn btn-success btn-sm" type="submit">Confirmar assinatura</button>
+              <button class="btn btn-success btn-sm" type="submit"><%= t("rs.sign.confirm") %></button>
             </div>
           </form>
         </div>
@@ -117,21 +117,21 @@
     <div class="col-12 col-xl-5">
       <div class="card app-card">
         <div class="card-body">
-          <h2 class="h6 app-card-title mb-3">Assinaturas Vextrom registradas</h2>
+          <h2 class="h6 app-card-title mb-3"><%= t("rs.sign.registeredTitle") %></h2>
           <div class="table-responsive">
             <table class="table table-sm app-table mb-0">
-              <thead><tr><th>Nome</th><th>Cargo</th><th>Data</th><th></th></tr></thead>
+              <thead><tr><th><%= t("rs.name") %></th><th><%= t("rs.sign.colRole") %></th><th><%= t("rs.sign.colDate") %></th><th></th></tr></thead>
               <tbody>
-                <% if (!signatures.length) { %><tr><td colspan="4" class="text-center text-muted py-3">Sem assinaturas.</td></tr><% } %>
+                <% if (!signatures.length) { %><tr><td colspan="4" class="text-center text-muted py-3"><%= t("rs.sign.noSignatures") %></td></tr><% } %>
                 <% signatures.forEach((item) => { %>
                   <tr>
                     <td><%= item.signer_name || "-" %></td>
                     <td><%= item.signer_role || "-" %></td>
                     <td><%= fmtDateTime(item.signed_at) %></td>
                     <td>
-                      <form method="post" action="/admin/report-service/orders/<%= order.id %>/signatures/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta assinatura?');">
+                      <form method="post" action="/admin/report-service/orders/<%= order.id %>/signatures/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('<%= t('rs.sign.confirmDelete') %>');">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                        <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                        <button class="btn btn-outline-danger btn-sm" type="submit"><%= t("rs.delete") %></button>
                       </form>
                     </td>
                   </tr>
