@@ -2073,6 +2073,238 @@ async function deleteMeasurementTable(id, serviceReportId = null) {
   return result.rowCount > 0;
 }
 
+async function listUpsMeasuresByReport(serviceReportId) {
+  const result = await db.query(
+    `
+      SELECT *
+      FROM service_report_ups_measures
+      WHERE service_report_id = $1
+      ORDER BY sort_order ASC, id ASC
+    `,
+    [serviceReportId]
+  );
+  return result.rows;
+}
+
+async function getUpsMeasuresById(id, serviceReportId = null) {
+  const values = [id];
+  let query = "SELECT * FROM service_report_ups_measures WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  return result.rows[0] || null;
+}
+
+async function createUpsMeasures(payload) {
+  const result = await db.query(
+    `
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM service_report_ups_measures WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM service_report_ups_measures t2
+          WHERE t2.service_report_id = $1 AND t2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
+      )
+      INSERT INTO service_report_ups_measures (
+        service_report_id, seq_id, title, header_json, sections_json, notes, sort_order, created_at, updated_at
+      )
+      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3::jsonb,$4::jsonb,$5,$6,NOW(),NOW())
+      RETURNING *
+    `,
+    [
+      payload.serviceReportId,
+      payload.title || "",
+      JSON.stringify(payload.header || []),
+      JSON.stringify(payload.sections || []),
+      payload.notes || "",
+      payload.sortOrder || 0
+    ]
+  );
+  await touchReport(payload.serviceReportId);
+  return result.rows[0];
+}
+
+async function updateUpsMeasures(id, serviceReportId, payload) {
+  const result = await db.query(
+    `
+      UPDATE service_report_ups_measures
+      SET
+        title = $3,
+        header_json = $4::jsonb,
+        sections_json = $5::jsonb,
+        notes = $6,
+        sort_order = $7,
+        updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [
+      id,
+      serviceReportId,
+      payload.title || "",
+      JSON.stringify(payload.header || []),
+      JSON.stringify(payload.sections || []),
+      payload.notes || "",
+      payload.sortOrder || 0
+    ]
+  );
+  if (result.rows[0]) await touchReport(serviceReportId);
+  return result.rows[0] || null;
+}
+
+async function updateUpsMeasuresStyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `
+      UPDATE service_report_ups_measures
+      SET style_config = $3::jsonb, updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(styleConfig || null)]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteUpsMeasures(id, serviceReportId = null) {
+  const values = [id];
+  let query = "DELETE FROM service_report_ups_measures WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  if (result.rowCount > 0 && Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    await touchReport(serviceReportId);
+  }
+  return result.rowCount > 0;
+}
+
+async function listEventLogsByReport(serviceReportId) {
+  const result = await db.query(
+    `
+      SELECT *
+      FROM service_report_event_logs
+      WHERE service_report_id = $1
+      ORDER BY sort_order ASC, id ASC
+    `,
+    [serviceReportId]
+  );
+  return result.rows;
+}
+
+async function getEventLogById(id, serviceReportId = null) {
+  const values = [id];
+  let query = "SELECT * FROM service_report_event_logs WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  return result.rows[0] || null;
+}
+
+async function createEventLog(payload) {
+  const result = await db.query(
+    `
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM service_report_event_logs WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM service_report_event_logs t2
+          WHERE t2.service_report_id = $1 AND t2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
+      )
+      INSERT INTO service_report_event_logs (
+        service_report_id, seq_id, title, header_json, sections_json, notes, sort_order, created_at, updated_at
+      )
+      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3::jsonb,$4::jsonb,$5,$6,NOW(),NOW())
+      RETURNING *
+    `,
+    [
+      payload.serviceReportId,
+      payload.title || "",
+      JSON.stringify(payload.header || []),
+      JSON.stringify(payload.sections || []),
+      payload.notes || "",
+      payload.sortOrder || 0
+    ]
+  );
+  await touchReport(payload.serviceReportId);
+  return result.rows[0];
+}
+
+async function updateEventLog(id, serviceReportId, payload) {
+  const result = await db.query(
+    `
+      UPDATE service_report_event_logs
+      SET
+        title = $3,
+        header_json = $4::jsonb,
+        sections_json = $5::jsonb,
+        notes = $6,
+        sort_order = $7,
+        updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [
+      id,
+      serviceReportId,
+      payload.title || "",
+      JSON.stringify(payload.header || []),
+      JSON.stringify(payload.sections || []),
+      payload.notes || "",
+      payload.sortOrder || 0
+    ]
+  );
+  if (result.rows[0]) await touchReport(serviceReportId);
+  return result.rows[0] || null;
+}
+
+async function updateEventLogStyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `
+      UPDATE service_report_event_logs
+      SET style_config = $3::jsonb, updated_at = NOW()
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(styleConfig || null)]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteEventLog(id, serviceReportId = null) {
+  const values = [id];
+  let query = "DELETE FROM service_report_event_logs WHERE id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    query += " AND service_report_id = $2";
+  }
+  const result = await db.query(query, values);
+  if (result.rowCount > 0 && Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    await touchReport(serviceReportId);
+  }
+  return result.rowCount > 0;
+}
+
 async function listSignatures(serviceReportId) {
   const result = await db.query(
     `
@@ -3343,6 +3575,18 @@ module.exports = {
   updateMeasurementTable,
   updateMeasurementStyleConfig,
   deleteMeasurementTable,
+  listUpsMeasuresByReport,
+  getUpsMeasuresById,
+  createUpsMeasures,
+  updateUpsMeasures,
+  updateUpsMeasuresStyleConfig,
+  deleteUpsMeasures,
+  listEventLogsByReport,
+  getEventLogById,
+  createEventLog,
+  updateEventLog,
+  updateEventLogStyleConfig,
+  deleteEventLog,
   listSignatures,
   createSignature,
   deleteSignature,

@@ -393,6 +393,40 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE service_report_measurement_tables ADD COLUMN IF NOT EXISTS style_config JSONB;`);
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_ups_measures (
+      id BIGSERIAL PRIMARY KEY,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      seq_id INTEGER,
+      title TEXT NOT NULL DEFAULT '',
+      header_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      sections_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      notes TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      style_config JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_ups_measures_report_id ON service_report_ups_measures (service_report_id);`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_event_logs (
+      id BIGSERIAL PRIMARY KEY,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      seq_id INTEGER,
+      title TEXT NOT NULL DEFAULT '',
+      header_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      sections_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      notes TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      style_config JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_event_logs_report_id ON service_report_event_logs (service_report_id);`);
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_instruments (
       id BIGSERIAL PRIMARY KEY,
       service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,

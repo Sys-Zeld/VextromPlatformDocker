@@ -20,6 +20,8 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/revalidate-os", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.revalidateOrder));
   router.get("/orders/:id", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.orderEditor));
   router.get("/orders/:id/measurements", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementsEditor));
+  router.get("/orders/:id/ups-measures", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.upsMeasuresEditor));
+  router.get("/orders/:id/event-log", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.eventLogEditor));
   router.get("/orders/:id/alber", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberEditor));
   router.post(
     "/orders/:id/alber/import",
@@ -101,6 +103,44 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/measurements/:measurementId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleAi));
   router.post("/orders/:id/measurements/:measurementId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleDefault));
   router.post("/orders/:id/measurements/:measurementId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.measurementStyleReset));
+  router.post(
+    "/orders/:id/ups-measures/upload",
+    express.raw({
+      type: [
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream"
+      ],
+      limit: "10mb"
+    }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.uploadUpsMeasures)
+  );
+  router.post("/orders/:id/ups-measures", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveUpsMeasures));
+  router.post("/orders/:id/ups-measures/:upsId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteUpsMeasures));
+  router.post("/orders/:id/ups-measures/:upsId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.upsMeasuresStyleAi));
+  router.post("/orders/:id/ups-measures/:upsId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.upsMeasuresStyleDefault));
+  router.post("/orders/:id/ups-measures/:upsId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.upsMeasuresStyleReset));
+  router.post(
+    "/orders/:id/event-log/upload",
+    express.raw({
+      type: [
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream"
+      ],
+      limit: "25mb"
+    }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.uploadEventLog)
+  );
+  router.post("/orders/:id/event-log", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.saveEventLog));
+  router.post("/orders/:id/event-log/:eventLogId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteEventLog));
+  router.post("/orders/:id/event-log/:eventLogId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.eventLogStyleAi));
+  router.post("/orders/:id/event-log/:eventLogId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.eventLogStyleDefault));
+  router.post("/orders/:id/event-log/:eventLogId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.eventLogStyleReset));
   router.post("/orders/:id/signatures", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.addSignature));
   router.post("/orders/:id/signatures/:signatureId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteSignature));
   router.post("/orders/:id/sign-requests", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.createSignRequest));

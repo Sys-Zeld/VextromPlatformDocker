@@ -405,8 +405,10 @@
 .rich-output .ql-indent-8 { padding-left: 24em; }
 
 .report-inline-image-card {
- 
+
   margin: 0;
+  width: 270px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -446,11 +448,14 @@
 
 .report-inline-image-caption {
   width: 100%;
+  box-sizing: border-box;
   font-size: 0.82rem;
   font-weight: 600;
   color: #2e3d30;
   text-align: center;
+  overflow-wrap: break-word;
   word-break: break-word;
+  hyphens: auto;
   margin-top: 4px;
   letter-spacing: 0.01em;
 }

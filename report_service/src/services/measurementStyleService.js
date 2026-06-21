@@ -1,4 +1,4 @@
-const { renderMeasurementsInlineTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss, renderDischargeTestTable, generateDefaultDischargeCss, generateDischargeSvgChart, generateDefaultDischargeChartCss, renderTimesheetInlineTable, generateDefaultTimesheetCss, renderTechTeamInlineTable, generateDefaultTechteamCss, renderEquipmentsInlineTable, generateDefaultEquipmentCss, renderComponentsInlineTable, generateDefaultComponentsCss } = require("./reportPreviewService");
+const { renderMeasurementsInlineTable, renderUpsMeasuresTable, renderEventLogTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss, renderDischargeTestTable, generateDefaultDischargeCss, generateDischargeSvgChart, generateDefaultDischargeChartCss, renderTimesheetInlineTable, generateDefaultTimesheetCss, renderTechTeamInlineTable, generateDefaultTechteamCss, renderEquipmentsInlineTable, generateDefaultEquipmentCss, renderComponentsInlineTable, generateDefaultComponentsCss } = require("./reportPreviewService");
 const repo = require("../repositories/serviceReportRepository");
 
 const MEASUREMENT_DEFAULT_STYLE_SETTING_KEY = "report.preview.measurements.style.default";
@@ -665,6 +665,201 @@ REGRAS OBRIGATÓRIAS:
   return raw.replace(/^```css?\s*/i, "").replace(/```\s*$/, "").trim();
 }
 
+// ---- UPS MEASURES (@mesuaresUPS) ----
+const UPS_DEFAULT_STYLE_SETTING_KEY = "report.preview.upsmeasures.style.default";
+
+function upsScopeId(id) {
+  return `ups-${Number(id)}`;
+}
+
+function buildUpsStyleConfig(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const cfg = {};
+  if (src.customCss && typeof src.customCss === "string" && src.customCss.trim()) {
+    cfg.customCss = src.customCss;
+  }
+  return cfg;
+}
+
+function scopeUpsStyleConfig(styleConfig, id) {
+  const cfg = buildUpsStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  const scopedCss = cfg.customCss.replace(
+    /\[data-table-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+    `[data-table-id="${upsScopeId(id)}"]`
+  );
+  return { ...cfg, customCss: scopedCss };
+}
+
+async function getDefaultUpsStyleConfig() {
+  const raw = await repo.getAppSetting(UPS_DEFAULT_STYLE_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const cfg = buildUpsStyleConfig(parsed);
+    return cfg.customCss ? cfg : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveDefaultUpsStyleConfig(styleConfig) {
+  const cfg = buildUpsStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  await repo.upsertAppSetting(UPS_DEFAULT_STYLE_SETTING_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+function applyDefaultUpsStyle(upsMeasures, defaultStyleConfig) {
+  if (!defaultStyleConfig || !defaultStyleConfig.customCss || !Array.isArray(upsMeasures)) {
+    return Array.isArray(upsMeasures) ? upsMeasures : [];
+  }
+  return upsMeasures.map((item) => {
+    if (!item || (item.style_config && typeof item.style_config === "object")) return item;
+    const scopedStyleConfig = scopeUpsStyleConfig(defaultStyleConfig, item.id);
+    return scopedStyleConfig ? { ...item, style_config: scopedStyleConfig, _uses_default_ups_style: true } : item;
+  });
+}
+
+function buildUpsPreviewHtml(upsItem, styleConfig) {
+  return renderUpsMeasuresTable([upsItem], upsItem.id, styleConfig || null);
+}
+
+async function applyUpsStyleViaAi(currentCss, id, userInstruction, reviseTextWithAi) {
+  if (typeof reviseTextWithAi !== "function") {
+    const err = new Error("Serviço de IA indisponível.");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const scope = `[data-table-id="${upsScopeId(id)}"]`;
+
+  const systemInstruction = `Você é um especialista em CSS para tabelas HTML impressas em PDF via Puppeteer.
+
+O bloco de medições UPS usa as seguintes classes CSS com escopo "${scope}":
+- .meas-title → caption do título (cabeçalho e título de cada seção de medições)
+- .meas-th → células do cabeçalho de colunas das seções
+- .meas-td → células de dados (linhas pares) — também usadas no bloco de cabeçalho (série/firmware)
+- .meas-td-alt → células de dados (linhas ímpares, cor alternada)
+- .meas-notes → bloco de observações abaixo das tabelas
+
+REGRAS OBRIGATÓRIAS:
+1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.
+2. Mantenha EXATAMENTE o prefixo de escopo "${scope}" em TODOS os seletores.
+3. Use apenas propriedades CSS compatíveis com Puppeteer: cores em hex, sem gradientes, sem variáveis CSS (--var).
+4. Preserve todas as propriedades existentes, modificando apenas o que a instrução solicita.
+5. Não adicione seletores além dos listados acima.`;
+
+  const prompt = `CSS atual:\n${currentCss}\n\nInstrução: ${userInstruction}\n\nRetorne o CSS completo modificado.`;
+
+  const result = await reviseTextWithAi({ text: prompt, systemInstruction, preserveFormatting: true });
+  const raw = String(result && result.revisedText ? result.revisedText : "");
+  return raw.replace(/^```css?\s*/i, "").replace(/```\s*$/, "").trim();
+}
+
+// ---- EVENT LOG (@eventlogUPS) ----
+const EVENTLOG_DEFAULT_STYLE_SETTING_KEY = "report.preview.eventlog.style.default";
+
+function evlogScopeId(id) {
+  return `evlog-${Number(id)}`;
+}
+
+function buildEventLogStyleConfig(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const cfg = {};
+  if (src.customCss && typeof src.customCss === "string" && src.customCss.trim()) {
+    cfg.customCss = src.customCss;
+  }
+  return cfg;
+}
+
+function scopeEventLogStyleConfig(styleConfig, id) {
+  const cfg = buildEventLogStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  const scopedCss = cfg.customCss.replace(
+    /\[data-table-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+    `[data-table-id="${evlogScopeId(id)}"]`
+  );
+  return { ...cfg, customCss: scopedCss };
+}
+
+async function getDefaultEventLogStyleConfig() {
+  const raw = await repo.getAppSetting(EVENTLOG_DEFAULT_STYLE_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const cfg = buildEventLogStyleConfig(parsed);
+    return cfg.customCss ? cfg : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveDefaultEventLogStyleConfig(styleConfig) {
+  const cfg = buildEventLogStyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  await repo.upsertAppSetting(EVENTLOG_DEFAULT_STYLE_SETTING_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+function applyDefaultEventLogStyle(eventLogs, defaultStyleConfig) {
+  if (!defaultStyleConfig || !defaultStyleConfig.customCss || !Array.isArray(eventLogs)) {
+    return Array.isArray(eventLogs) ? eventLogs : [];
+  }
+  return eventLogs.map((item) => {
+    if (!item || (item.style_config && typeof item.style_config === "object")) return item;
+    const scopedStyleConfig = scopeEventLogStyleConfig(defaultStyleConfig, item.id);
+    return scopedStyleConfig ? { ...item, style_config: scopedStyleConfig, _uses_default_eventlog_style: true } : item;
+  });
+}
+
+function buildEventLogPreviewHtml(eventLogItem, styleConfig) {
+  // Preview com no máx. 12 linhas para não pesar o modal
+  const previewItem = (() => {
+    if (!eventLogItem || !Array.isArray(eventLogItem.sections_json)) return eventLogItem;
+    return {
+      ...eventLogItem,
+      sections_json: eventLogItem.sections_json.map((s) => ({
+        ...s,
+        rows: Array.isArray(s.rows) ? s.rows.slice(0, 12) : []
+      }))
+    };
+  })();
+  return renderEventLogTable([previewItem], previewItem.id, styleConfig || null);
+}
+
+async function applyEventLogStyleViaAi(currentCss, id, userInstruction, reviseTextWithAi) {
+  if (typeof reviseTextWithAi !== "function") {
+    const err = new Error("Serviço de IA indisponível.");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const scope = `[data-table-id="${evlogScopeId(id)}"]`;
+
+  const systemInstruction = `Você é um especialista em CSS para tabelas HTML impressas em PDF via Puppeteer.
+
+O bloco de log de eventos UPS usa as seguintes classes CSS com escopo "${scope}":
+- .meas-title → caption do título (cabeçalho e título da tabela de eventos)
+- .meas-th → células do cabeçalho de colunas (Source, Event Name, Status, etc.)
+- .meas-td → células de dados (linhas pares) — também usadas no bloco de cabeçalho (série/firmware)
+- .meas-td-alt → células de dados (linhas ímpares, cor alternada)
+- .meas-notes → bloco de observações abaixo da tabela
+
+REGRAS OBRIGATÓRIAS:
+1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.
+2. Mantenha EXATAMENTE o prefixo de escopo "${scope}" em TODOS os seletores.
+3. Use apenas propriedades CSS compatíveis com Puppeteer: cores em hex, sem gradientes, sem variáveis CSS (--var).
+4. Preserve todas as propriedades existentes, modificando apenas o que a instrução solicita.
+5. Não adicione seletores além dos listados acima.`;
+
+  const prompt = `CSS atual:\n${currentCss}\n\nInstrução: ${userInstruction}\n\nRetorne o CSS completo modificado.`;
+
+  const result = await reviseTextWithAi({ text: prompt, systemInstruction, preserveFormatting: true });
+  const raw = String(result && result.revisedText ? result.revisedText : "");
+  return raw.replace(/^```css?\s*/i, "").replace(/```\s*$/, "").trim();
+}
+
 module.exports = {
   generateDefaultCss,
   generateDefaultAlberCss,
@@ -722,5 +917,19 @@ module.exports = {
   saveDefaultComponentsStyleConfig,
   applyDefaultComponentsStyle,
   buildComponentsPreviewHtml,
-  applyComponentsStyleViaAi
+  applyComponentsStyleViaAi,
+  buildUpsStyleConfig,
+  scopeUpsStyleConfig,
+  getDefaultUpsStyleConfig,
+  saveDefaultUpsStyleConfig,
+  applyDefaultUpsStyle,
+  buildUpsPreviewHtml,
+  applyUpsStyleViaAi,
+  buildEventLogStyleConfig,
+  scopeEventLogStyleConfig,
+  getDefaultEventLogStyleConfig,
+  saveDefaultEventLogStyleConfig,
+  applyDefaultEventLogStyle,
+  buildEventLogPreviewHtml,
+  applyEventLogStyleViaAi
 };

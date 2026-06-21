@@ -563,6 +563,178 @@ function renderMeasurementsInlineTable(measurementTables, requestedId, styleConf
   `;
 }
 
+// Cada tabela (cabeçalho e cada seção) é emitida em SEU PRÓPRIO wrapper com o mesmo
+// data-table-id e o <style> escopado. Isso mantém o conjunto como tabelas de uma única
+// tabela por bloco — o caminho que a paginação do preview (report-pagination.js) trata
+// preservando data-table-id + <style> em cada página. Wrappers com várias tabelas caem
+// em splitRichBlockByChildren, que separa as tabelas do ancestral [data-table-id] e
+// perde o CSS escopado nas páginas de continuação.
+function wrapScopedMeasureBlock(scopeId, css, innerHtml, tableTitle) {
+  const titleAttr = tableTitle ? ` data-table-title="${escapeHtml(tableTitle)}"` : "";
+  return `
+    <div class="report-inline-measurements-wrap avoid-break" data-table-id="${scopeId}"${titleAttr} style="margin:8px 0 14px 0;break-inside:avoid;page-break-inside:avoid;">
+      <style>${css}</style>
+      ${innerHtml}
+    </div>`;
+}
+
+function chunkRows(rows, size) {
+  const source = normalizeMeasurementList(rows);
+  const chunkSize = Number(size);
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0 || source.length <= chunkSize) return [source];
+
+  const chunks = [];
+  for (let i = 0; i < source.length; i += chunkSize) {
+    chunks.push(source.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function renderScopedMeasuresBlocks(item, scopeId, css, defaultColumns, emptyText, options = {}) {
+  const header = normalizeMeasurementList(item.header_json)
+    .map((h) => ({
+      label: safeText(String(h && h.label != null ? h.label : "")),
+      value: safeText(String(h && h.value != null ? h.value : ""))
+    }))
+    .filter((h) => h.label || h.value);
+
+  const sections = normalizeMeasurementList(item.sections_json);
+  const title = decodeHtmlEntities(String(item.title || "")).trim();
+  const notes = decodeHtmlEntities(String(item.notes || "")).trim();
+  const rowsPerBlock = Number(options && options.rowsPerBlock || 0);
+
+  const pieces = [];
+
+  if (header.length) {
+    pieces.push(`
+      <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
+        ${title ? `<caption class="meas-title" style="caption-side:top;">${escapeHtml(title)}</caption>` : ""}
+        <tbody>
+          ${header.map((h, i) => {
+            const tdClass = i % 2 === 0 ? "meas-td" : "meas-td-alt";
+            return `<tr><td class="${tdClass}" style="font-weight:600;width:55%;">${h.label}</td><td class="${tdClass}">${h.value}</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>`);
+  }
+
+  sections.forEach((section) => {
+    const columns = normalizeMeasurementList(section && section.columns)
+      .map((c) => String(c || "").trim())
+      .filter(Boolean);
+    const safeColumns = columns.length ? columns : defaultColumns;
+    const rows = normalizeMeasurementList(section && section.rows);
+    const sectionTitle = decodeHtmlEntities(String(section && section.title || "")).trim();
+
+    const rowChunks = rows.length ? chunkRows(rows, rowsPerBlock) : [[]];
+
+    rowChunks.forEach((rowChunk, chunkIndex) => {
+      const bodyRows = rowChunk.length
+        ? rowChunk.map((row, rowIndex) => {
+          const source = Array.isArray(row) ? row : [];
+          const tdClass = rowIndex % 2 === 0 ? "meas-td" : "meas-td-alt";
+          const cells = safeColumns.map((_, index) =>
+            `<td class="${tdClass} meas-col-${index}">${safeText(String(source[index] == null ? "" : source[index]))}</td>`
+          ).join("");
+          return `<tr>${cells}</tr>`;
+        }).join("")
+        : `<tr><td colspan="${safeColumns.length}" class="meas-td" style="color:#6b7280;">${escapeHtml(emptyText)}</td></tr>`;
+      const caption = chunkIndex === 0 && sectionTitle
+        ? `<caption class="meas-title" style="caption-side:top;">${escapeHtml(sectionTitle)}</caption>`
+        : "";
+
+      pieces.push(`
+      <table class="report-inline-measurements-table" style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3;">
+        ${caption}
+        <thead>
+          <tr>${safeColumns.map((column, index) => `<th class="meas-th meas-col-${index}">${safeText(column)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>`);
+    });
+  });
+
+  if (!pieces.length) return "";
+
+  if (notes) {
+    pieces[pieces.length - 1] += `<div class="meas-notes"><strong>Observações:</strong> ${escapeHtml(notes)}</div>`;
+  }
+
+  // O primeiro bloco recebe data-table-title (vira a "Tabela X.Y" numerada/no sumário);
+  // os demais são blocos escopados sem numeração própria.
+  return pieces
+    .map((inner, idx) => wrapScopedMeasureBlock(scopeId, css, inner, idx === 0 ? title : ""))
+    .join("\n");
+}
+
+function resolveScopedStyleCss(item, scopeId, styleConfig) {
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
+    : (item.style_config && typeof item.style_config === "object") ? item.style_config
+    : {};
+  return (sc.customCss && typeof sc.customCss === "string") ? sc.customCss : generateDefaultCss(scopeId);
+}
+
+function renderUpsMeasuresTable(upsMeasuresList, requestedId, styleConfig) {
+  const tagId = Number(requestedId);
+  const list = normalizeMeasurementList(upsMeasuresList);
+  const item = list.find((entry) => Number(entry && entry.seq_id) === tagId)
+    || list.find((entry) => Number(entry && entry.id) === tagId);
+  if (!item) return "";
+  const scopeId = `ups-${Number(item.id)}`;
+  const css = resolveScopedStyleCss(item, scopeId, styleConfig);
+  return renderScopedMeasuresBlocks(item, scopeId, css, ["ID", "Signal Name", "Signal Value", "Unit"], "Sem medições.");
+}
+
+function limitEventLogRowsForPreview(item, maxRows) {
+  const limit = Number(maxRows);
+  if (!Number.isInteger(limit) || limit <= 0) return item;
+
+  const sections = normalizeMeasurementList(item && item.sections_json);
+  let remaining = limit;
+  let totalRows = 0;
+  const limitedSections = [];
+
+  sections.forEach((section) => {
+    const rows = normalizeMeasurementList(section && section.rows);
+    totalRows += rows.length;
+    if (remaining <= 0) return;
+    const take = rows.slice(0, remaining);
+    if (!take.length) return;
+    remaining -= take.length;
+    limitedSections.push({ ...section, rows: take });
+  });
+
+  if (totalRows <= limit) return item;
+
+  const baseNotes = decodeHtmlEntities(String(item && item.notes || "")).trim();
+  const previewNote = `Preview limitado aos primeiros ${limit} de ${totalRows} eventos. O PDF completo inclui todas as linhas importadas.`;
+  return {
+    ...item,
+    sections_json: limitedSections,
+    notes: baseNotes ? `${baseNotes}\n${previewNote}` : previewNote
+  };
+}
+
+function renderEventLogTable(eventLogList, requestedId, styleConfig, renderOptions = {}) {
+  const tagId = Number(requestedId);
+  const list = normalizeMeasurementList(eventLogList);
+  const rawItem = list.find((entry) => Number(entry && entry.seq_id) === tagId)
+    || list.find((entry) => Number(entry && entry.id) === tagId);
+  if (!rawItem) return "";
+  const item = limitEventLogRowsForPreview(rawItem, renderOptions && renderOptions.maxRows);
+  if (!item) return "";
+  const scopeId = `evlog-${Number(item.id)}`;
+  const css = resolveScopedStyleCss(item, scopeId, styleConfig);
+  return renderScopedMeasuresBlocks(
+    item,
+    scopeId,
+    css,
+    ["Source", "Event Name", "Status", "Start Date", "Start Time", "ID", "Type"],
+    "Sem eventos.",
+    { rowsPerBlock: 30 }
+  );
+}
+
 function generateDefaultAlberCss(leituraId) {
   const s = `[data-alber-id="${leituraId}"]`;
   return [
@@ -921,7 +1093,9 @@ function renderDailyLogInlineItem(dailyLog, requestedId = null, context = null) 
     context.siteData || {},
     context.measurementTables || [],
     context.alberLeituras || [],
-    context.dischargeTests || []
+    context.dischargeTests || [],
+    context.upsMeasures || [],
+    context.eventLogs || []
   );
 }
 
@@ -1086,7 +1260,8 @@ function mergeSameTitleMeasurementTables(html) {
     // Component tables are already split per equipment by renderComponentsInlineTable
     // and must NEVER be merged — different equipment frequently share the same type
     // name (used as data-table-title), which would otherwise collapse them into one.
-    if (title && blockType !== "components") {
+    // UPS blocks are composite (header + multiple section tables) and must never merge.
+    if (title && blockType !== "components" && blockType !== "upsmeasures" && blockType !== "eventlog") {
       let j = i + 1;
       while (j < blocks.length) {
         const between = source.slice(group[group.length - 1].end, blocks[j].start);
@@ -1134,6 +1309,8 @@ function mergeSameTitleMeasurementTables(html) {
 }
 
 function getTableType(blockHtml) {
+  if (blockHtml.includes('data-table-id="ups-')) return "upsmeasures";
+  if (blockHtml.includes('data-table-id="evlog-')) return "eventlog";
   if (blockHtml.includes("report-inline-measurements-wrap")) return "measurements";
   if (blockHtml.includes("report-inline-discharge-wrap")) return "discharge";
   if (blockHtml.includes("report-inline-components-wrap")) return "components";
@@ -1167,7 +1344,7 @@ function numberMeasurementTablesInHtml(html, chapterNum) {
     const anchorId = `tbl-${chapterNum}-${tableNum}`;
 
     const tableType = getTableType(blockHtml);
-    const tableIdMatch = /data-table-id="(\d+)"/.exec(blockHtml);
+    const tableIdMatch = /data-table-id="(?:ups-|evlog-)?(\d+)"/.exec(blockHtml);
     const dischargeIdMatch = /data-discharge-id="(\d+)"/.exec(blockHtml);
     const itemId = tableIdMatch ? Number(tableIdMatch[1]) : (dischargeIdMatch ? Number(dischargeIdMatch[1]) : null);
     tables.push({ label, title, anchorId, tableType, itemId });
@@ -1214,7 +1391,7 @@ function liftBlockTagFromParagraph(html, tagSrc, inlineReplacer) {
   });
 }
 
-function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = [], dischargeTests = []) {
+function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = [], dischargeTests = [], upsMeasures = [], eventLogs = []) {
   const source = String(contentHtml || "");
   if (!source) return "<p><br></p>";
   const opts = {
@@ -1224,7 +1401,8 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     techteamStyleConfig: options.techteamStyleConfig || null,
     equipmentStyleConfig: options.equipmentStyleConfig || null,
     componentsStyleConfig: options.componentsStyleConfig || null,
-    reportId: options.reportId || null
+    reportId: options.reportId || null,
+    eventLogPreviewMaxRows: options.eventLogPreviewMaxRows || null
   };
   const equipmentTagPattern = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*equip(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi;
   const withEquipments = source.replace(equipmentTagPattern, (_match, rawId) => {
@@ -1290,13 +1468,25 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const withDischargeP = liftBlockTagFromParagraph(r7b, dischargeSrc, dischargeFn);
   const r7c = withDischargeP.replace(new RegExp(dischargeSrc, "gi"), dischargeFn);
 
+  // @mesuaresUPS=ID -> cabeçalho (serial/firmware) + seções de medições importadas do Measures.xls
+  const upsSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*mesuaresups(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const upsFn = (_match, rawId) => renderUpsMeasuresTable(upsMeasures, rawId) || _match;
+  const withUpsP = liftBlockTagFromParagraph(r7c, upsSrc, upsFn);
+  const r7cu = withUpsP.replace(new RegExp(upsSrc, "gi"), upsFn);
+
+  // @eventlogUPS=ID -> cabeçalho (serial/firmware) + tabela de log de eventos importada do Event Log.xls
+  const evlogSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*eventlogups(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const evlogFn = (_match, rawId) => renderEventLogTable(eventLogs, rawId, null, { maxRows: opts.eventLogPreviewMaxRows }) || _match;
+  const withEvlogP = liftBlockTagFromParagraph(r7cu, evlogSrc, evlogFn);
+  const r7ce = withEvlogP.replace(new RegExp(evlogSrc, "gi"), evlogFn);
+
   // @grafo=ID (total) | @grafo1=ID (célula 1) | @grafo2=ID (célula 2) ...
   const grafoSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*grafo(\d*)(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
   const grafoFn = (_match, rawCell, rawId) => {
     const cellIdx = (rawCell === "" || rawCell == null) ? -1 : (parseInt(rawCell, 10) - 1);
     return generateDischargeSvgChart(dischargeTests, rawId, cellIdx) || _match;
   };
-  const withGrafoP = liftBlockTagFromParagraph(r7c, grafoSrc, grafoFn);
+  const withGrafoP = liftBlockTagFromParagraph(r7ce, grafoSrc, grafoFn);
   const r7d = withGrafoP.replace(new RegExp(grafoSrc, "gi"), grafoFn);
 
   if (!opts.expandDailyLogTags) return r7d;
@@ -1314,6 +1504,9 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     measurementTables,
     alberLeituras,
     dischargeTests,
+    upsMeasures,
+    eventLogs,
+    eventLogPreviewMaxRows: opts.eventLogPreviewMaxRows || null,
     timesheetStyleConfig: opts.timesheetStyleConfig || null,
     techteamStyleConfig: opts.techteamStyleConfig || null,
     equipmentStyleConfig: opts.equipmentStyleConfig || null,
@@ -1423,6 +1616,8 @@ function buildPreviewModel(payload, options = {}) {
   );
   const componentItems = Array.isArray(payload.components) ? payload.components : [];
   const measurementTables = Array.isArray(payload.measurements) ? payload.measurements : [];
+  const upsMeasures = Array.isArray(payload.upsMeasures) ? payload.upsMeasures : [];
+  const eventLogs = Array.isArray(payload.eventLogs) ? payload.eventLogs : [];
   const alberLeituras = Array.isArray(payload.alberLeituras) ? payload.alberLeituras : [];
   const dischargeTests = Array.isArray(payload.dischargeTests) ? payload.dischargeTests : [];
   const timesheetItems = Array.isArray(payload.timesheet) ? payload.timesheet : [];
@@ -1432,6 +1627,7 @@ function buildPreviewModel(payload, options = {}) {
   const equipmentStyleConfig = payload.equipmentStyleConfig || null;
   const componentsStyleConfig = (rawReport.components_style_config && typeof rawReport.components_style_config === "object") ? rawReport.components_style_config : null;
   const reportId = rawReport.id ? Number(rawReport.id) : null;
+  const eventLogPreviewMaxRows = options && options.previewMode ? 300 : null;
   const dailyLogsOrdered = (Array.isArray(payload.dailyLogs) ? payload.dailyLogs : [])
     .filter((item) => Number.isInteger(Number(item?.id)) && Number(item.id) > 0)
     .map((item) => ({
@@ -1496,13 +1692,15 @@ function buildPreviewModel(payload, options = {}) {
           timesheetItems,
           dailyLogsById,
           dailyLogsOrdered,
-          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId },
+          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId, eventLogPreviewMaxRows },
           technicianItems,
           orderEquipments,
           siteData,
           measurementTables,
           alberLeituras,
-          dischargeTests
+          dischargeTests,
+          upsMeasures,
+          eventLogs
         ),
         content_html_preview: injectTaggedImagesInHtml(
           section.content_html || "<p><br></p>",
@@ -1512,13 +1710,15 @@ function buildPreviewModel(payload, options = {}) {
           timesheetItems,
           dailyLogsById,
           dailyLogsOrdered,
-          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId },
+          { imageLabel: uiLabels.image, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, componentsStyleConfig, reportId, eventLogPreviewMaxRows },
           technicianItems,
           orderEquipments,
           siteData,
           measurementTables,
           alberLeituras,
-          dischargeTests
+          dischargeTests,
+          upsMeasures,
+          eventLogs
         ),
         section_title_html: section.section_title_html || `<p>${section.section_title || "-"}</p>`,
         section_title_text: section.section_title_text || section.section_title || "-",
@@ -1888,6 +2088,8 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex, styleCon
 module.exports = {
   buildPreviewModel,
   renderMeasurementsInlineTable,
+  renderUpsMeasuresTable,
+  renderEventLogTable,
   generateDefaultCss,
   renderAlberLeituraTable,
   generateDefaultAlberCss,

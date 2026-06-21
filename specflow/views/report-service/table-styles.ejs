@@ -257,6 +257,58 @@
     </div>
   </div>
 
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon" style="background:#eef2ff;color:#4338ca;">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 19h16M4 15h16M8 11h8M8 7h8M6 3h12a2 2 0 012 2v14H4V5a2 2 0 012-2z"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Medições UPS
+          <% if (upsHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrÃ£o</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela importada do arquivo Measures.xls pela tag @mesuaresUPS.</p>
+        <button type="button" class="btn btn-sm btn-outline-primary tblstyle-open-btn"
+          data-table-type="upsmeasures"
+          data-table-label="Medições UPS"
+          data-has-style="<%= upsHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="tblstyle-card h-100">
+      <div class="tblstyle-card-icon" style="background:#fff7ed;color:#c2410c;">
+        <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </div>
+      <div class="tblstyle-card-body">
+        <div class="tblstyle-card-title">
+          Event Log UPS
+          <% if (eventLogHasCustomStyle) { %>
+            <span class="badge text-bg-success ms-1" style="font-size:9px;">custom</span>
+          <% } else { %>
+            <span class="badge text-bg-secondary ms-1" style="font-size:9px;">padrÃ£o</span>
+          <% } %>
+        </div>
+        <p class="tblstyle-card-desc mb-3">Tabela importada do arquivo Event Log.xls pela tag @eventlogUPS.</p>
+        <button type="button" class="btn btn-sm btn-outline-danger tblstyle-open-btn"
+          data-table-type="eventlog"
+          data-table-label="Event Log UPS"
+          data-has-style="<%= eventLogHasCustomStyle ? 1 : 0 %>">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="me-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Ajustar visual
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- AI Style Modal -->

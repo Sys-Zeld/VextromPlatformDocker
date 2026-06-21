@@ -12,7 +12,11 @@ const {
   getDefaultTechteamStyleConfig,
   getDefaultEquipmentStyleConfig,
   getDefaultComponentsStyleConfig,
-  applyDefaultComponentsStyle
+  applyDefaultComponentsStyle,
+  getDefaultUpsStyleConfig,
+  applyDefaultUpsStyle,
+  getDefaultEventLogStyleConfig,
+  applyDefaultEventLogStyle
 } = require("./measurementStyleService");
 const objectStorage = require("../../../specflow/services/objectStorage");
 const { normalizeSectionContent } = require("./quillContentService");
@@ -492,12 +496,18 @@ async function buildReportAggregate(serviceReportId) {
   const site = order && order.site_id ? await repo.getSiteById(order.site_id) : null;
   const sections = await repo.listSections(serviceReportId);
   const components = await repo.listComponents(serviceReportId);
-  const [measurementRows, defaultMeasurementStyleConfig, defaultComponentsStyleConfig] = await Promise.all([
+  const [measurementRows, defaultMeasurementStyleConfig, defaultComponentsStyleConfig, upsMeasuresRows, defaultUpsStyleConfig, eventLogRows, defaultEventLogStyleConfig] = await Promise.all([
     repo.listMeasurementTables(serviceReportId),
     getDefaultMeasurementStyleConfig(),
-    getDefaultComponentsStyleConfig()
+    getDefaultComponentsStyleConfig(),
+    repo.listUpsMeasuresByReport(serviceReportId),
+    getDefaultUpsStyleConfig(),
+    repo.listEventLogsByReport(serviceReportId),
+    getDefaultEventLogStyleConfig()
   ]);
   const measurements = applyDefaultMeasurementStyle(measurementRows, defaultMeasurementStyleConfig);
+  const upsMeasures = applyDefaultUpsStyle(upsMeasuresRows, defaultUpsStyleConfig);
+  const eventLogs = applyDefaultEventLogStyle(eventLogRows, defaultEventLogStyleConfig);
   const reportWithDefaults = applyDefaultComponentsStyle(report, defaultComponentsStyleConfig);
   const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
@@ -532,6 +542,8 @@ async function buildReportAggregate(serviceReportId) {
     sections,
     components,
     measurements,
+    upsMeasures,
+    eventLogs,
     alberLeituras,
     dischargeTests,
     signatures,

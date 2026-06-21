@@ -1,0 +1,801 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
+<%
+  function formatDateShort(value) {
+    if (!value) return "-";
+    const raw = String(value).trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "-";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear());
+    return `${day}/${month}/${year}`;
+  }
+%>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">EVENT LOG UPS</span>
+        <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
+        <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
+      </div>
+      <div class="token-hero-actions">
+        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
+        <% if (order.opening_date) { %><span class="badge text-bg-light border">Abertura: <%= formatDateShort(order.opening_date) %></span><% } %>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/ups-measures">Medições UPS</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">Ensaios/Medições</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/report-editor"><%= t("rs.nav.editReport") %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
+      </div>
+    </div>
+  </div>
+
+  <% if (saved) { %><div class="alert alert-success mb-0">Event Log salvo com sucesso.</div><% } %>
+  <% if (editLocked) { %><div class="alert alert-warning mb-0">OS aprovada. Edição bloqueada. Use <strong>Revalidar OS</strong> para liberar.</div><% } %>
+
+  <div class="card app-card" id="el-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h6 app-card-title mb-1">Event Log UPS</h2>
+          <div class="text-muted small">Importe o arquivo <code>Event Log.xls</code> e use a tag <code>@eventlogUPS=ID</code> nos capítulos do relatório.</div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm d-none" type="button" id="elCancelEditBtn">Cancelar edição</button>
+      </div>
+
+      <form method="post" action="/admin/report-service/orders/<%= order.id %>/event-log" id="el-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="return_to" value="event-log" />
+        <input type="hidden" name="eventlog_id" id="elIdInput" value="" />
+        <input type="hidden" name="header_json" id="elHeaderInput" value="" />
+        <input type="hidden" name="sections_json" id="elSectionsInput" value="" />
+
+        <div class="row g-2 mb-2">
+          <div class="col-12 col-md-9"><input class="form-control form-control-sm" name="title" id="elTitleInput" placeholder="Título / Modelo (ex: EXM400 Monolithic...)" required /></div>
+          <div class="col-12 col-md-3"><input class="form-control form-control-sm" name="sort_order" id="elSortInput" placeholder="Ordem" /></div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          <button class="btn btn-outline-primary btn-sm" type="button" id="elImportBtn">Importar Event Log.xls</button>
+          <input type="file" accept=".xls,.xlsx" id="elFileInput" class="d-none" />
+          <span class="text-muted small" id="elFileName"></span>
+          <span class="spinner-border spinner-border-sm text-primary d-none" id="elSpinner" role="status"></span>
+          <span class="text-danger small" id="elImportMsg"></span>
+        </div>
+
+        <div class="border rounded p-2 mb-3 bg-light" id="elFilterPanel">
+          <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+            <strong class="small">Filtrar eventos antes de salvar</strong>
+            <span class="text-muted small" id="elFilterSummary">Nenhum filtro aplicado.</span>
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-2">
+              <label class="form-label mb-1 small" for="elEventNameFilter">Event Name</label>
+              <select class="form-select form-select-sm" id="elEventNameFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label mb-1 small" for="elStatusFilter">Status</label>
+              <select class="form-select form-select-sm" id="elStatusFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label mb-1 small" for="elStartDateFilter">Start Date</label>
+              <input class="form-control form-control-sm" id="elStartDateFilter" placeholder="Ex: 2026-06-21" />
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label mb-1 small" for="elStartTimeFilter">Start Time</label>
+              <input class="form-control form-control-sm" id="elStartTimeFilter" placeholder="Ex: 14:30" />
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label mb-1 small" for="elTypeFilter">Type</label>
+              <select class="form-select form-select-sm" id="elTypeFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-2 flex-wrap">
+              <button class="btn btn-outline-primary btn-sm" type="button" id="elApplyFilterBtn">Aplicar filtro</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" id="elClearFilterBtn">Limpar seleção</button>
+            </div>
+          </div>
+          <div class="small text-muted mt-2">Ao salvar, somente os eventos exibidos após aplicar o filtro serão gravados nesta tabela.</div>
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <strong class="small">Cabeçalho (série / firmware)</strong>
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="elAddHeaderBtn">+ Linha</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm app-table mb-0" id="elHeaderTable"><tbody></tbody></table>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong class="small">Tabela de eventos <span class="text-muted fw-normal">(células somente leitura — exclua linhas/colunas conforme necessário)</span></strong>
+          <button class="btn btn-outline-secondary btn-sm" type="button" id="elAddSectionBtn">+ Seção</button>
+        </div>
+        <div id="elSectionsContainer"></div>
+
+        <div class="mt-2"><textarea class="form-control form-control-sm" name="notes" id="elNotesInput" rows="2" placeholder="Observações abaixo da tabela"></textarea></div>
+        <div class="d-flex justify-content-end mt-2">
+          <button class="btn btn-primary btn-sm" type="submit" id="elSubmitBtn">Salvar Event Log</button>
+        </div>
+      </form>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-sm app-table mb-0">
+          <thead><tr><th>ID</th><th>Título</th><th>Cabeçalho</th><th>Eventos</th><th>Tag</th><th>Ações</th></tr></thead>
+          <tbody>
+            <% if (!(eventLogs || []).length) { %><tr><td colspan="6" class="text-center text-muted py-3">Sem Event Logs.</td></tr><% } %>
+            <% (eventLogs || []).forEach((item) => {
+                 const totalRows = Array.isArray(item.sections_json) ? item.sections_json.reduce((a, s) => a + ((s && Array.isArray(s.rows)) ? s.rows.length : 0), 0) : 0;
+            %>
+              <tr>
+                <td><code><%= item.seq_id %></code></td>
+                <td><%= item.title || "-" %></td>
+                <td><%= Array.isArray(item.header_json) ? item.header_json.length : 0 %></td>
+                <td><%= totalRows %></td>
+                <td><code>@eventlogUPS=<%= item.seq_id %></code></td>
+                <td>
+                  <div class="d-flex gap-1 flex-wrap">
+                    <button class="btn btn-outline-primary btn-sm el-edit-btn" type="button" data-eventlog-id="<%= item.id %>">Editar</button>
+                    <button class="btn btn-outline-secondary btn-sm el-style-btn" type="button"
+                      data-eventlog-id="<%= item.id %>"
+                      data-order-id="<%= order.id %>"
+                      data-has-style="<%= item.style_config && !item._uses_default_eventlog_style ? '1' : '0' %>">
+                      🎨 Visual<% if (item.style_config && item._uses_default_eventlog_style) { %> <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span><% } else if (item.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
+                    </button>
+                    <form method="post" action="/admin/report-service/orders/<%= order.id %>/event-log/<%= item.id %>/delete" class="m-0" onsubmit="return confirm('Excluir este Event Log?');">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                      <input type="hidden" name="return_to" value="event-log" />
+                      <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.eventLogsIndex = <%- JSON.stringify(
+    (eventLogs || []).map(function (item) {
+      return {
+        id: Number(item.id || 0),
+        title: item.title || "",
+        notes: item.notes || "",
+        sortOrder: Number(item.sort_order || 0),
+        header: Array.isArray(item.header_json) ? item.header_json : [],
+        sections: Array.isArray(item.sections_json) ? item.sections_json : []
+      };
+    })
+  ).replace(/</g, "\\u003c") %>;
+</script>
+<script>
+  (function () {
+    var form = document.getElementById("el-form");
+    if (!form) return;
+
+    var idInput = document.getElementById("elIdInput");
+    var titleInput = document.getElementById("elTitleInput");
+    var sortInput = document.getElementById("elSortInput");
+    var notesInput = document.getElementById("elNotesInput");
+    var headerInput = document.getElementById("elHeaderInput");
+    var sectionsInput = document.getElementById("elSectionsInput");
+    var headerTbody = document.querySelector("#elHeaderTable tbody");
+    var sectionsContainer = document.getElementById("elSectionsContainer");
+    var submitBtn = document.getElementById("elSubmitBtn");
+    var cancelBtn = document.getElementById("elCancelEditBtn");
+    var eventNameFilter = document.getElementById("elEventNameFilter");
+    var statusFilter = document.getElementById("elStatusFilter");
+    var startDateFilter = document.getElementById("elStartDateFilter");
+    var startTimeFilter = document.getElementById("elStartTimeFilter");
+    var typeFilter = document.getElementById("elTypeFilter");
+    var applyFilterBtn = document.getElementById("elApplyFilterBtn");
+    var clearFilterBtn = document.getElementById("elClearFilterBtn");
+    var filterSummary = document.getElementById("elFilterSummary");
+
+    var DEFAULT_COLUMNS = ["Source", "Event Name", "Status", "Start Date", "Start Time", "ID", "Type"];
+    var MAX_RENDER_ROWS = 4000;
+    var FILTER_DEFS = [
+      { label: "Event Name", column: "Event Name", el: eventNameFilter },
+      { label: "Status", column: "Status", el: statusFilter },
+      { label: "Start Date", column: "Start Date", el: startDateFilter, freeText: true },
+      { label: "Start Time", column: "Start Time", el: startTimeFilter, freeText: true },
+      { label: "Type", column: "Type", el: typeFilter }
+    ];
+    var header = [];
+    var sections = [];
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function normalizeSection(section) {
+      var cols = Array.isArray(section.columns) && section.columns.length ? section.columns.slice() : DEFAULT_COLUMNS.slice();
+      var rows = (Array.isArray(section.rows) ? section.rows : []).map(function (row) {
+        var src = Array.isArray(row) ? row : [];
+        var next = [];
+        for (var i = 0; i < cols.length; i++) next.push(String(src[i] == null ? "" : src[i]));
+        return next;
+      });
+      return { title: String(section.title || ""), columns: cols, rows: rows };
+    }
+
+    function normKey(value) {
+      return String(value == null ? "" : value).trim().toLowerCase();
+    }
+
+    function findColumnIndex(columns, name) {
+      var wanted = normKey(name);
+      for (var i = 0; i < columns.length; i++) {
+        if (normKey(columns[i]) === wanted) return i;
+      }
+      return -1;
+    }
+
+    function countRows(list) {
+      return (Array.isArray(list) ? list : []).reduce(function (acc, section) {
+        return acc + (section && Array.isArray(section.rows) ? section.rows.length : 0);
+      }, 0);
+    }
+
+    function getFilterValues(columnName) {
+      var values = {};
+      sections.forEach(function (section) {
+        var cols = Array.isArray(section.columns) ? section.columns : [];
+        var colIdx = findColumnIndex(cols, columnName);
+        if (colIdx < 0) return;
+        (Array.isArray(section.rows) ? section.rows : []).forEach(function (row) {
+          var value = String((Array.isArray(row) ? row[colIdx] : "") || "").trim();
+          if (value) values[value] = true;
+        });
+      });
+      return Object.keys(values).sort(function (a, b) { return a.localeCompare(b, "pt-BR", { sensitivity: "base" }); });
+    }
+
+    function setSelectOptions(selectEl, values, currentValue) {
+      if (!selectEl) return;
+      var selected = String(currentValue || selectEl.value || "");
+      selectEl.innerHTML = '<option value="">Todos</option>' + values.map(function (value) {
+        return '<option value="' + esc(value) + '"' + (value === selected ? " selected" : "") + '>' + esc(value) + '</option>';
+      }).join("");
+      if (selected && values.indexOf(selected) === -1) selectEl.value = "";
+    }
+
+    function refreshFilterOptions() {
+      FILTER_DEFS.forEach(function (def) {
+        if (def.freeText) return;
+        setSelectOptions(def.el, getFilterValues(def.column), def.el ? def.el.value : "");
+      });
+      updateFilterSummary();
+    }
+
+    function updateFilterSummary(beforeCount, afterCount) {
+      if (!filterSummary) return;
+      var total = countRows(sections);
+      if (Number.isFinite(beforeCount) && Number.isFinite(afterCount)) {
+        filterSummary.textContent = "Filtro aplicado: " + afterCount + " de " + beforeCount + " eventos mantidos.";
+        return;
+      }
+      var active = FILTER_DEFS
+        .map(function (def) { return { label: def.label, value: def.el ? String(def.el.value || "") : "" }; })
+        .filter(function (item) { return item.value; });
+      if (active.length) {
+        filterSummary.textContent = "Selecionado: " + active.map(function (item) { return item.label + " = " + item.value; }).join(" / ") + ". Eventos atuais: " + total + ".";
+      } else {
+        filterSummary.textContent = "Nenhum filtro aplicado. Eventos atuais: " + total + ".";
+      }
+    }
+
+    function applyEventFilters() {
+      syncFromDom();
+      var activeFilters = FILTER_DEFS
+        .map(function (def) { return { label: def.label, column: def.column, value: def.el ? String(def.el.value || "") : "" }; })
+        .filter(function (def) { return def.value; });
+      if (!activeFilters.length) {
+        updateFilterSummary();
+        return;
+      }
+
+      var before = countRows(sections);
+      sections = sections.map(function (section) {
+        var cols = Array.isArray(section.columns) ? section.columns : [];
+        var filters = activeFilters.map(function (filter) {
+          return { label: filter.label, value: filter.value, index: findColumnIndex(cols, filter.column) };
+        });
+        var rows = (Array.isArray(section.rows) ? section.rows : []).filter(function (row) {
+          return filters.every(function (filter) {
+            return filter.index >= 0 && String(row[filter.index] || "").trim() === filter.value;
+          });
+        });
+        return { title: section.title, columns: cols, rows: rows };
+      }).filter(function (section) { return section.rows.length; });
+      if (!sections.length) sections = [normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] })];
+
+      var after = countRows(sections);
+      renderSections();
+      refreshFilterOptions();
+      updateFilterSummary(before, after);
+    }
+
+    function renderHeader() {
+      if (!header.length) header.push({ label: "", value: "" });
+      headerTbody.innerHTML = header.map(function (h, i) {
+        return '<tr>'
+          + '<td><input class="form-control form-control-sm el-h-label" data-i="' + i + '" value="' + esc(h.label) + '" placeholder="Rótulo" /></td>'
+          + '<td><input class="form-control form-control-sm el-h-value" data-i="' + i + '" value="' + esc(h.value) + '" placeholder="Valor" /></td>'
+          + '<td class="measurement-actions-col"><button class="btn btn-outline-danger btn-sm el-h-remove" type="button" data-i="' + i + '">x</button></td>'
+          + '</tr>';
+      }).join("");
+    }
+
+    function renderSections() {
+      if (!sections.length) sections.push(normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] }));
+      var parts = [];
+      sections.forEach(function (section, sIdx) {
+        var cols = section.columns;
+        var head = '<tr>' + cols.map(function (col, cIdx) {
+          return '<th><div class="measurement-column-head"><input class="form-control form-control-sm el-col" data-s="' + sIdx + '" data-c="' + cIdx + '" value="' + esc(col) + '" />'
+            + '<button class="btn btn-outline-danger btn-sm el-col-remove" type="button" data-s="' + sIdx + '" data-c="' + cIdx + '">x</button></div></th>';
+        }).join("") + '<th class="measurement-actions-col">Ações</th></tr>';
+
+        var total = section.rows.length;
+        var limit = Math.min(total, MAX_RENDER_ROWS);
+        var bodyParts = [];
+        for (var r = 0; r < limit; r++) {
+          var row = section.rows[r];
+          var cells = "";
+          for (var c = 0; c < cols.length; c++) cells += '<td>' + esc(row[c] || "") + '</td>';
+          bodyParts.push('<tr data-s="' + sIdx + '" data-r="' + r + '">' + cells + '<td class="measurement-actions-col"><button class="btn btn-outline-danger btn-sm el-row-remove" type="button" data-s="' + sIdx + '" data-r="' + r + '">Excluir</button></td></tr>');
+        }
+        var hiddenNote = total > limit
+          ? '<div class="text-muted small mt-1">Exibindo as primeiras ' + limit + ' de ' + total + ' linhas (todas serão salvas e renderizadas no relatório).</div>'
+          : '';
+
+        parts.push('<div class="card border mb-2 el-section" data-s="' + sIdx + '">'
+          + '<div class="card-body p-2">'
+          + '<div class="d-flex gap-2 align-items-center mb-2">'
+          + '<input class="form-control form-control-sm el-section-title" data-s="' + sIdx + '" value="' + esc(section.title) + '" placeholder="Título da seção" />'
+          + '<span class="badge text-bg-light border">' + total + ' eventos</span>'
+          + '<button class="btn btn-outline-secondary btn-sm el-add-col" type="button" data-s="' + sIdx + '">+ Coluna</button>'
+          + '<button class="btn btn-outline-danger btn-sm el-remove-section" type="button" data-s="' + sIdx + '">Excluir seção</button>'
+          + '</div>'
+          + '<div class="table-responsive measurement-builder-wrap" style="max-height:520px;overflow:auto;"><table class="table table-sm app-table measurement-builder-table mb-0"><thead>' + head + '</thead><tbody>' + bodyParts.join("") + '</tbody></table></div>'
+          + hiddenNote
+          + '</div></div>');
+      });
+      sectionsContainer.innerHTML = parts.join("");
+      refreshFilterOptions();
+    }
+
+    function renderAll() { renderHeader(); renderSections(); }
+
+    function syncFromDom() {
+      document.querySelectorAll(".el-h-label").forEach(function (el) {
+        var i = Number(el.getAttribute("data-i")); if (!header[i]) header[i] = { label: "", value: "" }; header[i].label = String(el.value || "");
+      });
+      document.querySelectorAll(".el-h-value").forEach(function (el) {
+        var i = Number(el.getAttribute("data-i")); if (!header[i]) header[i] = { label: "", value: "" }; header[i].value = String(el.value || "");
+      });
+      document.querySelectorAll(".el-section-title").forEach(function (el) {
+        var s = Number(el.getAttribute("data-s")); if (sections[s]) sections[s].title = String(el.value || "");
+      });
+      document.querySelectorAll(".el-col").forEach(function (el) {
+        var s = Number(el.getAttribute("data-s")); var c = Number(el.getAttribute("data-c"));
+        if (sections[s] && sections[s].columns) sections[s].columns[c] = String(el.value || "");
+      });
+    }
+
+    document.getElementById("elAddHeaderBtn").addEventListener("click", function () {
+      syncFromDom(); header.push({ label: "", value: "" }); renderHeader();
+    });
+    headerTbody.addEventListener("click", function (event) {
+      var btn = event.target.closest(".el-h-remove");
+      if (!btn) return;
+      syncFromDom();
+      header.splice(Number(btn.getAttribute("data-i")), 1);
+      if (!header.length) header.push({ label: "", value: "" });
+      renderHeader();
+    });
+
+    if (applyFilterBtn) {
+      applyFilterBtn.addEventListener("click", applyEventFilters);
+    }
+    if (clearFilterBtn) {
+      clearFilterBtn.addEventListener("click", function () {
+        FILTER_DEFS.forEach(function (def) { if (def.el) def.el.value = ""; });
+        updateFilterSummary();
+      });
+    }
+    FILTER_DEFS.forEach(function (def) {
+      if (def.el) def.el.addEventListener("change", updateFilterSummary);
+    });
+
+    document.getElementById("elAddSectionBtn").addEventListener("click", function () {
+      syncFromDom();
+      sections.push(normalizeSection({ title: "Nova seção", columns: DEFAULT_COLUMNS.slice(), rows: [] }));
+      renderSections();
+    });
+
+    sectionsContainer.addEventListener("click", function (event) {
+      var addCol = event.target.closest(".el-add-col");
+      if (addCol) {
+        syncFromDom();
+        var s = Number(addCol.getAttribute("data-s"));
+        sections[s].columns.push("Nova coluna");
+        sections[s].rows = sections[s].rows.map(function (row) { row.push(""); return row; });
+        renderSections();
+        return;
+      }
+      var remSection = event.target.closest(".el-remove-section");
+      if (remSection) {
+        syncFromDom();
+        sections.splice(Number(remSection.getAttribute("data-s")), 1);
+        if (!sections.length) sections.push(normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] }));
+        renderSections();
+        return;
+      }
+      var remCol = event.target.closest(".el-col-remove");
+      if (remCol) {
+        syncFromDom();
+        var cs = Number(remCol.getAttribute("data-s"));
+        var cc = Number(remCol.getAttribute("data-c"));
+        if (sections[cs].columns.length <= 1) return;
+        sections[cs].columns.splice(cc, 1);
+        sections[cs].rows = sections[cs].rows.map(function (row) { row.splice(cc, 1); return row; });
+        renderSections();
+        return;
+      }
+      var remRow = event.target.closest(".el-row-remove");
+      if (remRow) {
+        var rs = Number(remRow.getAttribute("data-s"));
+        var rr = Number(remRow.getAttribute("data-r"));
+        if (!sections[rs] || !sections[rs].rows[rr]) return;
+        sections[rs].rows.splice(rr, 1);
+        renderSections();
+      }
+    });
+
+    function resetForm() {
+      idInput.value = "";
+      titleInput.value = "";
+      sortInput.value = "";
+      notesInput.value = "";
+      FILTER_DEFS.forEach(function (def) { if (def.el) def.el.value = ""; });
+      header = [{ label: "", value: "" }];
+      sections = [normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] })];
+      submitBtn.textContent = "Salvar Event Log";
+      cancelBtn.classList.add("d-none");
+      renderAll();
+    }
+    cancelBtn.addEventListener("click", resetForm);
+
+    document.querySelectorAll(".el-edit-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = Number(btn.getAttribute("data-eventlog-id") || 0);
+        var item = (window.eventLogsIndex || []).find(function (e) { return Number(e.id) === id; });
+        if (!item) return;
+        idInput.value = String(item.id || "");
+        titleInput.value = item.title || "";
+        sortInput.value = item.sortOrder ? String(item.sortOrder) : "";
+        notesInput.value = item.notes || "";
+        FILTER_DEFS.forEach(function (def) { if (def.el) def.el.value = ""; });
+        header = (Array.isArray(item.header) && item.header.length)
+          ? item.header.map(function (h) { return { label: String(h.label || ""), value: String(h.value || "") }; })
+          : [{ label: "", value: "" }];
+        sections = (Array.isArray(item.sections) && item.sections.length)
+          ? item.sections.map(normalizeSection)
+          : [normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] })];
+        submitBtn.textContent = "Salvar edição";
+        cancelBtn.classList.remove("d-none");
+        renderAll();
+        document.getElementById("el-card").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    // Import .xls
+    var importBtn = document.getElementById("elImportBtn");
+    var fileInput = document.getElementById("elFileInput");
+    var fileNameEl = document.getElementById("elFileName");
+    var spinner = document.getElementById("elSpinner");
+    var msgEl = document.getElementById("elImportMsg");
+
+    importBtn.addEventListener("click", function () { fileInput.value = ""; fileInput.click(); });
+    fileInput.addEventListener("change", function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      fileNameEl.textContent = file.name;
+      msgEl.textContent = "";
+      spinner.classList.remove("d-none");
+      importBtn.disabled = true;
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        fetch("/admin/report-service/orders/<%= order.id %>/event-log/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream", "X-CSRF-Token": (form.querySelector('[name=\"_csrf\"]') || {}).value || "", "x-file-name": encodeURIComponent(file.name) },
+          body: e.target.result
+        }).then(function (resp) {
+          return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (result) {
+          spinner.classList.add("d-none");
+          importBtn.disabled = false;
+          if (!result.ok || !result.data || !result.data.ok) {
+            msgEl.textContent = (result.data && result.data.error) || "Falha ao importar o arquivo.";
+            return;
+          }
+          var parsed = result.data.data || {};
+          idInput.value = "";
+          titleInput.value = parsed.title || file.name.replace(/\.[^.]+$/, "");
+          FILTER_DEFS.forEach(function (def) { if (def.el) def.el.value = ""; });
+          header = (Array.isArray(parsed.header) && parsed.header.length)
+            ? parsed.header.map(function (h) { return { label: String(h.label || ""), value: String(h.value || "") }; })
+            : [{ label: "", value: "" }];
+          sections = (Array.isArray(parsed.sections) && parsed.sections.length)
+            ? parsed.sections.map(normalizeSection)
+            : [normalizeSection({ title: "Event Log", columns: DEFAULT_COLUMNS.slice(), rows: [] })];
+          submitBtn.textContent = "Salvar Event Log";
+          cancelBtn.classList.add("d-none");
+          renderAll();
+          document.getElementById("el-card").scrollIntoView({ behavior: "smooth", block: "start" });
+        }).catch(function () {
+          spinner.classList.add("d-none");
+          importBtn.disabled = false;
+          msgEl.textContent = "Falha na requisição.";
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    form.addEventListener("submit", function () {
+      syncFromDom();
+      var cleanHeader = header.filter(function (h) { return String(h.label || "").trim() || String(h.value || "").trim(); });
+      headerInput.value = JSON.stringify(cleanHeader);
+      sectionsInput.value = JSON.stringify(sections.map(function (s) {
+        return { title: String(s.title || ""), columns: s.columns.map(function (c) { return String(c || "").trim(); }).filter(Boolean), rows: s.rows };
+      }));
+    });
+
+    resetForm();
+  })();
+</script>
+
+<style>
+  #elStyleModal .esm-header { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: #fff; padding: 14px 18px 12px; border-radius: 12px 12px 0 0; }
+  #elStyleModal .esm-preview-panel { flex: 1; min-width: 0; background: #f1f5f9; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; }
+  #elStyleModal .esm-paper { background: #fff; border-radius: 6px; box-shadow: 0 2px 16px rgba(0,0,0,0.10); padding: 22px 24px; flex: 1; position: relative; min-height: 180px; }
+  #elStyleModal .esm-paper-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; z-index: 5; gap: 8px; }
+  #elStyleModal .esm-ai-panel { width: 310px; min-width: 240px; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0; background: #fff; }
+  #elStyleModal .esm-ai-header { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 11.5px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 6px; letter-spacing: 0.02em; }
+  #elStyleModal .esm-chat-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #elStyleModal .esm-bubble { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+  #elStyleModal .esm-bubble.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 3px; }
+  #elStyleModal .esm-bubble.ai { align-self: flex-start; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+  #elStyleModal .esm-bubble.err { align-self: flex-start; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-bottom-left-radius: 3px; }
+  #elStyleModal .esm-typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; margin: 0 2px; animation: esmPulse 1.2s ease-in-out infinite; }
+  #elStyleModal .esm-typing span:nth-child(2) { animation-delay: 0.2s; }
+  #elStyleModal .esm-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes esmPulse { 0%,60%,100% { transform:translateY(0);opacity:.4; } 30% { transform:translateY(-5px);opacity:1; } }
+  #elStyleModal .esm-chips { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #f1f5f9; }
+  #elStyleModal .esm-chip { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; user-select: none; }
+  #elStyleModal .esm-chip:hover { background: #e2e8f0; border-color: #94a3b8; color: #1e293b; }
+  #elStyleModal .esm-input-area { padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+  #elStyleModal .esm-unsaved { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,.15); border-radius: 20px; padding: 1px 8px; }
+  #elStyleModal .esm-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; flex-shrink: 0; }
+</style>
+
+<div class="modal fade" id="elStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:12px;overflow:hidden;">
+      <div class="esm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual do Event Log</span>
+            <span id="esmUnsavedBadge" class="esm-unsaved d-none"><span class="esm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div id="esmTableName" style="font-size:12px;opacity:.6;">—</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+        <div class="esm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização (amostra)</span>
+            <span id="esmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="esm-paper">
+            <div class="esm-paper-overlay" id="esmOverlay">
+              <div class="spinner-border text-primary" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="esmPreviewContent"></div>
+          </div>
+        </div>
+
+        <div class="esm-ai-panel">
+          <div class="esm-ai-header">Assistente de Design IA</div>
+          <div class="esm-chat-area" id="esmChatArea"></div>
+          <div class="esm-chips">
+            <span class="esm-chip" data-s="Centralizar texto em todas as células">Centralizar texto</span>
+            <span class="esm-chip" data-s="Negrito em todas as células de dados">Negrito dados</span>
+            <span class="esm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="esm-chip" data-s="Diminuir a fonte das células para 10px">Fonte menor</span>
+            <span class="esm-chip" data-s="Remover o fundo alternado nas linhas, deixar todas brancas">Sem zebra</span>
+            <span class="esm-chip" data-s="Borda fina cinza clara">Borda fina</span>
+          </div>
+          <div class="esm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="esmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-primary btn-sm" id="esmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto" id="esmResetBtn">Restaurar padrão</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-success" id="esmDefaultBtn">Salvar como padrão</button>
+        <button type="button" class="btn btn-sm btn-success" id="esmSaveBtn">Salvar visual</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var modal = document.getElementById("elStyleModal");
+    if (!modal) return;
+    var bsModal = null;
+    function getModal() { if (!bsModal) bsModal = new bootstrap.Modal(modal); return bsModal; }
+
+    var previewContent = document.getElementById("esmPreviewContent");
+    var chatArea      = document.getElementById("esmChatArea");
+    var overlay       = document.getElementById("esmOverlay");
+    var inputEl       = document.getElementById("esmInput");
+    var sendBtn       = document.getElementById("esmSendBtn");
+    var saveBtn       = document.getElementById("esmSaveBtn");
+    var defaultBtn    = document.getElementById("esmDefaultBtn");
+    var resetBtn      = document.getElementById("esmResetBtn");
+    var unsavedBadge  = document.getElementById("esmUnsavedBadge");
+    var tableName     = document.getElementById("esmTableName");
+    var previewHint   = document.getElementById("esmPreviewHint");
+
+    var activeElId = null, activeOrderId = null, pendingStyle = null;
+    var csrfToken = (document.querySelector('[name="_csrf"]') || {}).value || "";
+    var typingEl = null;
+
+    function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+    function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+    function setInputBusy(on) { sendBtn.disabled = on; inputEl.disabled = on; resetBtn.disabled = on; if (defaultBtn) defaultBtn.disabled = on; }
+    function addBubble(type, text) { removeTyping(); var d = document.createElement("div"); d.className = "esm-bubble " + type; d.textContent = text; chatArea.appendChild(d); chatArea.scrollTop = chatArea.scrollHeight; return d; }
+    function showTyping() { removeTyping(); typingEl = document.createElement("div"); typingEl.className = "esm-bubble ai esm-typing"; typingEl.innerHTML = "<span></span><span></span><span></span>"; chatArea.appendChild(typingEl); chatArea.scrollTop = chatArea.scrollHeight; }
+    function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+    function updatePreview(html) { previewContent.innerHTML = html || ""; }
+
+    async function callAi(instruction, apply) {
+      var body = new URLSearchParams();
+      body.set("_csrf", csrfToken);
+      if (instruction) body.set("instruction", instruction);
+      if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+      if (apply) body.set("apply", "true");
+      var resp = await fetch("/admin/report-service/orders/" + activeOrderId + "/event-log/" + activeElId + "/style-ai",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+      if (!resp.ok) { var d = await resp.json().catch(function () { return {}; }); throw new Error(d.error || "Erro na requisição."); }
+      return resp.json();
+    }
+    async function callReset() {
+      var body = new URLSearchParams(); body.set("_csrf", csrfToken);
+      var resp = await fetch("/admin/report-service/orders/" + activeOrderId + "/event-log/" + activeElId + "/style-reset",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+      if (!resp.ok) throw new Error("Erro ao resetar.");
+      return resp.json();
+    }
+    async function callDefault() {
+      var body = new URLSearchParams(); body.set("_csrf", csrfToken);
+      if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+      var resp = await fetch("/admin/report-service/orders/" + activeOrderId + "/event-log/" + activeElId + "/style-default",
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+      if (!resp.ok) { var d = await resp.json().catch(function () { return {}; }); throw new Error(d.error || "Erro ao salvar padrão."); }
+      return resp.json();
+    }
+
+    function markBtnState(state) {
+      var styleBtn = document.querySelector('.el-style-btn[data-eventlog-id="' + activeElId + '"]');
+      if (!styleBtn) return;
+      var badge = styleBtn.querySelector(".badge"); if (badge) badge.remove();
+      if (state === "custom") { styleBtn.setAttribute("data-has-style", "1"); styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>'); }
+      else if (state === "padrao") { styleBtn.setAttribute("data-has-style", "0"); styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span>'); }
+      else { styleBtn.setAttribute("data-has-style", "0"); }
+    }
+
+    document.querySelectorAll(".el-style-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        activeElId    = Number(btn.getAttribute("data-eventlog-id") || 0);
+        activeOrderId = btn.getAttribute("data-order-id") || "";
+        pendingStyle  = null;
+        chatArea.innerHTML = ""; inputEl.value = ""; previewHint.textContent = "";
+        setUnsaved(false); saveBtn.disabled = true; if (defaultBtn) defaultBtn.disabled = true;
+        var item = (window.eventLogsIndex || []).find(function (e) { return Number(e.id) === activeElId; });
+        tableName.textContent = (item && item.title) ? item.title : "Event Log #" + activeElId;
+        showOverlay(true); getModal().show();
+        callAi(null, false).then(function (r) {
+          showOverlay(false); updatePreview(r.previewHtml); pendingStyle = r.styleConfig || null;
+          if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+          previewHint.textContent = "Envie uma instrução para personalizar";
+          addBubble("ai", "Olá! Descreva o que deseja alterar no visual da tabela de eventos: cores, fontes, bordas, tamanhos ou alinhamento. A pré-visualização mostra uma amostra das primeiras linhas.");
+        }).catch(function (err) {
+          showOverlay(false);
+          previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+        });
+      });
+    });
+
+    function sendInstruction() {
+      var instruction = (inputEl.value || "").trim();
+      if (!instruction || sendBtn.disabled) return;
+      setInputBusy(true); addBubble("user", instruction); inputEl.value = ""; showTyping();
+      previewHint.textContent = "Aplicando alterações...";
+      callAi(instruction, false).then(function (r) {
+        removeTyping(); updatePreview(r.previewHtml); pendingStyle = r.styleConfig || null;
+        setUnsaved(true); saveBtn.disabled = false; if (defaultBtn) defaultBtn.disabled = false;
+        previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+        addBubble("ai", "Feito! Verifique o preview ao lado. Você pode continuar ajustando ou salvar.");
+      }).catch(function (err) {
+        removeTyping(); addBubble("err", "Erro: " + (err.message || "Falha na IA.")); previewHint.textContent = "";
+      }).finally(function () { setInputBusy(false); inputEl.focus(); });
+    }
+    sendBtn.addEventListener("click", sendInstruction);
+    inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+    modal.querySelectorAll(".esm-chip").forEach(function (chip) { chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); }); });
+
+    saveBtn.addEventListener("click", function () {
+      if (!pendingStyle) return;
+      setInputBusy(true); saveBtn.disabled = true;
+      callAi(null, true).then(function () { markBtnState("custom"); setUnsaved(false); getModal().hide(); })
+        .catch(function (err) { addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente.")); saveBtn.disabled = false; })
+        .finally(function () { setInputBusy(false); });
+    });
+
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", function () {
+        if (!pendingStyle) return;
+        setInputBusy(true); defaultBtn.disabled = true;
+        callDefault().then(function (r) {
+          updatePreview(r.previewHtml); pendingStyle = r.styleConfig || pendingStyle; markBtnState("custom");
+          setUnsaved(false); saveBtn.disabled = true;
+          previewHint.textContent = "Estilo salvo como padrão para novos Event Logs";
+          addBubble("ai", "Este visual foi salvo como padrão. Outros Event Logs sem estilo próprio usarão este visual automaticamente.");
+        }).catch(function (err) { addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente.")); })
+          .finally(function () { setInputBusy(false); defaultBtn.disabled = !pendingStyle; });
+      });
+    }
+
+    resetBtn.addEventListener("click", function () {
+      if (!confirm("Restaurar o visual padrão deste Event Log?")) return;
+      setInputBusy(true);
+      callReset().then(function (r) {
+        updatePreview(r.previewHtml); pendingStyle = r.styleConfig || null; chatArea.innerHTML = "";
+        setUnsaved(false); saveBtn.disabled = true; if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+        previewHint.textContent = "Visual padrão restaurado";
+        addBubble("ai", "Visual restaurado para o padrão. Envie novas instruções para personalizar novamente.");
+        markBtnState(pendingStyle ? "padrao" : "none");
+      }).catch(function (err) { addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente.")); })
+        .finally(function () { setInputBusy(false); });
+    });
+  })();
+</script>
+<%- include("../partials/footer") %>

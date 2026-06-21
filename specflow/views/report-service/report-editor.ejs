@@ -277,6 +277,36 @@
                   <td><code>@ensaios=<%= measurementRegistry[0] ? measurementRegistry[0].seq_id : "1" %></code></td>
                 </tr>
                 <tr>
+                  <td><code>@mesuaresUPS=ID</code></td>
+                  <td>Renderiza o cabeçalho (série/firmware) e as medições importadas do arquivo Measures.xls</td>
+                  <td>
+                    <% const upsRegistry = Array.isArray(upsMeasures) ? upsMeasures : []; %>
+                    <% if (upsRegistry.length) { %>
+                      <% upsRegistry.forEach((item) => { %>
+                        <span class="badge text-bg-light border me-1 mb-1"><code><%= item.seq_id %></code></span>
+                      <% }) %>
+                    <% } else { %>
+                      <span class="text-muted">Nenhuma medição UPS importada</span>
+                    <% } %>
+                  </td>
+                  <td><code>@mesuaresUPS=<%= upsRegistry[0] ? upsRegistry[0].seq_id : "1" %></code></td>
+                </tr>
+                <tr>
+                  <td><code>@eventlogUPS=ID</code></td>
+                  <td>Renderiza o cabeçalho (série/firmware) e o log de eventos importado do arquivo Event Log.xls</td>
+                  <td>
+                    <% const evlogRegistry = Array.isArray(eventLogs) ? eventLogs : []; %>
+                    <% if (evlogRegistry.length) { %>
+                      <% evlogRegistry.forEach((item) => { %>
+                        <span class="badge text-bg-light border me-1 mb-1"><code><%= item.seq_id %></code></span>
+                      <% }) %>
+                    <% } else { %>
+                      <span class="text-muted">Nenhum Event Log importado</span>
+                    <% } %>
+                  </td>
+                  <td><code>@eventlogUPS=<%= evlogRegistry[0] ? evlogRegistry[0].seq_id : "1" %></code></td>
+                </tr>
+                <tr>
                   <td><code>@timesheet</code></td>
                   <td>Tabela de horas e horários do timesheet</td>
                   <td><span class="text-muted">Automático</span></td>
@@ -525,6 +555,9 @@
                   <tr><td><code>@tblcmpq</code></td><td>Tabela de componentes necessários (categoria: required)</td><td><code>@tblcmpq</code></td></tr>
                   <tr><td><code>@tblcmps</code></td><td>Tabela de componentes sobressalentes (categoria: spare)</td><td><code>@tblcmps</code></td></tr>
                   <tr><td><code>@tblequip</code></td><td>Tabela completa dos equipamentos vinculados à OS (dados da tabela de equipamentos)</td><td><code>@tblequip</code></td></tr>
+                  <tr><td><code>@ensaios=ID</code></td><td>Renderiza uma tabela de ensaios/medicoes cadastrada na OS</td><td><code>@ensaios=1</code></td></tr>
+                  <tr><td><code>@mesuaresUPS=ID</code></td><td>Renderiza o cabeçalho e as medições importadas do arquivo Measures.xls</td><td><code>@mesuaresUPS=1</code></td></tr>
+                  <tr><td><code>@eventlogUPS=ID</code></td><td>Renderiza o cabeçalho e o log de eventos importado do arquivo Event Log.xls</td><td><code>@eventlogUPS=1</code></td></tr>
                   <tr><td><code>@timesheet</code></td><td>Tabela de timesheet com datas e horários de entrada/saída</td><td><code>@timesheet</code></td></tr>
                   <tr><td><code>@equipetecnica</code></td><td>Tabela da equipe técnica com nome, função e empresa</td><td><code>@equipetecnica</code></td></tr>
                 </tbody>

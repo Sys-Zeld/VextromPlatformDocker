@@ -3,6 +3,8 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { parseAlberCsv } = require("../services/alberParserService");
 const { parseDischargeCsv } = require("../services/dischargeParserService");
+const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
+const { parseEventLogWorkbook } = require("../services/eventLogParser");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../../db");
 const repo = require("../repositories/serviceReportRepository");
@@ -62,7 +64,22 @@ const {
   getDefaultComponentsStyleConfig,
   saveDefaultComponentsStyleConfig,
   buildComponentsPreviewHtml,
-  applyComponentsStyleViaAi
+  applyComponentsStyleViaAi,
+  generateDefaultCss,
+  buildUpsStyleConfig,
+  scopeUpsStyleConfig,
+  getDefaultUpsStyleConfig,
+  saveDefaultUpsStyleConfig,
+  applyDefaultUpsStyle,
+  buildUpsPreviewHtml,
+  applyUpsStyleViaAi,
+  buildEventLogStyleConfig,
+  scopeEventLogStyleConfig,
+  getDefaultEventLogStyleConfig,
+  saveDefaultEventLogStyleConfig,
+  applyDefaultEventLogStyle,
+  buildEventLogPreviewHtml,
+  applyEventLogStyleViaAi
 } = require("../services/measurementStyleService");
 const {
   renderReportPreviewHtml,
@@ -470,6 +487,92 @@ function createReportWebController(deps) {
     };
   }
 
+  function normalizeUpsMeasuresPayload(body) {
+    const header = parseMeasurementJson(body.header_json, [])
+      .map((item) => ({
+        label: safeTrimText(item && item.label),
+        value: safeTrimText(item && item.value)
+      }))
+      .filter((item) => item.label || item.value)
+      .slice(0, 200);
+
+    const sections = parseMeasurementJson(body.sections_json, [])
+      .map((section) => {
+        const columns = (Array.isArray(section && section.columns) ? section.columns : [])
+          .map((c) => safeTrimText(c))
+          .filter(Boolean)
+          .slice(0, 12);
+        const safeColumns = columns.length ? columns : ["ID", "Signal Name", "Signal Value", "Unit"];
+        const rows = (Array.isArray(section && section.rows) ? section.rows : [])
+          .map((row) => {
+            const source = Array.isArray(row) ? row : [];
+            const cells = [];
+            for (let i = 0; i < safeColumns.length; i += 1) cells.push(safeTrimText(source[i]));
+            return cells;
+          })
+          .filter((row) => row.some((cell) => String(cell || "").trim()))
+          .slice(0, 1000);
+        return {
+          title: safeTrimText(section && section.title),
+          columns: safeColumns,
+          rows
+        };
+      })
+      .filter((section) => section.rows.length);
+
+    return {
+      id: Number(body.ups_id || 0),
+      title: safeTrimText(body.title) || "Medições UPS",
+      header,
+      sections,
+      notes: safeTrimText(body.notes),
+      sortOrder: Number(body.sort_order || 0)
+    };
+  }
+
+  function normalizeEventLogPayload(body) {
+    const header = parseMeasurementJson(body.header_json, [])
+      .map((item) => ({
+        label: safeTrimText(item && item.label),
+        value: safeTrimText(item && item.value)
+      }))
+      .filter((item) => item.label || item.value)
+      .slice(0, 200);
+
+    const sections = parseMeasurementJson(body.sections_json, [])
+      .map((section) => {
+        const columns = (Array.isArray(section && section.columns) ? section.columns : [])
+          .map((c) => safeTrimText(c))
+          .filter(Boolean)
+          .slice(0, 16);
+        const safeColumns = columns.length ? columns : ["Source", "Event Name", "Status", "Start Date", "Start Time", "ID", "Type"];
+        const rows = (Array.isArray(section && section.rows) ? section.rows : [])
+          .map((row) => {
+            const source = Array.isArray(row) ? row : [];
+            const cells = [];
+            for (let i = 0; i < safeColumns.length; i += 1) cells.push(safeTrimText(source[i]));
+            return cells;
+          })
+          .filter((row) => row.some((cell) => String(cell || "").trim()))
+          .slice(0, 6000);
+        return {
+          title: safeTrimText(section && section.title),
+          columns: safeColumns,
+          rows
+        };
+      })
+      .filter((section) => section.rows.length);
+
+    return {
+      id: Number(body.eventlog_id || 0),
+      title: safeTrimText(body.title) || "Event Log UPS",
+      header,
+      sections,
+      notes: safeTrimText(body.notes),
+      sortOrder: Number(body.sort_order || 0)
+    };
+  }
+
   function renderEmailPlaceholder(template, variables) {
     return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (match, key) => {
       const k = String(key || "").trim().toLowerCase();
@@ -543,10 +646,18 @@ function createReportWebController(deps) {
     if (returnTo === "measurements") {
       return `/admin/report-service/orders/${orderId}/measurements`;
     }
+    if (returnTo === "ups-measures") {
+      return `/admin/report-service/orders/${orderId}/ups-measures`;
+    }
+    if (returnTo === "event-log") {
+      return `/admin/report-service/orders/${orderId}/event-log`;
+    }
 
     const allowedCurrentPages = [
       `/admin/report-service/orders/${orderId}/report-editor`,
       `/admin/report-service/orders/${orderId}/measurements`,
+      `/admin/report-service/orders/${orderId}/ups-measures`,
+      `/admin/report-service/orders/${orderId}/event-log`,
       `/admin/report-service/orders/${orderId}/assets`,
       `/admin/report-service/orders/${orderId}/sign-report`,
       `/admin/report-service/orders/${orderId}`
@@ -613,7 +724,9 @@ function createReportWebController(deps) {
       instruments,
       images,
       alberLeituras,
-      allSpareParts
+      allSpareParts,
+      upsMeasures,
+      eventLogs
     ] = await Promise.all([
       repo.listCustomers(),
       repo.listSites(order.customer_id ? { customerId: order.customer_id } : {}),
@@ -629,7 +742,9 @@ function createReportWebController(deps) {
       repo.listInstrumentsByOrder(orderId),
       repo.listImages(report.id),
       repo.listLeiturasAlberByReport(report.id),
-      repo.listSpareParts()
+      repo.listSpareParts(),
+      repo.listUpsMeasuresByReport(report.id),
+      repo.listEventLogsByReport(report.id)
     ]);
     const equipments = (allEquipments || []).filter((equipment) => {
       const sameCustomer = Number(equipment.customer_id) === Number(order.customer_id);
@@ -662,6 +777,10 @@ function createReportWebController(deps) {
     const styledMeasurements = applyDefaultMeasurementStyle(measurements, defaultMeasurementStyleConfig);
     const defaultAlberStyleConfig = await getDefaultAlberStyleConfig();
     const styledAlberLeituras = applyDefaultAlberStyle(alberLeituras, defaultAlberStyleConfig);
+    const defaultUpsStyleConfig = await getDefaultUpsStyleConfig();
+    const styledUpsMeasures = applyDefaultUpsStyle(upsMeasures, defaultUpsStyleConfig);
+    const defaultEventLogStyleConfig = await getDefaultEventLogStyleConfig();
+    const styledEventLogs = applyDefaultEventLogStyle(eventLogs, defaultEventLogStyleConfig);
 
     return {
       order,
@@ -675,6 +794,8 @@ function createReportWebController(deps) {
       sections,
       components,
       measurements: styledMeasurements,
+      upsMeasures: styledUpsMeasures || [],
+      eventLogs: styledEventLogs || [],
       alberLeituras: styledAlberLeituras,
       signatures,
       technicians,
@@ -2539,6 +2660,8 @@ function createReportWebController(deps) {
         sections: data.sections,
         images: data.images,
         measurements: data.measurements,
+        upsMeasures: data.upsMeasures || [],
+        eventLogs: data.eventLogs || [],
         orderEquipments: data.orderEquipments,
         dailyLogs: data.dailyLogs,
         signatures: data.signatures,
@@ -3338,6 +3461,310 @@ function createReportWebController(deps) {
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
     },
 
+    async upsMeasuresEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).send("OS nao encontrada.");
+      const orderView = withServiceOrderDisplay(data.order);
+      const defaultUpsStyle = await getDefaultUpsStyleConfig();
+      const upsMeasures = applyDefaultUpsStyle(await repo.listUpsMeasuresByReport(data.report.id), defaultUpsStyle);
+      return res.render("report-service/ups-measures-editor", {
+        pageTitle: `Medições UPS - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
+        order: orderView,
+        report: data.report,
+        upsMeasures: upsMeasures || [],
+        saved: req.query.saved === "1",
+        editLocked: req.query.edit_locked === "1",
+        csrfToken: req.csrfToken()
+      });
+    },
+
+    async uploadUpsMeasures(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId, { json: true })) return;
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) {
+        return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      }
+      let fileName = "Measures.xls";
+      try {
+        fileName = sanitizeInput(decodeURIComponent(String(req.headers["x-file-name"] || "Measures.xls")));
+      } catch (_err) {
+        fileName = sanitizeInput(String(req.headers["x-file-name"] || "Measures.xls"));
+      }
+      try {
+        const parsed = parseUpsMeasuresWorkbook(buffer, fileName);
+        if (!parsed.sections.length && !parsed.header.length) {
+          return res.status(422).json({ ok: false, error: "Nenhum dado reconhecido no arquivo." });
+        }
+        return res.status(200).json({ ok: true, data: parsed });
+      } catch (err) {
+        return res.status(422).json({ ok: false, error: err && err.message ? err.message : "Falha ao processar o arquivo." });
+      }
+    },
+
+    async saveUpsMeasures(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = normalizeUpsMeasuresPayload(req.body || {});
+      if (Number.isInteger(payload.id) && payload.id > 0) {
+        await repo.updateUpsMeasures(payload.id, report.id, payload);
+      } else {
+        await repo.createUpsMeasures({
+          serviceReportId: report.id,
+          ...payload
+        });
+      }
+      return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async deleteUpsMeasures(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const upsId = Number(req.params.upsId);
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(upsId) && upsId > 0) {
+        await repo.deleteUpsMeasures(upsId, report.id);
+      }
+      return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async upsMeasuresStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const upsId = Number(req.params.upsId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(upsId) || upsId <= 0) {
+        return res.status(400).json({ error: "ID de medições UPS inválido." });
+      }
+
+      const { generateDefaultCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const item = await repo.getUpsMeasuresById(upsId, report.id);
+      if (!item) return res.status(404).json({ error: "Medições UPS não encontradas." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = scopeUpsStyleConfig(await getDefaultUpsStyleConfig(), upsId);
+      const activeStyle = parsedCurrentStyle || item.style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          const styleConfig = buildUpsStyleConfig(parsedCurrentStyle);
+          await repo.updateUpsMeasuresStyleConfig(upsId, report.id, styleConfig);
+          return res.json({ previewHtml: buildUpsPreviewHtml(item, styleConfig), styleConfig });
+        }
+        const styleConfig = buildUpsStyleConfig(activeStyle);
+        return res.json({ previewHtml: buildUpsPreviewHtml(item, styleConfig), styleConfig });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultCss(`ups-${upsId}`);
+      const newCss = await applyUpsStyleViaAi(currentCss, upsId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = buildUpsStyleConfig({ customCss: newCss });
+      const previewHtml = buildUpsPreviewHtml(item, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateUpsMeasuresStyleConfig(upsId, report.id, newStyleConfig);
+      }
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async upsMeasuresStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const upsId = Number(req.params.upsId);
+      if (!Number.isInteger(upsId) || upsId <= 0) {
+        return res.status(400).json({ error: "ID de medições UPS inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateUpsMeasuresStyleConfig(upsId, report.id, null);
+      const item = await repo.getUpsMeasuresById(upsId, report.id);
+      if (!item) return res.status(404).json({ error: "Medições UPS não encontradas." });
+      const defaultStyle = scopeUpsStyleConfig(await getDefaultUpsStyleConfig(), upsId);
+      const previewHtml = buildUpsPreviewHtml(item, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async upsMeasuresStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const upsId = Number(req.params.upsId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(upsId) || upsId <= 0) {
+        return res.status(400).json({ error: "ID de medições UPS inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      const item = await repo.getUpsMeasuresById(upsId, report.id);
+      if (!item) return res.status(404).json({ error: "Medições UPS não encontradas." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const { generateDefaultCss } = require("../services/measurementStyleService");
+      const styleConfig = buildUpsStyleConfig(parsedCurrentStyle || item.style_config || { customCss: generateDefaultCss(`ups-${upsId}`) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultUpsStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeUpsStyleConfig(styleConfig, upsId);
+      await repo.updateUpsMeasuresStyleConfig(upsId, report.id, scopedStyleConfig);
+      const previewHtml = buildUpsPreviewHtml(item, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
+    },
+
+    async eventLogEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).send("OS nao encontrada.");
+      const orderView = withServiceOrderDisplay(data.order);
+      const defaultEventLogStyle = await getDefaultEventLogStyleConfig();
+      const eventLogs = applyDefaultEventLogStyle(await repo.listEventLogsByReport(data.report.id), defaultEventLogStyle);
+      return res.render("report-service/event-log-editor", {
+        pageTitle: `Event Log UPS - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
+        order: orderView,
+        report: data.report,
+        eventLogs: eventLogs || [],
+        saved: req.query.saved === "1",
+        editLocked: req.query.edit_locked === "1",
+        csrfToken: req.csrfToken()
+      });
+    },
+
+    async uploadEventLog(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId, { json: true })) return;
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) {
+        return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      }
+      let fileName = "Event Log.xls";
+      try {
+        fileName = sanitizeInput(decodeURIComponent(String(req.headers["x-file-name"] || "Event Log.xls")));
+      } catch (_err) {
+        fileName = sanitizeInput(String(req.headers["x-file-name"] || "Event Log.xls"));
+      }
+      try {
+        const parsed = parseEventLogWorkbook(buffer, fileName);
+        if (!parsed.sections.length && !parsed.header.length) {
+          return res.status(422).json({ ok: false, error: "Nenhum dado reconhecido no arquivo." });
+        }
+        return res.status(200).json({ ok: true, data: parsed });
+      } catch (err) {
+        return res.status(422).json({ ok: false, error: err && err.message ? err.message : "Falha ao processar o arquivo." });
+      }
+    },
+
+    async saveEventLog(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = normalizeEventLogPayload(req.body || {});
+      if (Number.isInteger(payload.id) && payload.id > 0) {
+        await repo.updateEventLog(payload.id, report.id, payload);
+      } else {
+        await repo.createEventLog({
+          serviceReportId: report.id,
+          ...payload
+        });
+      }
+      return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async deleteEventLog(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const eventLogId = Number(req.params.eventLogId);
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(eventLogId) && eventLogId > 0) {
+        await repo.deleteEventLog(eventLogId, report.id);
+      }
+      return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    async eventLogStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const eventLogId = Number(req.params.eventLogId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(eventLogId) || eventLogId <= 0) {
+        return res.status(400).json({ error: "ID de Event Log inválido." });
+      }
+
+      const { generateDefaultCss } = require("../services/measurementStyleService");
+      const report = await service.ensureReportForOrder(orderId);
+      const item = await repo.getEventLogById(eventLogId, report.id);
+      if (!item) return res.status(404).json({ error: "Event Log não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = scopeEventLogStyleConfig(await getDefaultEventLogStyleConfig(), eventLogId);
+      const activeStyle = parsedCurrentStyle || item.style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          const styleConfig = buildEventLogStyleConfig(parsedCurrentStyle);
+          await repo.updateEventLogStyleConfig(eventLogId, report.id, styleConfig);
+          return res.json({ previewHtml: buildEventLogPreviewHtml(item, styleConfig), styleConfig });
+        }
+        const styleConfig = buildEventLogStyleConfig(activeStyle);
+        return res.json({ previewHtml: buildEventLogPreviewHtml(item, styleConfig), styleConfig });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultCss(`evlog-${eventLogId}`);
+      const newCss = await applyEventLogStyleViaAi(currentCss, eventLogId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = buildEventLogStyleConfig({ customCss: newCss });
+      const previewHtml = buildEventLogPreviewHtml(item, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateEventLogStyleConfig(eventLogId, report.id, newStyleConfig);
+      }
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async eventLogStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const eventLogId = Number(req.params.eventLogId);
+      if (!Number.isInteger(eventLogId) || eventLogId <= 0) {
+        return res.status(400).json({ error: "ID de Event Log inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateEventLogStyleConfig(eventLogId, report.id, null);
+      const item = await repo.getEventLogById(eventLogId, report.id);
+      if (!item) return res.status(404).json({ error: "Event Log não encontrado." });
+      const defaultStyle = scopeEventLogStyleConfig(await getDefaultEventLogStyleConfig(), eventLogId);
+      const previewHtml = buildEventLogPreviewHtml(item, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async eventLogStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const eventLogId = Number(req.params.eventLogId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(eventLogId) || eventLogId <= 0) {
+        return res.status(400).json({ error: "ID de Event Log inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      const item = await repo.getEventLogById(eventLogId, report.id);
+      if (!item) return res.status(404).json({ error: "Event Log não encontrado." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const { generateDefaultCss } = require("../services/measurementStyleService");
+      const styleConfig = buildEventLogStyleConfig(parsedCurrentStyle || item.style_config || { customCss: generateDefaultCss(`evlog-${eventLogId}`) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultEventLogStyleConfig(styleConfig);
+      const scopedStyleConfig = scopeEventLogStyleConfig(styleConfig, eventLogId);
+      await repo.updateEventLogStyleConfig(eventLogId, report.id, scopedStyleConfig);
+      const previewHtml = buildEventLogPreviewHtml(item, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
+    },
+
     async measurementStyleAi(req, res) {
       const orderId = Number(req.params.id);
       const measurementId = Number(req.params.measurementId);
@@ -3521,30 +3948,86 @@ function createReportWebController(deps) {
     },
 
     async tableStylesPage(req, res) {
-      const [timesheetStyle, techteamStyle, equipmentStyle, componentsStyle] = await Promise.all([
+      const [timesheetStyle, techteamStyle, equipmentStyle, componentsStyle, upsStyle, eventLogStyle] = await Promise.all([
         getDefaultTimesheetStyleConfig(),
         getDefaultTechteamStyleConfig(),
         getDefaultEquipmentStyleConfig(),
-        getDefaultComponentsStyleConfig()
+        getDefaultComponentsStyleConfig(),
+        getDefaultUpsStyleConfig(),
+        getDefaultEventLogStyleConfig()
       ]);
       return res.render("report-service/table-styles", {
         csrfToken: req.csrfToken ? req.csrfToken() : "",
         timesheetHasCustomStyle: !!(timesheetStyle && timesheetStyle.customCss),
         techteamHasCustomStyle: !!(techteamStyle && techteamStyle.customCss),
         equipmentHasCustomStyle: !!(equipmentStyle && equipmentStyle.customCss),
-        componentsHasCustomStyle: !!(componentsStyle && componentsStyle.customCss)
+        componentsHasCustomStyle: !!(componentsStyle && componentsStyle.customCss),
+        upsHasCustomStyle: !!(upsStyle && upsStyle.customCss),
+        eventLogHasCustomStyle: !!(eventLogStyle && eventLogStyle.customCss)
       });
     },
 
     async tableStyleAi(req, res) {
       const tableType = String(req.params.tableType || "").toLowerCase();
-      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components"];
+      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components", "upsmeasures", "eventlog"];
       if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
 
       const { instruction, apply, current_style } = req.body || {};
 
       let parsedCurrentStyle = null;
       try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const sampleUpsMeasures = {
+        id: 0,
+        seq_id: 0,
+        title: "Medições UPS",
+        header: [
+          { label: "Model Name", value: "UPS 93PM" },
+          { label: "Serial Number", value: "UPS-0001" },
+          { label: "Firmware", value: "1.0.0" }
+        ],
+        sections_json: [
+          {
+            title: "Input",
+            columns: ["ID", "Signal Name", "Signal Value", "Unit"],
+            rows: [
+              ["1", "Input Voltage L1", "220", "V"],
+              ["2", "Input Frequency", "60", "Hz"],
+              ["3", "Input Current", "12.4", "A"]
+            ]
+          },
+          {
+            title: "Battery",
+            columns: ["ID", "Signal Name", "Signal Value", "Unit"],
+            rows: [
+              ["10", "Battery Voltage", "432", "V"],
+              ["11", "Battery Charge", "98", "%"]
+            ]
+          }
+        ],
+        notes: "Preview de layout para a tabela Measures.xls."
+      };
+      const sampleEventLog = {
+        id: 0,
+        seq_id: 0,
+        title: "Event Log UPS",
+        header: [
+          { label: "Model Name", value: "UPS 93PM" },
+          { label: "Serial Number", value: "UPS-0001" }
+        ],
+        sections_json: [
+          {
+            title: "Event Log",
+            columns: ["Source", "Event Name", "Status", "Start Date", "Start Time", "ID", "Type"],
+            rows: [
+              ["System", "Input AC Restored", "Closed", "2026-06-21", "08:10:12", "1001", "Info"],
+              ["Battery", "Battery Test Started", "Open", "2026-06-21", "08:15:40", "1002", "Event"],
+              ["Bypass", "Bypass Not Available", "Closed", "2026-06-21", "08:18:03", "1003", "Alarm"]
+            ]
+          }
+        ],
+        notes: "Preview de layout para a tabela Event Log.xls."
+      };
 
       const handlers = {
         timesheet: {
@@ -3578,6 +4061,22 @@ function createReportWebController(deps) {
           buildPreview: (cfg) => buildComponentsPreviewHtml(0, cfg),
           applyAi: (currentCss, instruction2) => applyComponentsStyleViaAi(currentCss, 0, instruction2, reviseTextWithAi),
           getDefaultCss: () => generateDefaultComponentsCss(0)
+        },
+        upsmeasures: {
+          buildConfig: buildUpsStyleConfig,
+          getDefault: getDefaultUpsStyleConfig,
+          saveDefault: saveDefaultUpsStyleConfig,
+          buildPreview: (cfg) => buildUpsPreviewHtml(sampleUpsMeasures, cfg),
+          applyAi: (currentCss, instruction2) => applyUpsStyleViaAi(currentCss, 0, instruction2, reviseTextWithAi),
+          getDefaultCss: () => generateDefaultCss("ups-0")
+        },
+        eventlog: {
+          buildConfig: buildEventLogStyleConfig,
+          getDefault: getDefaultEventLogStyleConfig,
+          saveDefault: saveDefaultEventLogStyleConfig,
+          buildPreview: (cfg) => buildEventLogPreviewHtml(sampleEventLog, cfg),
+          applyAi: (currentCss, instruction2) => applyEventLogStyleViaAi(currentCss, 0, instruction2, reviseTextWithAi),
+          getDefaultCss: () => generateDefaultCss("evlog-0")
         }
       };
 
@@ -3609,22 +4108,64 @@ function createReportWebController(deps) {
 
     async tableStyleReset(req, res) {
       const tableType = String(req.params.tableType || "").toLowerCase();
-      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components"];
+      const VALID_TYPES = ["timesheet", "techteam", "equipment", "components", "upsmeasures", "eventlog"];
       if (!VALID_TYPES.includes(tableType)) return res.status(400).json({ error: "Tipo de tabela inválido." });
 
       const keyMap = {
         timesheet: "report.preview.timesheet.style.default",
         techteam: "report.preview.techteam.style.default",
         equipment: "report.preview.equipment.style.default",
-        components: "report.preview.components.style.default"
+        components: "report.preview.components.style.default",
+        upsmeasures: "report.preview.upsmeasures.style.default",
+        eventlog: "report.preview.eventlog.style.default"
       };
       await repo.upsertAppSetting(keyMap[tableType], null);
 
+      const sampleUpsMeasures = {
+        id: 0,
+        seq_id: 0,
+        title: "Medições UPS",
+        header: [
+          { label: "Model Name", value: "UPS 93PM" },
+          { label: "Serial Number", value: "UPS-0001" }
+        ],
+        sections_json: [
+          {
+            title: "Input",
+            columns: ["ID", "Signal Name", "Signal Value", "Unit"],
+            rows: [
+              ["1", "Input Voltage L1", "220", "V"],
+              ["2", "Input Frequency", "60", "Hz"]
+            ]
+          }
+        ]
+      };
+      const sampleEventLog = {
+        id: 0,
+        seq_id: 0,
+        title: "Event Log UPS",
+        header: [
+          { label: "Model Name", value: "UPS 93PM" },
+          { label: "Serial Number", value: "UPS-0001" }
+        ],
+        sections_json: [
+          {
+            title: "Event Log",
+            columns: ["Source", "Event Name", "Status", "Start Date", "Start Time", "ID", "Type"],
+            rows: [
+              ["System", "Input AC Restored", "Closed", "2026-06-21", "08:10:12", "1001", "Info"],
+              ["Battery", "Battery Test Started", "Open", "2026-06-21", "08:15:40", "1002", "Event"]
+            ]
+          }
+        ]
+      };
       const previewBuilders = {
         timesheet: buildTimesheetPreviewHtml,
         techteam: buildTechteamPreviewHtml,
         equipment: buildEquipmentPreviewHtml,
-        components: (cfg) => buildComponentsPreviewHtml(0, cfg)
+        components: (cfg) => buildComponentsPreviewHtml(0, cfg),
+        upsmeasures: (cfg) => buildUpsPreviewHtml(sampleUpsMeasures, cfg),
+        eventlog: (cfg) => buildEventLogPreviewHtml(sampleEventLog, cfg)
       };
       const previewHtml = previewBuilders[tableType](null);
       return res.json({ previewHtml, styleConfig: null });
@@ -4436,7 +4977,7 @@ function createReportWebController(deps) {
       ]);
       return res.render("report-service/preview", {
         pageTitle: `Preview - ${payload.report.report_number}`,
-        ...buildPreviewModel(payload, { reportConfig, templateKey }),
+        ...buildPreviewModel(payload, { reportConfig, templateKey, previewMode: true }),
         systemTimezone,
         csrfToken: req.csrfToken()
       });
@@ -4456,8 +4997,8 @@ function createReportWebController(deps) {
 
       const requestedTemplateKey = sanitizeInput(req.params.templateKey);
       const { reportConfig, templateKey } = await resolveRenderConfig(requestedTemplateKey, null);
-      const model = buildPreviewModel(payload, { reportConfig, templateKey });
-      const bodyHtml = await renderReportPreviewHtml(payload, { reportConfig, templateKey });
+      const model = buildPreviewModel(payload, { reportConfig, templateKey, previewMode: true });
+      const bodyHtml = await renderReportPreviewHtml(payload, { reportConfig, templateKey, previewMode: true });
       const cacheVersion = encodeURIComponent(String(model.generatedAt || Date.now()));
       const availableTemplates = getReportTemplateOptions();
       const currentTemplateName = (availableTemplates.find((item) => item.key === templateKey) || {}).name || templateKey;

@@ -53,7 +53,8 @@ async function renderReportPreviewHtml(payload, options = {}) {
   const [model, systemTimezone] = await Promise.all([
     Promise.resolve(buildPreviewModel(payload, {
       reportConfig: options.reportConfig || null,
-      templateKey
+      templateKey,
+      previewMode: options.previewMode === true
     })),
     getSystemTimezone()
   ]);

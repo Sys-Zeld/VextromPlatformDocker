@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "PowerShell(git log -1 -L 319,341:\"report_service/src/services/reportPreviewService.js\" --format=\"%h %s\" 2>&1)",
-      "Bash(docker exec vextromplatform-docker-app-1 node -e ' *)"
+      "Bash(docker exec vextromplatform-docker-app-1 node -e ' *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(Object.keys\\(p.dependencies||{}\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(xxd Measures_UPS_KNACU.xls)",
+      "Read(//tmp/**)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('./report_service/src/services/reportPreviewService.js'\\); console.log\\('reportPreviewService OK'\\)\")",
+      "Bash(node -e \"require\\('./report_service/src/repositories/serviceReportRepository.js'\\); console.log\\('repo OK'\\)\")",
+      "Bash(node -e \"require\\('./report_service/src/services/serviceReportService.js'\\); console.log\\('service OK'\\)\")",
+      "Bash(node -e \"require\\('./report_service/src/controllers/createReportWebController.js'\\); console.log\\('controller OK'\\)\")",
+      "Bash(node -e \"require\\('./report_service/src/routes/web.js'\\); console.log\\('web routes OK'\\)\")",
+      "Bash(node -e \"require\\('./report_service/src/controllers/createReportWebController.js'\\); console.log\\('controller OK'\\);\")",
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\); const has=\\(l.packages&&l.packages['node_modules/xlsx']\\)||\\(l.dependencies&&l.dependencies.xlsx\\); console.log\\('lock has xlsx:', !!has, has&&\\(has.version||has.resolved||''\\)\\);\")"
     ]
   }
 }
