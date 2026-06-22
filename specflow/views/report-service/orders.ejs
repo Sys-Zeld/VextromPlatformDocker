@@ -111,7 +111,32 @@
     font-size: 0.88rem !important;
   }
 
+  .orders-list-toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .orders-client-filter {
+    min-width: 260px;
+    max-width: 420px;
+  }
+
+  .orders-filter-count {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
   @media (max-width: 768px) {
+    .orders-client-filter {
+      max-width: none;
+      width: 100%;
+    }
+
     .orders-grid-wrap .gridjs-container,
     .orders-grid-wrap .gridjs-head,
     .orders-grid-wrap .gridjs-wrapper,
@@ -280,6 +305,18 @@
   <div class="card app-card">
     <div class="card-body">
       <h2 class="h6 app-card-title mb-3"><%= t("rs.orders.listTitle") %></h2>
+      <div class="orders-list-toolbar">
+        <div class="orders-client-filter">
+          <label class="form-label small mb-1" for="ordersCustomerFilter">Filtrar por cliente</label>
+          <select class="form-select form-select-sm" id="ordersCustomerFilter">
+            <option value="">Todos os clientes</option>
+            <% customers.forEach((customer) => { %>
+              <option value="<%= customer.id %>"><%= customer.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="orders-filter-count" id="ordersFilterCount"></div>
+      </div>
       <div class="orders-grid-wrap">
         <div id="ordersGrid"></div>
       </div>
@@ -333,6 +370,7 @@
         title: order.title || "-",
         description: order.description || "",
         proposal_number: order.proposal_number || "",
+        customer_id: order.customer_id || "",
         customer: order.customer_name || "-",
         site: order.site_name || "-",
         status: order.status || "-",
@@ -386,20 +424,39 @@
       return;
     }
 
-    var data = orders.map(function (order) {
-      return {
-        code: "<code>" + escapeHtml(order.code) + "</code>",
-        title: escapeHtml(order.title),
-        customer: escapeHtml(order.customer),
-        site: escapeHtml(order.site),
-        proposal_number: escapeHtml(order.proposal_number || "-"),
-        opening_date: formatDateShort(order.opening_date),
-        status: "<span class=\"badge orders-status-badge " + getStatusClass(order.status) + "\">" + escapeHtml(order.status) + "</span>",
-        actions: buildActionsHtml(order)
-      };
-    });
+    function getFilteredOrders() {
+      var customerFilter = document.getElementById("ordersCustomerFilter");
+      var selectedCustomerId = customerFilter ? String(customerFilter.value || "") : "";
+      if (!selectedCustomerId) return orders.slice();
+      return orders.filter(function (order) {
+        return String(order.customer_id || "") === selectedCustomerId;
+      });
+    }
 
-    new window.gridjs.Grid({
+    function buildGridData(sourceOrders) {
+      return sourceOrders.map(function (order) {
+        return {
+          code: "<code>" + escapeHtml(order.code) + "</code>",
+          title: escapeHtml(order.title),
+          customer: escapeHtml(order.customer),
+          site: escapeHtml(order.site),
+          proposal_number: escapeHtml(order.proposal_number || "-"),
+          opening_date: formatDateShort(order.opening_date),
+          status: "<span class=\"badge orders-status-badge " + getStatusClass(order.status) + "\">" + escapeHtml(order.status) + "</span>",
+          actions: buildActionsHtml(order)
+        };
+      });
+    }
+
+    function updateFilterCount(filteredTotal) {
+      var countEl = document.getElementById("ordersFilterCount");
+      if (!countEl) return;
+      countEl.textContent = filteredTotal === orders.length
+        ? String(orders.length) + " OS exibidas"
+        : String(filteredTotal) + " de " + String(orders.length) + " OS exibidas";
+    }
+
+    var grid = new window.gridjs.Grid({
       columns: [
         { id: "code", name: i18n.colCode, formatter: function (cell) { return window.gridjs.html(cell); } },
         { id: "title", name: i18n.colTitle },
@@ -410,7 +467,7 @@
         { id: "status", name: i18n.colStatus, formatter: function (cell) { return window.gridjs.html(cell); } },
         { id: "actions", name: i18n.colActions, sort: false, formatter: function (cell) { return window.gridjs.html(cell); } }
       ],
-      data: data,
+      data: buildGridData(getFilteredOrders()),
       search: true,
       sort: true,
       language: {
@@ -434,7 +491,18 @@
         limit: 20,
         summary: false
       }
-    }).render(gridTarget);
+    });
+    grid.render(gridTarget);
+    updateFilterCount(getFilteredOrders().length);
+
+    var customerFilter = document.getElementById("ordersCustomerFilter");
+    if (customerFilter) {
+      customerFilter.addEventListener("change", function () {
+        var filtered = getFilteredOrders();
+        grid.updateConfig({ data: buildGridData(filtered) }).forceRender();
+        updateFilterCount(filtered.length);
+      });
+    }
 
     var editModalEl = document.getElementById("editOrderRegistrationModal");
     var editForm = document.getElementById("editOrderRegistrationForm");
