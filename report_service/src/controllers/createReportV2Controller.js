@@ -5,6 +5,23 @@ const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
 const analyticsService = require("../services/analyticsService");
 const { getReportConfigSettings, saveReportConfigSettings } = require("../services/reportConfigSettings");
+const {
+  getDefaultTimesheetStyleConfig,
+  getDefaultTechteamStyleConfig,
+  getDefaultEquipmentStyleConfig,
+  getDefaultComponentsStyleConfig,
+  getDefaultUpsStyleConfig,
+  getDefaultEventLogStyleConfig
+} = require("../services/measurementStyleService");
+
+const TABLE_STYLE_TYPES = [
+  { key: "timesheet", label: "Timesheet", get: getDefaultTimesheetStyleConfig, settingKey: "report.preview.timesheet.style.default" },
+  { key: "techteam", label: "Equipe técnica", get: getDefaultTechteamStyleConfig, settingKey: "report.preview.techteam.style.default" },
+  { key: "equipment", label: "Equipamentos", get: getDefaultEquipmentStyleConfig, settingKey: "report.preview.equipment.style.default" },
+  { key: "components", label: "Componentes", get: getDefaultComponentsStyleConfig, settingKey: "report.preview.components.style.default" },
+  { key: "upsmeasures", label: "Medições UPS", get: getDefaultUpsStyleConfig, settingKey: "report.preview.upsmeasures.style.default" },
+  { key: "eventlog", label: "Event Log", get: getDefaultEventLogStyleConfig, settingKey: "report.preview.eventlog.style.default" }
+];
 
 function createReportServiceV2Controller(deps) {
   const sanitize = typeof deps.sanitizeInput === "function" ? deps.sanitizeInput : (v) => v;
@@ -298,6 +315,89 @@ function createReportServiceV2Controller(deps) {
     async deleteInstrument(req, res) {
       const ok = await repo.deleteGlobalInstrument(Number(req.params.id));
       if (!ok) return res.status(404).json({ error: "Instrumento não encontrado." });
+      return res.status(204).end();
+    },
+
+    // ---- Table styles (status + reset por tipo) -------------------------
+    async listTableStyles(_req, res) {
+      const types = await Promise.all(
+        TABLE_STYLE_TYPES.map(async (t) => {
+          const cfg = await t.get();
+          return { key: t.key, label: t.label, hasCustomStyle: Boolean(cfg && cfg.customCss) };
+        })
+      );
+      return res.json({ types });
+    },
+
+    async resetTableStyle(req, res) {
+      const tableType = String(req.params.tableType || "").toLowerCase();
+      const entry = TABLE_STYLE_TYPES.find((t) => t.key === tableType);
+      if (!entry) return res.status(400).json({ error: "Tipo de tabela inválido." });
+      await repo.upsertAppSetting(entry.settingKey, null);
+      return res.json({ ok: true, key: entry.key, hasCustomStyle: false });
+    },
+
+    // ---- Technician tools (por técnico) ---------------------------------
+    async listTechnicianTools(req, res) {
+      const techId = Number(req.params.techId);
+      const technician = await repo.getGlobalTechnicianById(techId);
+      if (!technician) return res.status(404).json({ error: "Técnico não encontrado." });
+      const tools = await repo.listGlobalToolsByTechnician(techId);
+      return res.json({ technician, tools });
+    },
+
+    async createTechnicianTool(req, res) {
+      const techId = Number(req.params.techId);
+      if (!sanitize(req.body.item)) return res.status(422).json({ error: "Item obrigatório." });
+      const created = await repo.createGlobalTool({
+        technicianId: techId,
+        item: sanitize(req.body.item),
+        quantity: Number(req.body.quantity || 1),
+        description: sanitize(req.body.description),
+        serialNumber: sanitize(req.body.serialNumber || req.body.serial_number),
+        notes: sanitize(req.body.notes)
+      });
+      return res.status(201).json(created);
+    },
+
+    async updateTechnicianTool(req, res) {
+      const techId = Number(req.params.techId);
+      const toolId = Number(req.params.toolId);
+      const updated = await repo.updateGlobalToolForTechnician(toolId, techId, {
+        quantity: Number(req.body.quantity || 1),
+        description: sanitize(req.body.description),
+        serialNumber: sanitize(req.body.serialNumber || req.body.serial_number),
+        notes: sanitize(req.body.notes)
+      });
+      if (!updated) return res.status(404).json({ error: "Ferramenta não encontrada." });
+      return res.json(updated);
+    },
+
+    async deleteTechnicianTool(req, res) {
+      const techId = Number(req.params.techId);
+      const toolId = Number(req.params.toolId);
+      const ok = await repo.deleteGlobalToolForTechnician(toolId, techId);
+      if (!ok) return res.status(404).json({ error: "Ferramenta não encontrada." });
+      return res.status(204).end();
+    },
+
+    // ---- PDF history (por OS) -------------------------------------------
+    async listPdfHistory(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId);
+      let pdfHistory = [];
+      let signatures = [];
+      try { pdfHistory = await repo.listPdfHistoryByOrderId(orderId); } catch (_e) { /* migração pendente */ }
+      try { signatures = await repo.listSignatures(report.id); } catch (_e) { /* ignore */ }
+      return res.json({ order, report, pdfHistory, signatures });
+    },
+
+    async deletePdfHistory(req, res) {
+      const entryId = Number(req.params.entryId);
+      const ok = await repo.deletePdfHistoryEntry(entryId);
+      if (!ok) return res.status(404).json({ error: "Registro não encontrado." });
       return res.status(204).end();
     }
   };

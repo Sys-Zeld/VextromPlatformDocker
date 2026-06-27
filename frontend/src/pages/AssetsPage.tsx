@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import {
@@ -95,6 +96,7 @@ export default function AssetsPage() {
                 <td>{t.name}</td><td>{t.role}</td><td>{t.company}</td><td>{t.email}</td><td>{t.phone}</td>
                 <td>{t.is_lead ? <Badge bg="primary">Lead</Badge> : ""}</td>
                 <td className="text-end">
+                  <Link className="btn btn-sm btn-outline-primary me-2" to={`/assets/technicians/${t.id}/tools`}>Ferramentas</Link>
                   <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })}>Editar</Button>
                   <Button size="sm" variant="outline-danger" disabled={mTechDelete.isPending} onClick={() => { if (confirm(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }}>Excluir</Button>
                 </td>

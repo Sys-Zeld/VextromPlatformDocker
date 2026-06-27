@@ -56,6 +56,20 @@ function createReportServiceV2Router(deps) {
   router.put("/assets/instruments/:id", asyncHandler(controller.updateInstrument));
   router.delete("/assets/instruments/:id", asyncHandler(controller.deleteInstrument));
 
+  // Ferramentas por técnico
+  router.get("/assets/technicians/:techId/tools", asyncHandler(controller.listTechnicianTools));
+  router.post("/assets/technicians/:techId/tools", asyncHandler(controller.createTechnicianTool));
+  router.put("/assets/technicians/:techId/tools/:toolId", asyncHandler(controller.updateTechnicianTool));
+  router.delete("/assets/technicians/:techId/tools/:toolId", asyncHandler(controller.deleteTechnicianTool));
+
+  // Estilos de tabela (status + reset)
+  router.get("/table-styles", asyncHandler(controller.listTableStyles));
+  router.post("/table-styles/:tableType/reset", asyncHandler(controller.resetTableStyle));
+
+  // Histórico de PDFs por OS
+  router.get("/orders/:id/pdf-history", asyncHandler(controller.listPdfHistory));
+  router.delete("/orders/:id/pdf-history/:entryId", asyncHandler(controller.deletePdfHistory));
+
   return router;
 }
 

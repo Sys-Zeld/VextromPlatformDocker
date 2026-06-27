@@ -17,6 +17,7 @@ const NAV = [
   { to: "/equipments", label: "Equipamentos" },
   { to: "/spare-parts", label: "Peças" },
   { to: "/assets", label: "Equipe & Instrumentos" },
+  { to: "/table-styles", label: "Estilos de tabela" },
   { to: "/config", label: "Configuração" },
   { to: "/analytics", label: "Analytics" }
 ];

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Alert, Badge, Button, Card, Spinner, Table } from "react-bootstrap";
 import { Order, deleteOrder, listOrders } from "../api/orders";
 import { useState } from "react";
@@ -63,6 +64,7 @@ export default function OrdersPage() {
               <td>{fmtDate(o.opening_date)}</td>
               <td className="text-end">
                 <a className="btn btn-sm btn-outline-primary me-2" href={`/admin/report-service/orders/${o.id}`}>Abrir</a>
+                <Link className="btn btn-sm btn-outline-secondary me-2" to={`/orders/${o.id}/pdf-history`}>PDFs</Link>
                 <Button
                   size="sm"
                   variant="outline-danger"
