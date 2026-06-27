@@ -1,7 +1,7 @@
 # Plano de Migração do Frontend para React.js
 
 > **Status:** Proposta / planejamento. Nenhum código de migração foi escrito ainda.
-> **Última atualização:** 2026-06-27 (inclui Seção 10 — coexistência paralela)
+> **Última atualização:** 2026-06-27 (inclui Seção 10 — coexistência paralela; Seção 11 — Fase 0 detalhada)
 > **Escopo:** Refatorar o frontend renderizado em EJS para uma SPA em React, de forma incremental.
 
 ---
@@ -260,3 +260,150 @@ Regras para não quebrar o legado:
 4. Validar em `/app/customers` com o legado ainda ativo em `/admin/.../customers`.
 5. Quando aprovado, apontar o link do menu para a versão `/app`.
 6. Repetir. O EJS antigo só é removido (Fase 5) quando todas as telas equivalentes existirem.
+
+---
+
+## 11. Fase 0 detalhada — Fundação (passo a passo)
+
+Objetivo da Fase 0: ter o esqueleto React rodando sob `/app`, autenticado pela sessão existente, com CSRF, i18n e tema funcionando — **sem migrar nenhuma tela de negócio ainda** e **sem tocar no legado**.
+
+### 11.1. Passo 1 — Scaffold do app React
+
+```bash
+# na raiz do projeto
+npm create vite@latest frontend -- --template react-ts
+cd frontend
+npm install
+npm install react-router-dom @tanstack/react-query react-bootstrap bootstrap react-i18next i18next
+```
+
+`frontend/` tem o **seu próprio** `package.json` (deps do front isoladas do backend). O `node_modules` do front não se mistura com o do Express.
+
+### 11.2. Passo 2 — `vite.config.ts` (base `/app` + proxy em dev)
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  base: "/app/",                         // assets servidos sob /app
+  build: { outDir: "dist" },
+  server: {
+    proxy: {
+      // em dev (vite na 5173), encaminha as APIs ao Express (3000)
+      "/admin/api": { target: "http://localhost:3000", changeOrigin: true },
+      "/api": { target: "http://localhost:3000", changeOrigin: true },
+    },
+  },
+});
+```
+
+Em desenvolvimento: `npm run dev` (Express na 3000) + `cd frontend && npm run dev` (Vite na 5173). Em produção: `cd frontend && npm run build` gera `frontend/dist`, servido pelo Express.
+
+### 11.3. Passo 3 — Enganche no Express (aditivo, em `specflow/app.js`)
+
+Inserir **depois** das rotas legadas, para não interceptá-las:
+
+```js
+const path = require("path");
+const frontendDist = path.join(__dirname, "..", "frontend", "dist");
+
+// SPA estático sob /app (não intercepta /admin nem /api)
+app.use("/app", express.static(frontendDist));
+app.get("/app/*", (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+```
+
+> Enquanto o `frontend/dist` não existir, esse trecho fica atrás de uma flag de ambiente (`REACT_APP_ENABLED`) para não quebrar o boot.
+
+### 11.4. Passo 4 — Façade JSON `/admin/api/v2` (reusa services existentes)
+
+`report_service/src/routes/apiV2.js` (novo) — mesma auth de sessão/CSRF do admin:
+
+```js
+const express = require("express");
+const { createReportServiceV2Controller } = require("../controllers/createReportV2Controller");
+
+function createReportServiceV2Router(deps) {
+  const router = express.Router();
+  const c = createReportServiceV2Controller(deps); // reusa deps.services/repositories
+  router.get("/session", deps.asyncHandler(c.session));     // quem sou eu + flags
+  router.get("/customers", deps.asyncHandler(c.listCustomers)); // page-load como JSON
+  // ... demais page-loads conforme telas forem migrando
+  return router;
+}
+module.exports = { createReportServiceV2Router };
+```
+
+Montagem em `specflow/app.js`:
+
+```js
+app.use(
+  "/admin/api/v2",
+  requireAdminAuth,            // mesma sessão de admin já existente
+  csrfProtection,             // mantém proteção CSRF
+  createReportServiceV2Router(deps)
+);
+```
+
+O controller v2 **não** reimplementa regra de negócio: chama os mesmos `services/`/`repositories/` que o web controller já usa, só que devolvendo `res.json` em vez de `res.render`.
+
+### 11.5. Passo 5 — Cliente HTTP + CSRF + cookie (no React)
+
+O CSRF (`csurf`) hoje injeta o token no EJS. No SPA, expor o token e enviá-lo em header:
+
+```js
+// backend: endpoint leve que devolve o token da sessão atual
+app.get("/admin/api/v2/csrf-token", requireAdminAuth, csrfProtection, (req, res) =>
+  res.json({ csrfToken: req.csrfToken() })
+);
+```
+
+```ts
+// frontend/src/api/client.ts
+let csrf: string | null = null;
+async function getCsrf() {
+  if (csrf) return csrf;
+  const r = await fetch("/admin/api/v2/csrf-token", { credentials: "include" });
+  csrf = (await r.json()).csrfToken;
+  return csrf!;
+}
+export async function api(path: string, init: RequestInit = {}) {
+  const method = (init.method || "GET").toUpperCase();
+  const headers = new Headers(init.headers);
+  if (method !== "GET") headers.set("X-CSRF-Token", await getCsrf());
+  const res = await fetch(path, { ...init, headers, credentials: "include" });
+  if (res.status === 401) window.location.href = "/admin/login"; // cai no login legado
+  return res;
+}
+```
+
+Confirmar no `csurf`/sessão que o token é aceito via header `X-CSRF-Token` (padrão do `csurf`) e que o cookie de sessão é `SameSite=Lax` (mesmo host, então funciona sem CORS).
+
+### 11.6. Passo 6 — i18n (PT/EN/ES) no React
+
+- Reaproveitar os dicionários de `specflow/i18n/` exportando-os como JSON via um endpoint (`GET /admin/api/v2/i18n/:lang`) ou copiando os arquivos para `frontend/src/i18n/`.
+- Configurar `react-i18next` com PT como fallback; idioma inicial vindo da sessão (`/admin/api/v2/session`).
+
+### 11.7. Passo 7 — Tema (3 temas) no React
+
+- Replicar o bootstrap de tema do `views/partials/head.ejs`: ler `localStorage["app_theme"]` (valores `soft|vextrom|xvextrom`), aplicar `data-theme` no `<html>`.
+- Reaproveitar o `specflow/public/css/app.css` (importar no `main.tsx`) para manter a identidade visual.
+
+### 11.8. Passo 8 — CSP
+
+- O `'unsafe-inline'` atual permanece para o legado.
+- O bundle React não usa inline script, então sob `/app` pode-se servir com CSP mais restrita (origem `'self'`). Avaliar nonce quando `/app` amadurecer.
+
+### 11.9. Passo 9 — Build no Docker
+
+- Adicionar etapa `npm --prefix frontend ci && npm --prefix frontend run build` no `Dockerfile` (estágio de build), copiando `frontend/dist` para a imagem final.
+- Garantir que o `.dockerignore`/`.gitignore` ignore `frontend/node_modules` e `frontend/dist` (build artifact).
+
+### 11.10. Critérios de aceite da Fase 0
+
+- [ ] `GET /app` carrega o React com layout/tema/i18n, sem afetar `/admin/...` nem `/api/...`.
+- [ ] `GET /admin/api/v2/session` retorna o admin logado usando a **mesma** sessão do legado.
+- [ ] Uma chamada `POST` de teste passa pela validação CSRF via header.
+- [ ] `npm run build` do front gera `dist` e o Express o serve em produção.
+- [ ] Nenhuma rota/arquivo legado foi alterado além dos enganches aditivos em `specflow/app.js`.
