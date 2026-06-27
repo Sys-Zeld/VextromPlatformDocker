@@ -116,7 +116,7 @@ export default function SparePartsPage() {
         </div>
       </Card.Header>
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead>
           <tr><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th>Família</th><th>Lead time</th><th>Status</th><th className="text-end">Ações</th></tr>
         </thead>

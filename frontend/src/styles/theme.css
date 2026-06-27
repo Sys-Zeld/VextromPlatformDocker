@@ -208,6 +208,8 @@ body {
 .table {
   --bs-table-bg: transparent;
   --bs-table-hover-bg: var(--surface-2);
+  --bs-table-striped-bg: rgba(var(--bs-primary-rgb), 0.045);
+  --bs-table-striped-color: var(--text);
   color: var(--text);
   margin-bottom: 0;
 }

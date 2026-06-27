@@ -108,7 +108,7 @@ export default function EquipmentSparesPanel() {
               <span>Peças vinculadas {isFetching && <Spinner animation="border" size="sm" className="ms-2" />}</span>
               <Badge bg="light" text="dark">{linked.length}</Badge>
             </Card.Header>
-            <Table responsive hover className="mb-0 align-middle">
+            <Table striped responsive hover className="mb-0 align-middle">
               <thead><tr><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th>Qtd.</th><th>Status</th><th className="text-end">Ações</th></tr></thead>
               <tbody>
                 {linked.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhuma peça vinculada.</td></tr>}
@@ -131,7 +131,7 @@ export default function EquipmentSparesPanel() {
 
           <Card>
             <Card.Header>Catálogo disponível para vincular</Card.Header>
-            <Table responsive hover className="mb-0 align-middle">
+            <Table striped responsive hover className="mb-0 align-middle">
               <thead><tr><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th style={{ width: 110 }}>Qtd.</th><th className="text-end">Ação</th></tr></thead>
               <tbody>
                 {available.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhuma peça disponível no catálogo.</td></tr>}
