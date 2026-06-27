@@ -1,8 +1,18 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Alert, Badge, Button, Card, Spinner, Table } from "react-bootstrap";
-import { Order, deleteOrder, listOrders } from "../api/orders";
-import { useState } from "react";
+import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { api } from "../api/client";
+import {
+  ORDER_STATUSES,
+  Order,
+  OrderInput,
+  createOrder,
+  deleteOrder,
+  listOrders,
+  updateOrder
+} from "../api/orders";
+import type { Site } from "../api/customers";
 
 const STATUS_VARIANT: Record<string, string> = {
   draft: "secondary",
@@ -15,6 +25,11 @@ const STATUS_VARIANT: Record<string, string> = {
   cancelled: "danger"
 };
 
+const EMPTY: OrderInput = {
+  customerId: "", siteId: "", title: "", proposalNumber: "", description: "",
+  status: "draft", openingDate: "", technicianIds: []
+};
+
 function fmtDate(value: string | null): string {
   if (!value) return "—";
   const d = new Date(value);
@@ -24,12 +39,23 @@ function fmtDate(value: string | null): string {
 export default function OrdersPage() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["orders"], queryFn: listOrders });
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<{ role: string | null }>("/session") });
+  const isAdmin = String(session?.role || "").toLowerCase() === "admin";
 
-  const mDelete = useMutation({
-    mutationFn: deleteOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
-    onError: (e) => setActionError((e as Error).message)
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [show, setShow] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [form, setForm] = useState<OrderInput>(EMPTY);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["orders"] });
+  const onError = (e: unknown) => setActionError((e as Error).message);
+
+  const mDelete = useMutation({ mutationFn: deleteOrder, onSuccess: invalidate, onError });
+  const mCreate = useMutation({ mutationFn: createOrder, onSuccess: () => { setShow(false); invalidate(); }, onError });
+  const mUpdate = useMutation({
+    mutationFn: (p: { id: number; input: OrderInput }) => updateOrder(p.id, p.input),
+    onSuccess: () => { setShow(false); invalidate(); },
+    onError
   });
 
   if (isLoading) {
@@ -39,15 +65,43 @@ export default function OrdersPage() {
     return <Alert variant="danger">Falha ao carregar ordens: {(error as Error).message}</Alert>;
   }
 
-  const orders = data?.orders ?? [];
+  const { orders = [], customers = [], sites = [], technicians = [], technicianIdsByOrder = {} } = data ?? {};
+  const sitesForCustomer = (customerId: number | "") =>
+    sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
+
+  const openNew = () => { setEditOrder(null); setForm(EMPTY); setActionError(null); setShow(true); };
+  const openEdit = (o: Order) => {
+    setEditOrder(o);
+    setForm({
+      customerId: o.customer_id, siteId: o.site_id ?? "", title: o.title ?? "",
+      proposalNumber: o.proposal_number ?? "", description: "", status: o.status ?? "draft",
+      openingDate: o.opening_date ? o.opening_date.slice(0, 10) : "",
+      technicianIds: technicianIdsByOrder[String(o.id)] ?? []
+    });
+    setActionError(null);
+    setShow(true);
+  };
+
+  const locked = !!editOrder && String(editOrder.status).toLowerCase() === "approved";
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (editOrder) mUpdate.mutate({ id: editOrder.id, input: form });
+    else mCreate.mutate(form);
+  };
+  const saving = mCreate.isPending || mUpdate.isPending;
+  const toggleTech = (id: number) =>
+    setForm((f) => ({
+      ...f,
+      technicianIds: f.technicianIds.includes(id) ? f.technicianIds.filter((t) => t !== id) : [...f.technicianIds, id]
+    }));
 
   return (
     <Card>
       <Card.Header className="d-flex justify-content-between align-items-center">
-        <span>Ordens de Serviço</span>
-        <Badge bg="light" text="dark">{orders.length}</Badge>
+        <span>Ordens de Serviço <Badge bg="light" text="dark" className="ms-2">{orders.length}</Badge></span>
+        {isAdmin && <Button size="sm" onClick={openNew}>Nova OS</Button>}
       </Card.Header>
-      {actionError && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+      {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Table striped responsive hover className="mb-0 align-middle">
         <thead>
           <tr><th>OS</th><th>Título</th><th>Cliente</th><th>Site</th><th>Status</th><th>Abertura</th><th className="text-end">Ações</th></tr>
@@ -63,7 +117,8 @@ export default function OrdersPage() {
               <td><Badge bg={STATUS_VARIANT[o.status || "draft"] || "secondary"}>{o.status || "draft"}</Badge></td>
               <td>{fmtDate(o.opening_date)}</td>
               <td className="text-end">
-                <a className="btn btn-sm btn-outline-primary me-2" href={`/admin/report-service/orders/${o.id}`}>Abrir</a>
+                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(o)}>Editar</Button>
+                <a className="btn btn-sm btn-outline-primary me-2" href={`/admin/report-service/orders/${o.id}`}>Editor completo</a>
                 <Link className="btn btn-sm btn-outline-secondary me-2" to={`/orders/${o.id}/pdf-history`}>PDFs</Link>
                 <Button
                   size="sm"
@@ -77,8 +132,91 @@ export default function OrdersPage() {
         </tbody>
       </Table>
       <Card.Footer className="text-muted small">
-        A criação/edição completa de OS ainda usa o editor legado (botão “Abrir”). Migração do editor planejada nas próximas fases.
+        Esta tela cobre o cadastro da OS (cliente, site, status, técnicos). A montagem do relatório (timesheet, seções,
+        medições, imagens, assinaturas) continua no “Editor completo”.
       </Card.Footer>
+
+      <Modal show={show} onHide={() => setShow(false)} size="lg">
+        <Modal.Header closeButton><Modal.Title>{editOrder ? `Editar OS ${editOrder.os_number || `#${editOrder.id}`}` : "Nova OS"}</Modal.Title></Modal.Header>
+        <Form onSubmit={submit}>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+            {locked && <Alert variant="warning">OS aprovada — somente leitura. Não é possível salvar alterações.</Alert>}
+            <div className="row g-3">
+              <div className="col-md-6">
+                <Form.Label>Cliente</Form.Label>
+                <Form.Select
+                  required
+                  disabled={!!editOrder || locked}
+                  value={form.customerId === "" ? "" : form.customerId}
+                  onChange={(e) => setForm({ ...form, customerId: e.target.value ? Number(e.target.value) : "", siteId: "" })}
+                >
+                  <option value="">Selecione…</option>
+                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Form.Select>
+                {editOrder && <Form.Text className="text-muted">Cliente/Site não mudam no cadastro da OS.</Form.Text>}
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Site</Form.Label>
+                <Form.Select
+                  required
+                  disabled={!!editOrder || locked}
+                  value={form.siteId === "" ? "" : form.siteId}
+                  onChange={(e) => setForm({ ...form, siteId: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">Selecione…</option>
+                  {sitesForCustomer(form.customerId).map((s) => <option key={s.id} value={s.id}>{s.site_name}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Título</Form.Label>
+                <Form.Control disabled={locked} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              </div>
+              <div className="col-md-3">
+                <Form.Label>Proposta nº</Form.Label>
+                <Form.Control disabled={locked} value={form.proposalNumber} onChange={(e) => setForm({ ...form, proposalNumber: e.target.value })} />
+              </div>
+              <div className="col-md-3">
+                <Form.Label>Abertura</Form.Label>
+                <Form.Control type="date" disabled={locked} value={form.openingDate} onChange={(e) => setForm({ ...form, openingDate: e.target.value })} />
+              </div>
+              {!editOrder && (
+                <div className="col-md-4">
+                  <Form.Label>Status</Form.Label>
+                  <Form.Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                    {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </Form.Select>
+                </div>
+              )}
+              <div className="col-12">
+                <Form.Label>Descrição</Form.Label>
+                <Form.Control as="textarea" rows={2} disabled={locked} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div className="col-12">
+                <Form.Label>Técnicos {editOrder && <span className="text-danger">*</span>}</Form.Label>
+                <div className="border rounded p-2" style={{ maxHeight: 160, overflowY: "auto" }}>
+                  {technicians.length === 0 && <span className="text-muted small">Cadastre técnicos em “Equipe & Instrumentos”.</span>}
+                  {technicians.map((t) => (
+                    <Form.Check
+                      key={t.id}
+                      type="checkbox"
+                      id={`tech-${t.id}`}
+                      label={t.name}
+                      disabled={locked}
+                      checked={form.technicianIds.includes(t.id)}
+                      onChange={() => toggleTech(t.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShow(false)}>Cancelar</Button>
+            <Button type="submit" disabled={saving || locked}>{saving ? "Salvando…" : "Salvar"}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </Card>
   );
 }

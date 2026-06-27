@@ -170,7 +170,7 @@ function createReportServiceV2Controller(deps) {
       }
     },
 
-    // ---- Orders (lista + exclusão) --------------------------------------
+    // ---- Orders (lista + criação/edição/exclusão) -----------------------
     async listOrders(_req, res) {
       const [orders, customers, sites, technicians] = await Promise.all([
         repo.listOrders(),
@@ -178,7 +178,63 @@ function createReportServiceV2Controller(deps) {
         repo.listSites(),
         repo.listGlobalTechnicians()
       ]);
-      return res.json({ orders, customers, sites, technicians });
+      const orderIds = orders.map((o) => Number(o.id)).filter((id) => Number.isInteger(id) && id > 0);
+      const links = await repo.listOrderTechnicianLinks(orderIds);
+      const technicianIdsByOrder = links.reduce((acc, row) => {
+        const orderId = Number(row.order_id);
+        const techId = Number(row.technician_id);
+        if (!Number.isInteger(orderId) || !Number.isInteger(techId)) return acc;
+        (acc[orderId] = acc[orderId] || []).push(techId);
+        return acc;
+      }, {});
+      return res.json({ orders, customers, sites, technicians, technicianIdsByOrder });
+    },
+
+    async createOrder(req, res) {
+      if (String(req.adminRole || "").toLowerCase() !== "admin") {
+        return res.status(403).json({ error: "Apenas administradores do sistema podem criar OS." });
+      }
+      const created = await service.createOrder({
+        customerId: req.body.customerId || req.body.customer_id,
+        siteId: req.body.siteId || req.body.site_id,
+        title: req.body.title,
+        proposalNumber: req.body.proposalNumber || req.body.proposal_number,
+        description: req.body.description,
+        status: req.body.status,
+        openingDate: req.body.openingDate || req.body.opening_date,
+        createdBy: req.adminUsername || ""
+      });
+      const techIds = normalizeTechIds(req.body.technicianIds || req.body.technician_ids);
+      for (const techId of techIds) {
+        await repo.linkTechnicianToOrder(created.id, techId);
+      }
+      return res.status(201).json(created);
+    },
+
+    async updateOrderRegistration(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") {
+        return res.status(409).json({ error: "OS aprovada não pode ser editada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      }
+      const techIds = normalizeTechIds(req.body.technicianIds || req.body.technician_ids);
+      if (!techIds.length) {
+        return res.status(422).json({ error: "Selecione ao menos um técnico." });
+      }
+      const updated = await service.updateOrder(orderId, {
+        customerId: order.customer_id,
+        siteId: order.site_id,
+        title: req.body.title,
+        proposalNumber: req.body.proposalNumber || req.body.proposal_number,
+        description: req.body.description,
+        status: order.status,
+        openingDate: req.body.openingDate || req.body.opening_date || order.opening_date || null,
+        closingDate: order.closing_date,
+        updatedBy: req.adminUsername || ""
+      });
+      await repo.replaceTechniciansByOrder(orderId, techIds);
+      return res.json(updated);
     },
 
     async deleteOrder(req, res) {
@@ -582,6 +638,14 @@ function createReportServiceV2Controller(deps) {
       });
     }
   };
+
+  function normalizeTechIds(value) {
+    return Array.from(new Set(
+      [].concat(value || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ));
+  }
 
   function mapSparePartBody(body) {
     return {

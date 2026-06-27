@@ -24,8 +24,10 @@ function createReportServiceV2Router(deps) {
   router.put("/sites/:id", asyncHandler(controller.updateSite));
   router.delete("/sites/:id", asyncHandler(controller.deleteSite));
 
-  // Orders (lista + exclusão)
+  // Orders (lista + criação/edição/exclusão)
   router.get("/orders", asyncHandler(controller.listOrders));
+  router.post("/orders", asyncHandler(controller.createOrder));
+  router.put("/orders/:id", asyncHandler(controller.updateOrderRegistration));
   router.delete("/orders/:id", asyncHandler(controller.deleteOrder));
 
   // Equipments (CRUD)
