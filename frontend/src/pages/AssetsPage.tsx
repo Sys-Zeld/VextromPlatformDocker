@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, OverlayTrigger, Spinner, Table, Tooltip } from "react-bootstrap";
 import {
   Instrument,
   InstrumentInput,
@@ -21,6 +21,19 @@ const EMPTY_INSTR: InstrumentInput = {
   name: "", model: "", serialNumber: "", certificateNumber: "", certificateLink: "",
   responsibleTechnicianId: "", lastCalibrationDate: "", calibrationDueDate: "", notes: ""
 };
+
+// Botão somente-ícone com legenda (tooltip) no hover. Aceita props de Button
+// (inclusive as={Link} to=...) via rest.
+type IconActionProps = { icon: string; label: string } & Record<string, unknown>;
+function IconAction({ icon, label, ...rest }: IconActionProps) {
+  return (
+    <OverlayTrigger placement="top" overlay={<Tooltip>{label}</Tooltip>}>
+      <Button size="sm" className="vx-icon-btn" aria-label={label} {...rest}>
+        <span className="material-symbols-outlined">{icon}</span>
+      </Button>
+    </OverlayTrigger>
+  );
+}
 
 function techToInput(t: Technician): TechnicianInput {
   return { name: t.name, role: t.role ?? "", company: t.company ?? "", email: t.email ?? "", phone: t.phone ?? "", isLead: Boolean(t.is_lead) };
@@ -95,10 +108,12 @@ export default function AssetsPage() {
               <tr key={t.id}>
                 <td>{t.name}</td><td>{t.role}</td><td>{t.company}</td><td>{t.email}</td><td>{t.phone}</td>
                 <td>{t.is_lead ? <Badge bg="primary">Lead</Badge> : ""}</td>
-                <td className="text-end">
-                  <Link className="btn btn-sm btn-outline-primary me-2" to={`/assets/technicians/${t.id}/tools`}>Ferramentas</Link>
-                  <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })}>Editar</Button>
-                  <Button size="sm" variant="outline-danger" disabled={mTechDelete.isPending} onClick={() => { if (confirm(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }}>Excluir</Button>
+                <td>
+                  <div className="d-flex justify-content-end gap-1">
+                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })} />
+                    <IconAction icon="handyman" label="Ferramentas" variant="outline-primary" as={Link} to={`/assets/technicians/${t.id}/tools`} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mTechDelete.isPending} onClick={() => { if (confirm(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }} />
+                  </div>
                 </td>
               </tr>
             ))}

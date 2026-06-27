@@ -231,6 +231,17 @@ body {
   --bs-btn-padding-y: 0.46rem;
 }
 .btn-sm { border-radius: 8px; }
+
+/* Botão somente-ícone (ações compactas em tabelas) */
+.vx-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  line-height: 1;
+}
+.vx-icon-btn .material-symbols-outlined { font-size: 18px; }
 .btn-primary {
   --bs-btn-bg: var(--primary);
   --bs-btn-border-color: var(--primary);
