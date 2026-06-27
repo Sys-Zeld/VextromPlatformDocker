@@ -51,6 +51,7 @@ module.exports = {
   appBaseUrl,
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS || "",
   specflowEnabled: String(process.env.SPECFLOW_ENABLED || "true").toLowerCase() === "true",
+  reactAppEnabled: String(process.env.REACT_APP_ENABLED || "false").toLowerCase() === "true",
   moduleSpecEnabled: String(process.env.MODULE_SPEC_ENABLED || "false").toLowerCase() === "true",
   reportServiceEnabled: String(process.env.REPORT_SERVICE_ENABLED || "true").toLowerCase() === "true",
   admin: {

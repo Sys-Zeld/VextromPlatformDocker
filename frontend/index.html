@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" sizes="32x32" href="https://vextrom.com.br/wp-content/uploads/fbrfg/favicon-32x32.png" />
+    <title>Vextrom Platform</title>
+    <script>
+      // Aplica o tema o mais cedo possível (espelha views/partials/head.ejs do legado).
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem("app_theme"); } catch (_e) { stored = null; }
+        var allowed = ["soft", "vextrom", "xvextrom", "xvetrom"];
+        var theme = allowed.indexOf(stored) >= 0 ? stored : "vextrom";
+        if (theme === "xvetrom") theme = "xvextrom";
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

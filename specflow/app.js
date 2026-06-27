@@ -228,6 +228,14 @@ app.use(express.urlencoded({ extended: false, limit: "25mb" }));
 app.use(express.json({ limit: "25mb" }));
 app.use(cookieParser());
 app.use("/public", express.static(path.join(__dirname, "public")));
+// SPA React (Fase 0) servida sob /app, coexistindo com o frontend EJS legado.
+// Aditivo e atrás de flag: não intercepta /admin nem /api. Só ativa quando o
+// build existe (REACT_APP_ENABLED=true), para não afetar o boot padrão.
+if (env.reactAppEnabled) {
+  const frontendDist = path.join(__dirname, "..", "frontend", "dist");
+  app.use("/app", express.static(frontendDist));
+  app.get("/app/*", (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+}
 app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
   const rel = objectStorage.normalizeKey(req.params[0] || "");
   if (!rel) return sendStandardError(req, res, 404);

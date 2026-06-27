@@ -48,6 +48,12 @@ backups/
 *.zip
 *.tar.gz
 !report_service/templates/email/*.html
+!frontend/index.html
+!frontend/**/*.html
+
+# Frontend (SPA React) — build artifacts já cobertos por dist/ e node_modules/
+frontend/dist/
+frontend/node_modules/
 
 .vscode/
 .idea/
