@@ -1,0 +1,269 @@
+/* =========================================================================
+   Vextrom design system — re-tematiza o Bootstrap sobre os tokens da marca
+   (definidos em /public/css/app.css via [data-theme]). Trocar o tema
+   (verde/soft/xvextrom) re-tinge automaticamente todo o SPA.
+   ========================================================================= */
+
+:root {
+  --vx-sidebar-width: 264px;
+
+  /* Sidebar: gradiente verde-escuro fixo (contraste premium) */
+  --vx-sidebar-bg-1: #16271c;
+  --vx-sidebar-bg-2: #1f3528;
+  --vx-sidebar-text: #c8d6cc;
+  --vx-sidebar-muted: #8aa392;
+  --vx-sidebar-active: #f4faf1;
+}
+
+/* ---- Mapeamento Bootstrap → tokens Vextrom ---------------------------- */
+:root {
+  --bs-primary: var(--primary);
+  --bs-primary-rgb: 95, 167, 58;
+  --bs-body-bg: var(--background);
+  --bs-body-color: var(--text);
+  --bs-border-color: var(--border);
+  --bs-secondary-color: var(--muted-text);
+  --bs-border-radius: var(--radius-md);
+  --bs-border-radius-sm: var(--radius-sm);
+  --bs-border-radius-lg: var(--radius-lg);
+  --bs-link-color: var(--primary);
+  --bs-link-hover-color: var(--primary-hover);
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--app-font-family, "Inter", "Segoe UI", sans-serif);
+}
+
+/* ---- Shell: sidebar + conteúdo --------------------------------------- */
+.vx-shell {
+  min-height: 100vh;
+}
+
+.vx-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--vx-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--vx-sidebar-bg-1), var(--vx-sidebar-bg-2));
+  color: var(--vx-sidebar-text);
+  z-index: 1030;
+  box-shadow: 4px 0 24px rgba(16, 30, 22, 0.18);
+}
+
+.vx-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.vx-brand__logo {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  flex: none;
+}
+.vx-brand__logo img { width: 28px; height: 28px; }
+.vx-brand__title { font-weight: 700; font-size: 1rem; line-height: 1.1; color: #fff; }
+.vx-brand__subtitle { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vx-sidebar-muted); }
+
+.vx-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vx-nav__section {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vx-sidebar-muted);
+  padding: 14px 14px 6px;
+}
+.vx-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: var(--vx-sidebar-text);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease;
+  border-left: 3px solid transparent;
+}
+.vx-nav__link .material-symbols-outlined { font-size: 21px; opacity: 0.9; }
+.vx-nav__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.vx-nav__link.active {
+  background: linear-gradient(90deg, rgba(95, 167, 58, 0.28), rgba(95, 167, 58, 0.05));
+  color: var(--vx-sidebar-active);
+  border-left-color: var(--primary);
+}
+.vx-nav__spacer { flex: 1; }
+.vx-nav__legacy {
+  margin: 8px 6px 4px;
+  font-size: 0.82rem;
+  color: var(--vx-sidebar-muted);
+}
+.vx-nav__legacy a { color: var(--vx-sidebar-muted); text-decoration: none; }
+.vx-nav__legacy a:hover { color: #fff; }
+
+/* Conteúdo deslocado pela sidebar */
+.vx-content {
+  margin-left: var(--vx-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.vx-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 28px;
+  background: rgba(var(--surface-rgb, 255, 255, 255), 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.vx-topbar__title { font-weight: 700; font-size: 1.05rem; margin: 0; color: var(--text); }
+.vx-topbar__crumb { font-size: 0.78rem; color: var(--muted-text); }
+.vx-topbar__controls { display: flex; align-items: center; gap: 14px; }
+.vx-user {
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 12px 5px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.vx-user__avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--primary); color: #fff; font-weight: 700; font-size: 0.85rem;
+}
+.vx-user__name { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+
+.vx-main { padding: 28px; flex: 1; }
+
+/* ---- Refinamento de componentes Bootstrap ---------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  font-weight: 650;
+  padding: 16px 20px;
+  color: var(--text);
+}
+.card-footer { background: transparent; border-top: 1px solid var(--border); }
+.card-body { padding: 20px; }
+
+.btn {
+  border-radius: 10px;
+  font-weight: 600;
+  --bs-btn-padding-y: 0.46rem;
+}
+.btn-sm { border-radius: 8px; }
+.btn-primary {
+  --bs-btn-bg: var(--primary);
+  --bs-btn-border-color: var(--primary);
+  --bs-btn-hover-bg: var(--primary-hover);
+  --bs-btn-hover-border-color: var(--primary-hover);
+  --bs-btn-active-bg: var(--primary-hover);
+  --bs-btn-disabled-bg: var(--primary);
+  --bs-btn-disabled-border-color: var(--primary);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--primary);
+  --bs-btn-border-color: var(--primary);
+  --bs-btn-hover-bg: var(--primary);
+  --bs-btn-hover-border-color: var(--primary);
+  --bs-btn-active-bg: var(--primary-hover);
+}
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-hover-bg: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 0;
+}
+.table > thead th {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: var(--muted-text);
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+.table > tbody td { padding-top: 13px; padding-bottom: 13px; vertical-align: middle; }
+.table > :not(caption) > * > * { border-bottom-color: var(--border); }
+
+.form-control, .form-select {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--input-text);
+  border-radius: 10px;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 0.18rem rgba(var(--bs-primary-rgb), 0.18);
+  background: var(--surface);
+}
+.form-label { font-weight: 600; font-size: 0.85rem; color: var(--text); margin-bottom: 0.3rem; }
+
+.badge { font-weight: 600; border-radius: 999px; padding: 0.4em 0.7em; }
+
+.modal-content { border: none; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.modal-header, .modal-footer { border-color: var(--border); }
+
+.nav-pills .nav-link { color: var(--text); }
+.nav-pills .nav-link.active { background: var(--primary); }
+
+/* KPI cards (Analytics) */
+.vx-kpi {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, var(--surface), var(--surface-2));
+  box-shadow: var(--shadow-sm);
+}
+.vx-kpi__value { font-size: 2rem; font-weight: 750; color: var(--text); line-height: 1; }
+.vx-kpi__label { font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-text); margin-top: 6px; }
+.vx-kpi__icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: rgba(var(--bs-primary-rgb), 0.14); color: var(--primary);
+}
+
+/* ---- Responsivo: sidebar recolhe em telas estreitas ------------------ */
+.vx-sidebar-toggle { display: none; }
+@media (max-width: 991px) {
+  .vx-sidebar { transform: translateX(-100%); transition: transform 0.2s ease; }
+  .vx-sidebar.is-open { transform: translateX(0); }
+  .vx-content { margin-left: 0; }
+  .vx-sidebar-toggle { display: inline-grid; }
+  .vx-backdrop {
+    position: fixed; inset: 0; background: rgba(16, 30, 22, 0.45); z-index: 1029;
+  }
+}

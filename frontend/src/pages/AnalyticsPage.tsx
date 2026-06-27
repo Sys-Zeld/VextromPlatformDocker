@@ -19,14 +19,19 @@ import { getAnalytics } from "../api/analytics";
 
 const PIE_COLORS = ["#6c757d", "#0dcaf0", "#0d6efd", "#ffc107", "#198754", "#212529", "#dc3545"];
 
-function Kpi({ label, value }: { label: string; value: number | string }) {
+function Kpi({ label, value, icon }: { label: string; value: number | string; icon: string }) {
   return (
-    <Card className="text-center h-100">
-      <Card.Body>
-        <div className="display-6 fw-semibold">{value}</div>
-        <div className="text-muted small text-uppercase">{label}</div>
-      </Card.Body>
-    </Card>
+    <div className="vx-kpi h-100">
+      <div className="d-flex align-items-center gap-3 p-3">
+        <span className="vx-kpi__icon">
+          <span className="material-symbols-outlined">{icon}</span>
+        </span>
+        <div>
+          <div className="vx-kpi__value">{value}</div>
+          <div className="vx-kpi__label">{label}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -64,10 +69,10 @@ export default function AnalyticsPage() {
       <h2 className="h5 mb-0">Analytics — Service Report</h2>
 
       <Row className="g-3">
-        <Col xs={6} md={3}><Kpi label="Total de OS" value={kpis.total_os} /></Col>
-        <Col xs={6} md={3}><Kpi label="Aprovadas" value={kpis.total_approved} /></Col>
-        <Col xs={6} md={3}><Kpi label="Em rascunho" value={kpis.total_draft} /></Col>
-        <Col xs={6} md={3}><Kpi label="Méd. dias p/ fechar" value={kpis.avg_close_days} /></Col>
+        <Col xs={6} md={3}><Kpi label="Total de OS" value={kpis.total_os} icon="receipt_long" /></Col>
+        <Col xs={6} md={3}><Kpi label="Aprovadas" value={kpis.total_approved} icon="task_alt" /></Col>
+        <Col xs={6} md={3}><Kpi label="Em rascunho" value={kpis.total_draft} icon="draft" /></Col>
+        <Col xs={6} md={3}><Kpi label="Méd. dias p/ fechar" value={kpis.avg_close_days} icon="schedule" /></Col>
       </Row>
 
       <Row className="g-4">

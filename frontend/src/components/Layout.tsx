@@ -1,8 +1,8 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { AppTheme, applyTheme, getStoredTheme } from "../theme/applyTheme";
-import { useState } from "react";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -11,15 +11,22 @@ interface SessionInfo {
   lang: string;
 }
 
-const NAV = [
-  { to: "/", label: "Ordens de Serviço", end: true },
-  { to: "/customers", label: "Clientes" },
-  { to: "/equipments", label: "Equipamentos" },
-  { to: "/spare-parts", label: "Peças" },
-  { to: "/assets", label: "Equipe & Instrumentos" },
-  { to: "/table-styles", label: "Estilos de tabela" },
-  { to: "/config", label: "Configuração" },
-  { to: "/analytics", label: "Analytics" }
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+}
+
+const NAV: NavItem[] = [
+  { to: "/", label: "Ordens de Serviço", icon: "receipt_long", end: true },
+  { to: "/customers", label: "Clientes", icon: "groups" },
+  { to: "/equipments", label: "Equipamentos", icon: "precision_manufacturing" },
+  { to: "/spare-parts", label: "Peças", icon: "inventory_2" },
+  { to: "/assets", label: "Equipe & Instrumentos", icon: "engineering" },
+  { to: "/table-styles", label: "Estilos de tabela", icon: "table_chart" },
+  { to: "/config", label: "Configuração", icon: "settings" },
+  { to: "/analytics", label: "Analytics", icon: "insights" }
 ];
 
 const THEMES: { value: AppTheme; label: string }[] = [
@@ -28,62 +35,98 @@ const THEMES: { value: AppTheme; label: string }[] = [
   { value: "xvextrom", label: "X-Vextrom" }
 ];
 
-export default function Layout() {
-  const { data: session } = useQuery({
-    queryKey: ["session"],
-    queryFn: () => api<SessionInfo>("/session")
-  });
-  const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
+function pageTitle(pathname: string): string {
+  if (pathname === "/" || pathname.startsWith("/orders")) return "Ordens de Serviço";
+  const match = NAV.find((n) => n.to !== "/" && pathname.startsWith(n.to));
+  return match?.label ?? "Service Report";
+}
 
-  const onThemeChange = (next: AppTheme) => {
-    setTheme(next);
-    applyTheme(next);
-  };
+export default function Layout() {
+  const location = useLocation();
+  const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
+  const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
+  const [open, setOpen] = useState(false);
+
+  const onThemeChange = (next: AppTheme) => { setTheme(next); applyTheme(next); };
+  const initials = (session?.username || "?").slice(0, 2).toUpperCase();
 
   return (
-    <div className="app-shell admin-page">
-      <main className="container app-main py-4 py-md-5">
-        <div className="app-topbar">
-          <div className="app-brand-wrap">
-            <a className="app-brand" href="/app/">
-              <img className="app-brand-logo" src="/public/img/logo-vextrom.svg" alt="Vextrom" />
-            </a>
-            <span className="app-brand-title">Service Report <small className="app-brand-version">SPA</small></span>
-          </div>
-          <div className="app-topbar-controls">
-            <div className="topbar-group">
-              <label className="lang-label mb-0" htmlFor="themeSelector">Tema:</label>
-              <select
-                id="themeSelector"
-                className="form-select form-select-sm theme-select"
-                value={theme}
-                onChange={(e) => onThemeChange(e.target.value as AppTheme)}
-              >
-                {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            {session?.username && (
-              <small className="topbar-user-meta">Usuário: <strong>{session.username}</strong></small>
-            )}
-          </div>
+    <div className="vx-shell">
+      {open && <div className="vx-backdrop" onClick={() => setOpen(false)} />}
+
+      <aside className={`vx-sidebar${open ? " is-open" : ""}`}>
+        <div className="vx-brand">
+          <span className="vx-brand__logo">
+            <img src="/public/img/logo-vextrom.svg" alt="Vextrom" />
+          </span>
+          <span>
+            <span className="vx-brand__title d-block">Vextrom</span>
+            <span className="vx-brand__subtitle">Service Report</span>
+          </span>
         </div>
 
-        <nav className="nav nav-pills gap-2 mb-4">
+        <nav className="vx-nav">
+          <span className="vx-nav__section">Operação</span>
           {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+              className={({ isActive }) => `vx-nav__link${isActive ? " active" : ""}`}
+              onClick={() => setOpen(false)}
             >
+              <span className="material-symbols-outlined">{item.icon}</span>
               {item.label}
             </NavLink>
           ))}
-          <a className="nav-link ms-auto text-decoration-none" href="/admin/report-service">← Sistema legado</a>
+          <div className="vx-nav__spacer" />
+          <div className="vx-nav__legacy">
+            <a href="/admin/report-service">
+              <span className="material-symbols-outlined align-middle" style={{ fontSize: 18 }}>arrow_back</span> Sistema legado
+            </a>
+          </div>
         </nav>
+      </aside>
 
-        <Outlet />
-      </main>
+      <div className="vx-content">
+        <header className="vx-topbar">
+          <div className="d-flex align-items-center gap-3">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary vx-sidebar-toggle"
+              onClick={() => setOpen((v) => !v)}
+              aria-label="Menu"
+            >
+              <span className="material-symbols-outlined align-middle">menu</span>
+            </button>
+            <div>
+              <p className="vx-topbar__title">{pageTitle(location.pathname)}</p>
+              <span className="vx-topbar__crumb">Vextrom Platform · Service Report</span>
+            </div>
+          </div>
+          <div className="vx-topbar__controls">
+            <select
+              className="form-select form-select-sm"
+              style={{ width: 130 }}
+              value={theme}
+              onChange={(e) => onThemeChange(e.target.value as AppTheme)}
+              aria-label="Tema"
+            >
+              {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {session?.username && (
+              <span className="vx-user">
+                <span className="vx-user__avatar">{initials}</span>
+                <span className="vx-user__name">{session.username}</span>
+              </span>
+            )}
+          </div>
+        </header>
+
+        <main className="vx-main">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
