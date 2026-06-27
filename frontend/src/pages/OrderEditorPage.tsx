@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
+import RichTextEditor from "../components/RichTextEditor";
 import {
   DailyLog,
   DailyLogInput,
@@ -155,7 +156,7 @@ export default function OrderEditorPage() {
   const openNewLog = () => { setLogEditId(null); setLogForm(EMPTY_LOG); setActionError(null); setLogShow(true); };
   const openEditLog = (l: DailyLog) => {
     setLogEditId(l.id);
-    setLogForm({ activityDate: l.activity_date ? l.activity_date.slice(0, 10) : "", title: l.title ?? "", content: stripHtml(l.content), notes: l.notes ?? "", sortOrder: l.sort_order ?? 0 });
+    setLogForm({ activityDate: l.activity_date ? l.activity_date.slice(0, 10) : "", title: l.title ?? "", content: l.content ?? "", notes: l.notes ?? "", sortOrder: l.sort_order ?? 0 });
     setActionError(null);
     setLogShow(true);
   };
@@ -164,12 +165,12 @@ export default function OrderEditorPage() {
     mSaveLog.mutate(logEditId ? { ...logForm, dailyLogId: logEditId } : logForm);
   };
   const reviseLog = async () => {
-    if (!logForm.content.trim()) return;
+    if (!stripHtml(logForm.content)) return;
     setRevising(true);
     setActionError(null);
     try {
-      const r = await reviseDailyLogText(orderId, logForm.content);
-      setLogForm((f) => ({ ...f, content: r.revisedText || f.content }));
+      const r = await reviseDailyLogText(orderId, stripHtml(logForm.content));
+      setLogForm((f) => ({ ...f, content: r.revisedHtml || r.revisedText || f.content }));
     } catch (e) {
       setActionError((e as Error).message);
     } finally {
@@ -390,13 +391,13 @@ export default function OrderEditorPage() {
                 <Form.Control value={logForm.title} onChange={(e) => setLogForm({ ...logForm, title: e.target.value })} />
               </div>
               <div className="col-12">
-                <div className="d-flex justify-content-between align-items-center">
+                <div className="d-flex justify-content-between align-items-center mb-1">
                   <Form.Label className="mb-0">Conteúdo</Form.Label>
-                  <Button size="sm" variant="outline-primary" disabled={revising || !logForm.content.trim()} onClick={reviseLog}>
+                  <Button size="sm" variant="outline-primary" disabled={revising || !stripHtml(logForm.content)} onClick={reviseLog}>
                     {revising ? "Revisando…" : "Revisar com IA"}
                   </Button>
                 </div>
-                <Form.Control as="textarea" rows={6} value={logForm.content} onChange={(e) => setLogForm({ ...logForm, content: e.target.value })} />
+                <RichTextEditor value={logForm.content} onChange={(html) => setLogForm({ ...logForm, content: html })} placeholder="Descreva as atividades do dia…" />
               </div>
             </div>
           </Modal.Body>
