@@ -27,10 +27,21 @@ export interface TimesheetEntry {
   notes: string | null;
 }
 
+export interface DailyLog {
+  id: number;
+  service_order_id: number;
+  activity_date: string | null;
+  title: string | null;
+  content: string | null;
+  notes: string | null;
+  sort_order: number | null;
+}
+
 export interface OrderEditorPayload {
   order: Order & { service_order_code?: string | null; description?: string | null; proposal_number?: string | null; closing_date?: string | null };
   report: { id: number; status?: string | null };
   timesheet: TimesheetEntry[];
+  dailyLogs: DailyLog[];
   locked: boolean;
   orderEquipments: OrderEquipment[];
   availableEquipments: Equipment[];
@@ -86,4 +97,33 @@ export function linkInstrument(id: number, instrumentId: number) {
 }
 export function unlinkInstrument(id: number, instrId: number) {
   return api<void>(`/orders/${id}/instruments/${instrId}`, { method: "DELETE" });
+}
+
+// ---- Diário de bordo (daily logs) + IA ----------------------------------
+export interface DailyLogInput {
+  dailyLogId?: number;
+  activityDate: string;
+  title: string;
+  content: string;
+  notes: string;
+  sortOrder: number;
+}
+
+export function saveDailyLog(id: number, input: DailyLogInput) {
+  return api<DailyLog>(`/orders/${id}/daily-logs`, { method: "POST", body: JSON.stringify(input) });
+}
+export function deleteDailyLog(id: number, dailyLogId: number) {
+  return api<void>(`/orders/${id}/daily-logs/${dailyLogId}`, { method: "DELETE" });
+}
+export function reviseDailyLogText(id: number, text: string, prompt = "") {
+  return api<{ revisedText: string; revisedHtml: string }>(`/orders/${id}/daily-logs/revise-text`, {
+    method: "POST",
+    body: JSON.stringify({ text, prompt })
+  });
+}
+export function generateConclusion(id: number, prompt = "") {
+  return api<{ ok: boolean; log: DailyLog }>(`/orders/${id}/daily-logs/generate-conclusion`, {
+    method: "POST",
+    body: JSON.stringify({ prompt })
+  });
 }

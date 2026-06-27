@@ -4,19 +4,31 @@ import { Link, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
 import {
+  DailyLog,
+  DailyLogInput,
   TimesheetEntry,
   TimesheetInput,
   addTimesheet,
   attachEquipment,
+  deleteDailyLog,
   deleteTimesheet,
   detachEquipment,
+  generateConclusion,
   getOrderEditor,
   linkInstrument,
   linkTechnician,
+  reviseDailyLogText,
+  saveDailyLog,
   unlinkInstrument,
   unlinkTechnician,
   updateTimesheet
 } from "../api/orderEditor";
+
+function stripHtml(html: string | null): string {
+  return String(html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+const EMPTY_LOG: DailyLogInput = { activityDate: "", title: "", content: "", notes: "", sortOrder: 0 };
 
 interface LinkItem { id: number; label: string }
 
@@ -113,6 +125,19 @@ export default function OrderEditorPage() {
   const mLinkInstr = useMutation({ mutationFn: (id: number) => linkInstrument(orderId, id), onSuccess: invalidate, onError });
   const mUnlinkInstr = useMutation({ mutationFn: (id: number) => unlinkInstrument(orderId, id), onSuccess: invalidate, onError });
 
+  // Diário de bordo
+  const [logShow, setLogShow] = useState(false);
+  const [logEditId, setLogEditId] = useState<number | null>(null);
+  const [logForm, setLogForm] = useState<DailyLogInput>(EMPTY_LOG);
+  const [revising, setRevising] = useState(false);
+  const mSaveLog = useMutation({
+    mutationFn: (input: DailyLogInput) => saveDailyLog(orderId, input),
+    onSuccess: () => { setLogShow(false); invalidate(); },
+    onError
+  });
+  const mDeleteLog = useMutation({ mutationFn: (logId: number) => deleteDailyLog(orderId, logId), onSuccess: invalidate, onError });
+  const mConclusion = useMutation({ mutationFn: () => generateConclusion(orderId), onSuccess: invalidate, onError });
+
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
   }
@@ -121,11 +146,36 @@ export default function OrderEditorPage() {
   }
 
   const {
-    order, timesheet, technicians, locked,
+    order, timesheet, dailyLogs, technicians, locked,
     orderEquipments, availableEquipments,
     linkedTechnicians, availableTechnicians,
     linkedInstruments, availableInstruments
   } = data;
+
+  const openNewLog = () => { setLogEditId(null); setLogForm(EMPTY_LOG); setActionError(null); setLogShow(true); };
+  const openEditLog = (l: DailyLog) => {
+    setLogEditId(l.id);
+    setLogForm({ activityDate: l.activity_date ? l.activity_date.slice(0, 10) : "", title: l.title ?? "", content: stripHtml(l.content), notes: l.notes ?? "", sortOrder: l.sort_order ?? 0 });
+    setActionError(null);
+    setLogShow(true);
+  };
+  const submitLog = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    mSaveLog.mutate(logEditId ? { ...logForm, dailyLogId: logEditId } : logForm);
+  };
+  const reviseLog = async () => {
+    if (!logForm.content.trim()) return;
+    setRevising(true);
+    setActionError(null);
+    try {
+      const r = await reviseDailyLogText(orderId, logForm.content);
+      setLogForm((f) => ({ ...f, content: r.revisedText || f.content }));
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setRevising(false);
+    }
+  };
   const totalHours = timesheet.reduce((sum, t) => sum + (Number(t.worked_hours) || 0), 0);
 
   const eqLinked: LinkItem[] = orderEquipments.map((e) => ({ id: e.equipment_id, label: `${e.type ?? ""}${e.serial_number ? ` — ${e.serial_number}` : ""}${e.tag_number ? ` [${e.tag_number}]` : ""}`.trim() }));
@@ -201,6 +251,43 @@ export default function OrderEditorPage() {
           />
         </div>
       </div>
+
+      {/* Diário de bordo */}
+      <Card>
+        <Card.Header className="d-flex justify-content-between align-items-center gap-2">
+          <span>Diário de bordo <Badge bg="light" text="dark" className="ms-2">{dailyLogs.length}</Badge></span>
+          {!locked && (
+            <div className="d-flex gap-2">
+              <Button size="sm" variant="outline-primary" disabled={mConclusion.isPending} onClick={() => { if (confirm("Gerar/atualizar a conclusão geral a partir dos registros via IA?")) mConclusion.mutate(); }}>
+                {mConclusion.isPending ? "Gerando…" : "Gerar conclusão (IA)"}
+              </Button>
+              <Button size="sm" onClick={openNewLog}>Novo registro</Button>
+            </div>
+          )}
+        </Card.Header>
+        <Table striped responsive hover className="mb-0 align-middle">
+          <thead><tr><th>Data</th><th>Título</th><th>Conteúdo</th><th></th><th className="text-end">Ações</th></tr></thead>
+          <tbody>
+            {dailyLogs.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum registro.</td></tr>}
+            {dailyLogs.map((l) => (
+              <tr key={l.id}>
+                <td>{fmtDate(l.activity_date)}</td>
+                <td>{l.title}</td>
+                <td className="text-truncate" style={{ maxWidth: 380 }}>{stripHtml(l.content)}</td>
+                <td>{l.notes === "conclusaogeral" && <Badge bg="info">conclusão</Badge>}</td>
+                <td className="text-end">
+                  {!locked && (
+                    <div className="vx-actions justify-content-end">
+                      <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditLog(l)} />
+                      <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteLog.isPending} onClick={() => { if (confirm("Excluir este registro?")) mDeleteLog.mutate(l.id); }} />
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
 
       {/* Timesheet */}
       <Card>
@@ -283,6 +370,39 @@ export default function OrderEditorPage() {
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShow(false)}>Cancelar</Button>
             <Button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Modal diário de bordo */}
+      <Modal show={logShow} onHide={() => setLogShow(false)} size="lg">
+        <Modal.Header closeButton><Modal.Title>{logEditId ? "Editar registro" : "Novo registro"}</Modal.Title></Modal.Header>
+        <Form onSubmit={submitLog}>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+            <div className="row g-3">
+              <div className="col-md-4">
+                <Form.Label>Data</Form.Label>
+                <Form.Control type="date" value={logForm.activityDate} onChange={(e) => setLogForm({ ...logForm, activityDate: e.target.value })} />
+              </div>
+              <div className="col-md-8">
+                <Form.Label>Título</Form.Label>
+                <Form.Control value={logForm.title} onChange={(e) => setLogForm({ ...logForm, title: e.target.value })} />
+              </div>
+              <div className="col-12">
+                <div className="d-flex justify-content-between align-items-center">
+                  <Form.Label className="mb-0">Conteúdo</Form.Label>
+                  <Button size="sm" variant="outline-primary" disabled={revising || !logForm.content.trim()} onClick={reviseLog}>
+                    {revising ? "Revisando…" : "Revisar com IA"}
+                  </Button>
+                </div>
+                <Form.Control as="textarea" rows={6} value={logForm.content} onChange={(e) => setLogForm({ ...logForm, content: e.target.value })} />
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setLogShow(false)}>Cancelar</Button>
+            <Button type="submit" disabled={mSaveLog.isPending}>{mSaveLog.isPending ? "Salvando…" : "Salvar"}</Button>
           </Modal.Footer>
         </Form>
       </Modal>

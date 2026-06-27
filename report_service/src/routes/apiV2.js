@@ -41,6 +41,10 @@ function createReportServiceV2Router(deps) {
   router.delete("/orders/:id/technicians/:techId", asyncHandler(controller.unlinkOrderTechnician));
   router.post("/orders/:id/instruments", asyncHandler(controller.linkOrderInstrument));
   router.delete("/orders/:id/instruments/:instrId", asyncHandler(controller.unlinkOrderInstrument));
+  router.post("/orders/:id/daily-logs", asyncHandler(controller.saveDailyLog));
+  router.delete("/orders/:id/daily-logs/:dailyLogId", asyncHandler(controller.deleteDailyLog));
+  router.post("/orders/:id/daily-logs/revise-text", asyncHandler(controller.reviseDailyLogText));
+  router.post("/orders/:id/daily-logs/generate-conclusion", asyncHandler(controller.generateConclusion));
 
   // Equipments (CRUD)
   router.get("/equipments", asyncHandler(controller.listEquipments));

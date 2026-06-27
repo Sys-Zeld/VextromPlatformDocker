@@ -28,6 +28,29 @@ function createReportServiceV2Controller(deps) {
   const extractSparePartsFromDocument = deps.extractSparePartsFromDocument;
   const getSparePartsDefaultPrompt = deps.getSparePartsDefaultPrompt;
   const getSparePartsJsonSchema = deps.getSparePartsJsonSchema;
+  const reviseTextWithAi = deps.reviseTextWithAi;
+  const sanitizeRichText = typeof deps.sanitizeRichTextInput === "function" ? deps.sanitizeRichTextInput : (v) => v;
+
+  function localIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function stripHtmlToText(html) {
+    return String(html || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/p>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function paragraphsToHtml(plainText) {
+    const paragraphs = String(plainText || "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    return paragraphs.length
+      ? paragraphs.map((p) => `<p class="ql-align-justify">${p}</p>`).join("")
+      : "<p><br></p>";
+  }
 
   function normalizePn(value) {
     return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -249,9 +272,10 @@ function createReportServiceV2Controller(deps) {
       const orderId = Number(req.params.id);
       const order = await repo.getOrderById(orderId);
       if (!order) return res.status(404).json({ error: "OS não encontrada." });
-      const [report, timesheet, technicians, instruments, orderEquipments, allEquipments, linkedTechnicians, linkedInstruments] = await Promise.all([
+      const [report, timesheet, dailyLogs, technicians, instruments, orderEquipments, allEquipments, linkedTechnicians, linkedInstruments] = await Promise.all([
         service.ensureReportForOrder(orderId, order.title),
         repo.listTimesheetByOrder(orderId),
+        repo.listDailyLogsByOrder(orderId),
         repo.listGlobalTechnicians(),
         repo.listGlobalInstruments(),
         repo.listOrderEquipments(orderId),
@@ -271,7 +295,7 @@ function createReportServiceV2Controller(deps) {
       const linkedInstrIds = new Set(linkedInstruments.map((i) => Number(i.id)));
       const locked = String(order.status || "").toLowerCase() === "approved";
       return res.json({
-        order, report, timesheet, locked,
+        order, report, timesheet, dailyLogs, locked,
         orderEquipments, availableEquipments,
         linkedTechnicians, technicians,
         availableTechnicians: technicians.filter((t) => !linkedTechIds.has(Number(t.id))),
@@ -344,6 +368,106 @@ function createReportServiceV2Controller(deps) {
       if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
       await repo.unlinkInstrumentFromOrder(orderId, Number(req.params.instrId));
       return res.status(204).end();
+    },
+
+    // ---- Diário de bordo (daily logs) + conclusão por IA ----------------
+    async saveDailyLog(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const dailyLogId = Number(req.body.dailyLogId || req.body.daily_log_id || 0);
+      const payload = {
+        serviceOrderId: orderId,
+        activityDate: sanitize(req.body.activityDate || req.body.activity_date),
+        title: sanitize(req.body.title),
+        content: sanitizeRichText(req.body.content),
+        notes: sanitize(req.body.notes),
+        sortOrder: Number(req.body.sortOrder || req.body.sort_order || 0)
+      };
+      if (Number.isInteger(dailyLogId) && dailyLogId > 0) {
+        const updated = await repo.updateDailyLogByOrderAndId(orderId, dailyLogId, payload);
+        if (!updated) return res.status(404).json({ error: "Registro não encontrado." });
+        return res.json(updated);
+      }
+      const created = await repo.createDailyLog(payload);
+      return res.status(201).json(created);
+    },
+
+    async deleteDailyLog(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      await repo.deleteDailyLogByOrderAndId(orderId, Number(req.params.dailyLogId));
+      return res.status(204).end();
+    },
+
+    async reviseDailyLogText(req, res) {
+      if (typeof reviseTextWithAi !== "function") return res.status(503).json({ error: "Serviço de IA indisponível." });
+      try {
+        const result = await reviseTextWithAi({
+          text: String(req.body.text || ""),
+          html: String(req.body.html || ""),
+          prompt: sanitize(req.body.prompt) || "Revise o texto abaixo sem mudar muitas palavras",
+          preserveFormatting: req.body.preserveFormatting === true || req.body.preserveFormatting === "true"
+        });
+        return res.json({ revisedText: result.revisedText || "", revisedHtml: sanitizeRichText(result.revisedHtml || "") });
+      } catch (err) {
+        return res.status(err.statusCode || 422).json({ error: err.message || "Falha ao revisar texto com IA." });
+      }
+    },
+
+    async generateConclusion(req, res) {
+      if (typeof reviseTextWithAi !== "function") return res.status(503).json({ error: "Serviço de IA indisponível." });
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+
+      const DEFAULT_PROMPT = "Crie um resumo de todas as atividades para servir como uma conclusao tecnica. Escreva em paragrafos claros, objetivos e resumidos, em portugues. Nao repita datas, sintetize o que foi feito. Separe cada paragrafo com uma linha em branco.";
+      const rawPrompt = String(req.body.prompt || "").trim();
+      const conclusionPrompt = rawPrompt.length >= 10 ? rawPrompt : DEFAULT_PROMPT;
+
+      const dailyLogs = await repo.listDailyLogsByOrder(orderId);
+      const sourceLogs = dailyLogs.filter((l) => String(l.notes || "").trim() !== "conclusaogeral");
+      if (!sourceLogs.length) return res.status(422).json({ error: "Nenhum log diário cadastrado para gerar a conclusão." });
+
+      const combinedText = sourceLogs.map((log, i) => {
+        const dateLabel = log.activity_date ? String(log.activity_date).slice(0, 10) : `Log ${i + 1}`;
+        const titlePart = log.title ? ` - ${log.title}` : "";
+        return `[${dateLabel}${titlePart}] ${stripHtmlToText(log.content)}`;
+      }).join("\n\n");
+
+      try {
+        const result = await reviseTextWithAi({ text: combinedText, html: "", prompt: conclusionPrompt, preserveFormatting: false });
+        const plainText = String(result.revisedText || "").trim();
+        if (!plainText) return res.status(422).json({ error: "A IA não retornou conteúdo para a conclusão." });
+        const contentHtml = paragraphsToHtml(plainText);
+        const existing = await repo.getDailyLogByTagForOrder(orderId, "conclusaogeral");
+        let savedLog;
+        if (existing) {
+          savedLog = await repo.updateDailyLogByOrderAndId(orderId, existing.id, {
+            activityDate: existing.activity_date,
+            title: existing.title || "Conclusao Geral",
+            content: contentHtml,
+            notes: "conclusaogeral",
+            sortOrder: existing.sort_order
+          });
+        } else {
+          savedLog = await repo.createDailyLog({
+            serviceOrderId: orderId,
+            activityDate: localIsoDate(),
+            title: "Conclusao Geral",
+            content: contentHtml,
+            notes: "conclusaogeral",
+            sortOrder: 999
+          });
+        }
+        return res.json({ ok: true, log: savedLog });
+      } catch (err) {
+        return res.status(err.statusCode || 422).json({ error: err.message || "Falha ao gerar conclusão com IA." });
+      }
     },
 
     async addTimesheet(req, res) {
