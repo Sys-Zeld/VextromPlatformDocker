@@ -88,7 +88,7 @@ export default function EquipmentsPage() {
         <Button size="sm" onClick={openNew}>Novo equipamento</Button>
       </Card.Header>
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead>
           <tr><th>Tipo</th><th>Fabricante</th><th>Família</th><th>Nº de série</th><th>TAG</th><th>Cliente</th><th className="text-end">Ações</th></tr>
         </thead>

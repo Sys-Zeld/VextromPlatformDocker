@@ -27,7 +27,7 @@ export default function TableStylesPage() {
     <Card>
       <Card.Header>Estilos padrão das tabelas</Card.Header>
       {actionError && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead><tr><th>Tabela</th><th>Estilo</th><th className="text-end">Ações</th></tr></thead>
         <tbody>
           {types.map((t) => (

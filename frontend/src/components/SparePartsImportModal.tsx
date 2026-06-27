@@ -108,7 +108,7 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
               <span className="text-muted small">{selectedCount} selecionada(s)</span>
             </div>
             <div style={{ maxHeight: 360, overflowY: "auto" }}>
-              <Table size="sm" hover className="align-middle">
+              <Table striped size="sm" hover className="align-middle">
                 <thead><tr><th></th><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th>Família</th><th>Qtd.</th></tr></thead>
                 <tbody>
                   {rows.map((r, i) => (

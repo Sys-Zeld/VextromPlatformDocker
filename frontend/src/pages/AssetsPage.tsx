@@ -87,7 +87,7 @@ export default function AssetsPage() {
           <span>Equipe técnica</span>
           <Button size="sm" onClick={() => setTechModal({ id: null, form: EMPTY_TECH })}>Novo técnico</Button>
         </Card.Header>
-        <Table responsive hover className="mb-0 align-middle">
+        <Table striped responsive hover className="mb-0 align-middle">
           <thead><tr><th>Nome</th><th>Função</th><th>Empresa</th><th>E-mail</th><th>Telefone</th><th>Lead</th><th className="text-end">Ações</th></tr></thead>
           <tbody>
             {technicians.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum técnico.</td></tr>}
@@ -112,7 +112,7 @@ export default function AssetsPage() {
           <span>Instrumentos</span>
           <Button size="sm" onClick={() => setInstrModal({ id: null, form: EMPTY_INSTR })}>Novo instrumento</Button>
         </Card.Header>
-        <Table responsive hover className="mb-0 align-middle">
+        <Table striped responsive hover className="mb-0 align-middle">
           <thead><tr><th>Nome</th><th>Modelo</th><th>Nº de série</th><th>Certificado</th><th>Responsável</th><th>Próx. calibração</th><th className="text-end">Ações</th></tr></thead>
           <tbody>
             {instruments.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum instrumento.</td></tr>}

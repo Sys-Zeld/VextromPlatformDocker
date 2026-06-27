@@ -41,7 +41,7 @@ export default function PdfHistoryPage() {
         <Link to="/" className="ms-2 small">← Ordens</Link>
       </Card.Header>
       {actionError && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead><tr><th>Arquivo</th><th>Status</th><th>Gerado em</th><th className="text-end">Ações</th></tr></thead>
         <tbody>
           {entries.length === 0 && <tr><td colSpan={4} className="text-muted">Nenhum PDF gerado.</td></tr>}

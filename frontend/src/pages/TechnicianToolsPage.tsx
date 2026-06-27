@@ -68,7 +68,7 @@ export default function TechnicianToolsPage() {
         <Button size="sm" onClick={openNew}>Nova ferramenta</Button>
       </Card.Header>
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead><tr><th>Item</th><th>Qtd.</th><th>Descrição</th><th>Nº de série</th><th className="text-end">Ações</th></tr></thead>
         <tbody>
           {tools.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhuma ferramenta.</td></tr>}

@@ -125,7 +125,7 @@ export default function CustomersPage() {
             </div>
           </Form>
         </Card.Body>
-        <Table responsive hover className="mb-0">
+        <Table striped responsive hover className="mb-0">
           <thead>
             <tr><th>Nome</th><th>Tipo</th><th>Observações</th><th className="text-end">Ações</th></tr>
           </thead>
@@ -187,7 +187,7 @@ export default function CustomersPage() {
             </div>
           </Form>
         </Card.Body>
-        <Table responsive hover className="mb-0">
+        <Table striped responsive hover className="mb-0">
           <thead>
             <tr><th>Site</th><th>Cliente</th><th>Código</th><th>Local</th><th className="text-end">Ações</th></tr>
           </thead>

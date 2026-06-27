@@ -48,7 +48,7 @@ export default function OrdersPage() {
         <Badge bg="light" text="dark">{orders.length}</Badge>
       </Card.Header>
       {actionError && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-      <Table responsive hover className="mb-0 align-middle">
+      <Table striped responsive hover className="mb-0 align-middle">
         <thead>
           <tr><th>OS</th><th>Título</th><th>Cliente</th><th>Site</th><th>Status</th><th>Abertura</th><th className="text-end">Ações</th></tr>
         </thead>
