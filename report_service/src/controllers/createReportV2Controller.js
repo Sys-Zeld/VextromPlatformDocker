@@ -25,6 +25,41 @@ const TABLE_STYLE_TYPES = [
 
 function createReportServiceV2Controller(deps) {
   const sanitize = typeof deps.sanitizeInput === "function" ? deps.sanitizeInput : (v) => v;
+  const extractSparePartsFromDocument = deps.extractSparePartsFromDocument;
+  const getSparePartsDefaultPrompt = deps.getSparePartsDefaultPrompt;
+  const getSparePartsJsonSchema = deps.getSparePartsJsonSchema;
+
+  function normalizePn(value) {
+    return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+
+  function normalizeBulkItem(item) {
+    return {
+      description: sanitize(String(item.description || "")).trim(),
+      manufacturer: sanitize(String(item.manufacturer || "")).trim(),
+      partNumber: sanitize(String(item.part_number || item.partNumber || "")).trim(),
+      equipmentModel: sanitize(String(item.equipment_model || item.equipmentModel || "")).trim(),
+      equipmentFamily: sanitize(String(item.equipment_family || item.equipmentFamily || "")).trim(),
+      leadTime: sanitize(String(item.lead_time || item.leadTime || "")).trim(),
+      isObsolete: item.is_obsolete === true || String(item.is_obsolete ?? item.isObsolete).toLowerCase() === "true",
+      replacedByPartNumber: sanitize(String(item.replaced_by_part_number || item.replacedByPartNumber || "")).trim(),
+      quantity: Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1
+    };
+  }
+
+  function mapEquipmentSpareBody(body) {
+    return {
+      description: sanitize(String(body.description || "")).trim(),
+      manufacturer: sanitize(body.manufacturer),
+      equipmentModel: sanitize(body.equipmentModel || body.equipment_model),
+      partNumber: sanitize(body.partNumber || body.part_number),
+      leadTime: sanitize(body.leadTime || body.lead_time),
+      isObsolete: body.isObsolete === true || body.isObsolete === "true" || body.is_obsolete === "on",
+      replacedByPartNumber: sanitize(body.replacedByPartNumber || body.replaced_by_part_number),
+      equipmentFamily: sanitize(body.equipmentFamily || body.equipment_family),
+      quantity: Number(body.quantity || 1)
+    };
+  }
 
   function parseCoord(value) {
     if (value === "" || value === null || value === undefined) return null;
@@ -399,6 +434,152 @@ function createReportServiceV2Controller(deps) {
       const ok = await repo.deletePdfHistoryEntry(entryId);
       if (!ok) return res.status(404).json({ error: "Registro não encontrado." });
       return res.status(204).end();
+    },
+
+    // ---- Spare parts: vínculo por equipamento (novo modelo) -------------
+    async getEquipmentSpares(req, res) {
+      const equipmentId = Number(req.params.equipmentId);
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+
+      const [linkedSpares, catalog] = await Promise.all([
+        repo.listEquipmentSpares(equipmentId),
+        repo.listSpareParts()
+      ]);
+      const linkedSourceIds = new Set(
+        linkedSpares.map((s) => Number(s.source_spare_part_id)).filter((id) => Number.isInteger(id) && id > 0)
+      );
+      const linkedPns = new Set(linkedSpares.map((s) => normalizePn(s.part_number)).filter(Boolean));
+      const availableSpares = catalog.filter((item) => {
+        if (linkedSourceIds.has(Number(item.id))) return false;
+        const pn = normalizePn(item.part_number);
+        if (pn && linkedPns.has(pn)) return false;
+        return true;
+      });
+      return res.json({ equipment, linkedSpares, availableSpares });
+    },
+
+    async linkSparePart(req, res) {
+      const equipmentId = Number(req.params.equipmentId);
+      const sparePartId = Number(req.body.sparePartId || req.body.spare_part_id);
+      const quantity = Number(req.body.quantity || 1);
+      if (!Number.isInteger(sparePartId) || sparePartId <= 0) {
+        return res.status(422).json({ error: "Peça inválida." });
+      }
+      const [equipment, sparePart] = await Promise.all([
+        repo.getEquipmentById(equipmentId),
+        repo.getSparePartById(sparePartId)
+      ]);
+      if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+      if (!sparePart) return res.status(404).json({ error: "Peça não encontrada." });
+      try {
+        await repo.associateSparePartToEquipment(equipmentId, sparePartId, quantity > 0 ? quantity : 1);
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
+          return res.status(409).json({ error: "Part Number já vinculado a este equipamento.", errorCode: "PN_DUPLICATE" });
+        }
+        throw err;
+      }
+      return res.status(201).json({ ok: true });
+    },
+
+    async createEquipmentSpare(req, res) {
+      const equipmentId = Number(req.params.equipmentId);
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+      const payload = mapEquipmentSpareBody(req.body);
+      if (!payload.description) return res.status(422).json({ error: "Descrição é obrigatória." });
+      const sourceId = Number(req.body.sourceSparePartId || req.body.source_spare_part_id);
+      try {
+        const created = await repo.createEquipmentSpare(
+          equipmentId,
+          payload,
+          Number.isInteger(sourceId) && sourceId > 0 ? sourceId : null
+        );
+        return res.status(201).json(created);
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
+          return res.status(409).json({ error: "Part Number já vinculado a este equipamento.", errorCode: "PN_DUPLICATE" });
+        }
+        throw err;
+      }
+    },
+
+    async updateEquipmentSpare(req, res) {
+      const spareId = Number(req.params.id);
+      const payload = mapEquipmentSpareBody(req.body);
+      if (!payload.description) return res.status(422).json({ error: "Descrição é obrigatória." });
+      try {
+        const updated = await repo.updateEquipmentSpare(spareId, payload);
+        if (!updated) return res.status(404).json({ error: "Item não encontrado." });
+        return res.json(updated);
+      } catch (err) {
+        if (err && err.code === "pn_duplicate") {
+          return res.status(409).json({ error: "Part Number já vinculado a este equipamento.", errorCode: "PN_DUPLICATE" });
+        }
+        throw err;
+      }
+    },
+
+    async deleteEquipmentSpare(req, res) {
+      const spareId = Number(req.params.id);
+      const ok = await repo.deleteEquipmentSpare(spareId);
+      if (!ok) return res.status(404).json({ error: "Item não encontrado." });
+      return res.status(204).end();
+    },
+
+    // ---- Spare parts: IA/PDF + bulk import ------------------------------
+    async sparePartsAiConfig(_req, res) {
+      return res.json({
+        defaultPrompt: getSparePartsDefaultPrompt ? getSparePartsDefaultPrompt() : "",
+        jsonSchema: getSparePartsJsonSchema ? getSparePartsJsonSchema() : ""
+      });
+    },
+
+    async aiExtractSpareParts(req, res) {
+      if (!extractSparePartsFromDocument) {
+        return res.status(503).json({ error: "Serviço de IA não disponível." });
+      }
+      const fileBase64 = String(req.body.fileBase64 || "").trim();
+      if (!fileBase64) return res.status(422).json({ error: "Arquivo PDF inválido ou vazio." });
+      let fileBuffer;
+      try {
+        fileBuffer = Buffer.from(fileBase64, "base64");
+      } catch (_e) {
+        return res.status(422).json({ error: "Falha ao decodificar o arquivo." });
+      }
+      if (!fileBuffer.length) return res.status(422).json({ error: "Arquivo PDF inválido ou vazio." });
+      const result = await extractSparePartsFromDocument({
+        fileBuffer,
+        fileName: sanitize(String(req.body.fileName || "documento.pdf")),
+        mimeType: String(req.body.mimeType || "application/pdf").split(";")[0].trim() || "application/pdf",
+        promptTemplate: sanitize(String(req.body.promptTemplate || ""))
+      });
+      return res.json({ spareParts: result.spareParts, count: result.spareParts.length });
+    },
+
+    async bulkImportSpareParts(req, res) {
+      const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+      const normalized = rawItems.map(normalizeBulkItem).filter((item) => item.description);
+      if (!normalized.length) {
+        return res.status(422).json({ error: "Nenhum item com descrição válida para importar." });
+      }
+      const equipmentId = Number(req.body.equipmentId || req.body.equipment_id || 0);
+      if (Number.isInteger(equipmentId) && equipmentId > 0) {
+        const equipment = await repo.getEquipmentById(equipmentId);
+        if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+        const result = await repo.bulkUpsertEquipmentSpares(equipmentId, normalized);
+        return res.json({ ok: true, scope: "equipment", inserted: result.inserted, updated: result.updated, linked: result.linked });
+      }
+      const result = await repo.bulkCreateSpareParts(normalized);
+      return res.json({
+        ok: true,
+        scope: "catalog",
+        inserted: result.inserted,
+        skipped: result.skipped,
+        skippedExisting: result.skippedExisting,
+        skippedIntraJson: result.skippedIntraJson
+      });
     }
   };
 

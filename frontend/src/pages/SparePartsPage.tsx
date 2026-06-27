@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Tab, Table, Tabs } from "react-bootstrap";
+import EquipmentSparesPanel from "../components/EquipmentSparesPanel";
+import SparePartsImportModal from "../components/SparePartsImportModal";
 
 const PAGE_SIZE = 20;
 
@@ -58,6 +60,7 @@ export default function SparePartsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [showImport, setShowImport] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["spare-parts"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -101,11 +104,14 @@ export default function SparePartsPage() {
   const saving = mCreate.isPending || mUpdate.isPending;
 
   return (
-    <Card>
+    <Tabs defaultActiveKey="catalog" className="mb-3">
+      <Tab eventKey="catalog" title="Catálogo">
+        <Card>
       <Card.Header className="d-flex justify-content-between align-items-center gap-2">
         <span>Spare Parts (catálogo)</span>
         <div className="d-flex gap-2">
           <Form.Control size="sm" placeholder="Filtrar…" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} style={{ maxWidth: 220 }} />
+          <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>Importar IA/PDF</Button>
           <Button size="sm" onClick={openNew}>Nova peça</Button>
         </div>
       </Card.Header>
@@ -208,6 +214,13 @@ export default function SparePartsPage() {
           </Modal.Footer>
         </Form>
       </Modal>
-    </Card>
+
+      <SparePartsImportModal show={showImport} onHide={() => setShowImport(false)} onImported={invalidate} />
+        </Card>
+      </Tab>
+      <Tab eventKey="equipment" title="Por equipamento">
+        <EquipmentSparesPanel />
+      </Tab>
+    </Tabs>
   );
 }

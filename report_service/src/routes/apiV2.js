@@ -39,9 +39,19 @@ function createReportServiceV2Router(deps) {
 
   // Spare parts (catálogo)
   router.get("/spare-parts", asyncHandler(controller.listSpareParts));
+  router.get("/spare-parts/ai-config", asyncHandler(controller.sparePartsAiConfig));
+  router.post("/spare-parts/ai-extract", asyncHandler(controller.aiExtractSpareParts));
+  router.post("/spare-parts/bulk-import", asyncHandler(controller.bulkImportSpareParts));
   router.post("/spare-parts", asyncHandler(controller.createSparePart));
   router.put("/spare-parts/:id", asyncHandler(controller.updateSparePart));
   router.delete("/spare-parts/:id", asyncHandler(controller.deleteSparePart));
+
+  // Spare parts: vínculo por equipamento (novo modelo de snapshots editáveis)
+  router.get("/spare-parts/equipment/:equipmentId", asyncHandler(controller.getEquipmentSpares));
+  router.post("/spare-parts/equipment/:equipmentId/link", asyncHandler(controller.linkSparePart));
+  router.post("/spare-parts/equipment/:equipmentId/spares", asyncHandler(controller.createEquipmentSpare));
+  router.put("/spare-parts/equipment-spares/:id", asyncHandler(controller.updateEquipmentSpare));
+  router.delete("/spare-parts/equipment-spares/:id", asyncHandler(controller.deleteEquipmentSpare));
 
   // Config do relatório
   router.get("/config", asyncHandler(controller.getConfig));
