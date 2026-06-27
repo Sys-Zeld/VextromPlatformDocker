@@ -101,12 +101,12 @@ export default function AssetsPage() {
           <Button size="sm" onClick={() => setTechModal({ id: null, form: EMPTY_TECH })}>Novo técnico</Button>
         </Card.Header>
         <Table striped responsive hover className="mb-0 align-middle">
-          <thead><tr><th>Nome</th><th>Função</th><th>Empresa</th><th>E-mail</th><th>Telefone</th><th>Lead</th><th className="text-end">Ações</th></tr></thead>
+          <thead><tr><th>Nome</th><th>Função</th><th>Empresa</th><th>E-mail</th><th>Lead</th><th className="text-end">Ações</th></tr></thead>
           <tbody>
-            {technicians.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum técnico.</td></tr>}
+            {technicians.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhum técnico.</td></tr>}
             {technicians.map((t) => (
               <tr key={t.id}>
-                <td>{t.name}</td><td>{t.role}</td><td>{t.company}</td><td>{t.email}</td><td>{t.phone}</td>
+                <td>{t.name}</td><td>{t.role}</td><td>{t.company}</td><td>{t.email}</td>
                 <td>{t.is_lead ? <Badge bg="primary">Lead</Badge> : ""}</td>
                 <td>
                   <div className="d-flex justify-content-end gap-1">
