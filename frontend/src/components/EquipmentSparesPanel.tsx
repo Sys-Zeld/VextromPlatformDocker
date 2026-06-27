@@ -35,6 +35,8 @@ export default function EquipmentSparesPanel() {
   const [equipmentId, setEquipmentId] = useState<number | "">("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [linkQty, setLinkQty] = useState<Record<number, number>>({});
+  const [linkedFilter, setLinkedFilter] = useState("");
+  const [availableFilter, setAvailableFilter] = useState("");
   const [editModal, setEditModal] = useState<{ id: number | null; form: EquipmentSpareInput } | null>(null);
   const [showImport, setShowImport] = useState(false);
 
@@ -65,6 +67,11 @@ export default function EquipmentSparesPanel() {
 
   const linked = data?.linkedSpares ?? [];
   const available = data?.availableSpares ?? [];
+
+  const matches = (s: { description?: string | null; part_number?: string | null; manufacturer?: string | null; equipment_family?: string | null }, q: string) =>
+    !q || [s.description, s.part_number, s.manufacturer, s.equipment_family].some((v) => (v || "").toLowerCase().includes(q));
+  const linkedView = linked.filter((s) => matches(s, linkedFilter.trim().toLowerCase()));
+  const availableView = available.filter((s) => matches(s, availableFilter.trim().toLowerCase()));
 
   const submitForm = (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -105,15 +112,19 @@ export default function EquipmentSparesPanel() {
       {eqId > 0 && (
         <>
           <Card>
-            <Card.Header className="d-flex justify-content-between align-items-center">
+            <Card.Header className="d-flex flex-wrap justify-content-between align-items-center gap-2">
               <span>Peças vinculadas {isFetching && <Spinner animation="border" size="sm" className="ms-2" />}</span>
-              <Badge bg="light" text="dark">{linked.length}</Badge>
+              <div className="d-flex align-items-center gap-2">
+                <Form.Control size="sm" placeholder="Filtrar vinculadas…" value={linkedFilter} onChange={(e) => setLinkedFilter(e.target.value)} style={{ maxWidth: 220 }} />
+                <Badge bg="light" text="dark">{linkedView.length}/{linked.length}</Badge>
+              </div>
             </Card.Header>
             <Table striped responsive hover className="mb-0 align-middle">
               <thead><tr><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th>Qtd.</th><th>Status</th><th className="text-end">Ações</th></tr></thead>
               <tbody>
                 {linked.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhuma peça vinculada.</td></tr>}
-                {linked.map((s) => (
+                {linked.length > 0 && linkedView.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhum resultado para o filtro.</td></tr>}
+                {linkedView.map((s) => (
                   <tr key={s.id}>
                     <td>{s.description}</td>
                     <td>{s.part_number}</td>
@@ -131,12 +142,19 @@ export default function EquipmentSparesPanel() {
           </Card>
 
           <Card>
-            <Card.Header>Catálogo disponível para vincular</Card.Header>
+            <Card.Header className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <span>Catálogo disponível para vincular</span>
+              <div className="d-flex align-items-center gap-2">
+                <Form.Control size="sm" placeholder="Filtrar catálogo…" value={availableFilter} onChange={(e) => setAvailableFilter(e.target.value)} style={{ maxWidth: 220 }} />
+                <Badge bg="light" text="dark">{availableView.length}/{available.length}</Badge>
+              </div>
+            </Card.Header>
             <Table striped responsive hover className="mb-0 align-middle">
               <thead><tr><th>Descrição</th><th>Part Number</th><th>Fabricante</th><th style={{ width: 110 }}>Qtd.</th><th className="text-end">Ação</th></tr></thead>
               <tbody>
                 {available.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhuma peça disponível no catálogo.</td></tr>}
-                {available.slice(0, 100).map((s: SparePart) => (
+                {available.length > 0 && availableView.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum resultado para o filtro.</td></tr>}
+                {availableView.slice(0, 100).map((s: SparePart) => (
                   <tr key={s.id}>
                     <td>{s.description}</td>
                     <td>{s.part_number}</td>
@@ -152,7 +170,7 @@ export default function EquipmentSparesPanel() {
                 ))}
               </tbody>
             </Table>
-            {available.length > 100 && <Card.Footer className="text-muted small">Mostrando as primeiras 100. Use a importação ou refine o catálogo.</Card.Footer>}
+            {availableView.length > 100 && <Card.Footer className="text-muted small">Mostrando as primeiras 100 de {availableView.length}. Refine o filtro para encontrar a peça.</Card.Footer>}
           </Card>
         </>
       )}
