@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
@@ -35,31 +35,69 @@ const THEMES: { value: AppTheme; label: string }[] = [
   { value: "xvextrom", label: "X-Vextrom" }
 ];
 
+const AUTO_COLLAPSE_WIDTH = 1200; // recolhe automaticamente abaixo desta largura
+const COLLAPSE_KEY = "vx_sidebar_collapsed";
+
 function pageTitle(pathname: string): string {
   if (pathname === "/" || pathname.startsWith("/orders")) return "Ordens de Serviço";
   const match = NAV.find((n) => n.to !== "/" && pathname.startsWith(n.to));
   return match?.label ?? "Service Report";
 }
 
+function readPreferredCollapsed(): boolean {
+  if (typeof window !== "undefined" && window.innerWidth < AUTO_COLLAPSE_WIDTH) return true;
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function Layout() {
   const location = useLocation();
   const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); // drawer mobile
+  const [collapsed, setCollapsed] = useState<boolean>(readPreferredCollapsed);
+
+  // Recolhimento automático: abaixo do breakpoint força rail; acima respeita a preferência salva.
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth < AUTO_COLLAPSE_WIDTH) {
+        setCollapsed(true);
+      } else {
+        try {
+          setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+        } catch {
+          setCollapsed(false);
+        }
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const onThemeChange = (next: AppTheme) => { setTheme(next); applyTheme(next); };
+  const toggleCollapsed = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); } catch { /* indisponível */ }
+    return next;
+  });
   const initials = (session?.username || "?").slice(0, 2).toUpperCase();
 
   return (
-    <div className="vx-shell">
+    <div className={`vx-shell${collapsed ? " is-collapsed" : ""}`}>
       {open && <div className="vx-backdrop" onClick={() => setOpen(false)} />}
 
       <aside className={`vx-sidebar${open ? " is-open" : ""}`}>
         <div className="vx-brand">
+          <button type="button" className="vx-collapse-btn" onClick={toggleCollapsed} aria-label="Recolher/expandir menu" title="Recolher/expandir menu">
+            <span className="material-symbols-outlined">menu</span>
+          </button>
           <span className="vx-brand__logo">
             <img src="/public/img/logo-vextrom.svg" alt="Vextrom" />
           </span>
-          <span>
+          <span className="vx-brand__text">
             <span className="vx-brand__title d-block">Vextrom</span>
             <span className="vx-brand__subtitle">Service Report</span>
           </span>
@@ -72,17 +110,18 @@ export default function Layout() {
               key={item.to}
               to={item.to}
               end={item.end}
+              title={item.label}
               className={({ isActive }) => `vx-nav__link${isActive ? " active" : ""}`}
               onClick={() => setOpen(false)}
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              {item.label}
+              <span className="vx-nav__label">{item.label}</span>
             </NavLink>
           ))}
           <div className="vx-nav__spacer" />
-          <a href="/admin/report-service" className="vx-nav__link vx-nav__link--muted">
+          <a href="/admin/report-service" className="vx-nav__link vx-nav__link--muted" title="Sistema legado">
             <span className="material-symbols-outlined">arrow_back</span>
-            Sistema legado
+            <span className="vx-nav__label">Sistema legado</span>
           </a>
         </nav>
       </aside>
