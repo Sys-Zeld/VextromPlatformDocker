@@ -1,0 +1,188 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import {
+  Equipment,
+  EquipmentInput,
+  createEquipment,
+  deleteEquipment,
+  listEquipments,
+  updateEquipment
+} from "../api/equipments";
+import type { Site } from "../api/customers";
+
+const EMPTY: EquipmentInput = {
+  customerId: "",
+  siteId: "",
+  type: "",
+  manufacturer: "",
+  modelFamily: "",
+  serialNumber: "",
+  tagNumber: "",
+  power: "",
+  yearOfManufacture: "",
+  notes: ""
+};
+
+function toInput(e: Equipment): EquipmentInput {
+  return {
+    customerId: e.customer_id ?? "",
+    siteId: e.site_id ?? "",
+    type: e.type ?? "",
+    manufacturer: e.manufacturer ?? "",
+    modelFamily: e.model_family ?? "",
+    serialNumber: e.serial_number ?? "",
+    tagNumber: e.tag_number ?? "",
+    power: e.power ?? "",
+    yearOfManufacture: e.year_of_manufacture ?? "",
+    notes: e.notes ?? ""
+  };
+}
+
+export default function EquipmentsPage() {
+  const qc = useQueryClient();
+  const { data, isLoading, error } = useQuery({ queryKey: ["equipments"], queryFn: listEquipments });
+  const [show, setShow] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState<EquipmentInput>(EMPTY);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["equipments"] });
+  const onError = (e: unknown) => setActionError((e as Error).message);
+
+  const mCreate = useMutation({ mutationFn: createEquipment, onSuccess: () => { setShow(false); invalidate(); }, onError });
+  const mUpdate = useMutation({
+    mutationFn: (p: { id: number; input: EquipmentInput }) => updateEquipment(p.id, p.input),
+    onSuccess: () => { setShow(false); invalidate(); },
+    onError
+  });
+  const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
+
+  if (isLoading) {
+    return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
+  }
+  if (error) {
+    return <Alert variant="danger">Falha ao carregar equipamentos: {(error as Error).message}</Alert>;
+  }
+
+  const { equipments = [], customers = [], sites = [] } = data ?? {};
+  const sitesForCustomer = (customerId: number | "") =>
+    sites.filter((s: Site) => !customerId || s.customer_id === customerId);
+
+  const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
+  const openEdit = (e: Equipment) => { setEditId(e.id); setForm(toInput(e)); setActionError(null); setShow(true); };
+
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (editId) mUpdate.mutate({ id: editId, input: form });
+    else mCreate.mutate(form);
+  };
+
+  const saving = mCreate.isPending || mUpdate.isPending;
+
+  return (
+    <Card>
+      <Card.Header className="d-flex justify-content-between align-items-center">
+        <span>Equipamentos</span>
+        <Button size="sm" onClick={openNew}>Novo equipamento</Button>
+      </Card.Header>
+      {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+      <Table responsive hover className="mb-0 align-middle">
+        <thead>
+          <tr><th>Tipo</th><th>Fabricante</th><th>Família</th><th>Nº de série</th><th>TAG</th><th>Cliente</th><th className="text-end">Ações</th></tr>
+        </thead>
+        <tbody>
+          {equipments.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum equipamento.</td></tr>}
+          {equipments.map((e: Equipment) => (
+            <tr key={e.id}>
+              <td>{e.type}</td>
+              <td>{e.manufacturer}</td>
+              <td>{e.model_family}</td>
+              <td>{e.serial_number}</td>
+              <td>{e.tag_number}</td>
+              <td>{e.customer_name || "—"}</td>
+              <td className="text-end">
+                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(e)}>Editar</Button>
+                <Button
+                  size="sm"
+                  variant="outline-danger"
+                  disabled={mDelete.isPending}
+                  onClick={() => { if (confirm(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }}
+                >Excluir</Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+
+      <Modal show={show} onHide={() => setShow(false)} size="lg">
+        <Modal.Header closeButton><Modal.Title>{editId ? "Editar equipamento" : "Novo equipamento"}</Modal.Title></Modal.Header>
+        <Form onSubmit={submit}>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+            <div className="row g-3">
+              <div className="col-md-6">
+                <Form.Label>Cliente</Form.Label>
+                <Form.Select
+                  required
+                  value={form.customerId === "" ? "" : form.customerId}
+                  onChange={(e) => setForm({ ...form, customerId: e.target.value ? Number(e.target.value) : "", siteId: "" })}
+                >
+                  <option value="">Selecione…</option>
+                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Site</Form.Label>
+                <Form.Select
+                  required
+                  value={form.siteId === "" ? "" : form.siteId}
+                  onChange={(e) => setForm({ ...form, siteId: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">Selecione…</option>
+                  {sitesForCustomer(form.customerId).map((s) => <option key={s.id} value={s.id}>{s.site_name}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Tipo</Form.Label>
+                <Form.Control value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Fabricante</Form.Label>
+                <Form.Control value={form.manufacturer} onChange={(e) => setForm({ ...form, manufacturer: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Família / modelo</Form.Label>
+                <Form.Control value={form.modelFamily} onChange={(e) => setForm({ ...form, modelFamily: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Nº de série</Form.Label>
+                <Form.Control value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>TAG</Form.Label>
+                <Form.Control value={form.tagNumber} onChange={(e) => setForm({ ...form, tagNumber: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Potência</Form.Label>
+                <Form.Control value={form.power} onChange={(e) => setForm({ ...form, power: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Ano de fabricação</Form.Label>
+                <Form.Control value={form.yearOfManufacture} onChange={(e) => setForm({ ...form, yearOfManufacture: e.target.value })} />
+              </div>
+              <div className="col-12">
+                <Form.Label>Observações</Form.Label>
+                <Form.Control as="textarea" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShow(false)}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+    </Card>
+  );
+}

@@ -1,24 +1,21 @@
-import { Routes, Route, Link } from "react-router-dom";
-import HealthPage from "./pages/HealthPage";
+import { Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import OrdersPage from "./pages/OrdersPage";
 import CustomersPage from "./pages/CustomersPage";
+import EquipmentsPage from "./pages/EquipmentsPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 
-// Fase 0: casca + verificação de sessão. Fase 2: piloto "customers".
+// Migração do módulo Report Service para React, coexistindo com o legado (/admin/...).
 export default function App() {
   return (
-    <div className="container py-4">
-      <header className="d-flex align-items-center justify-content-between mb-4">
-        <h1 className="h4 mb-0">Vextrom Platform — SPA</h1>
-        <nav className="d-flex gap-3">
-          <Link to="/">Início</Link>
-          <Link to="/customers">Clientes</Link>
-          <a href="/admin/report-service">← Sistema legado</a>
-        </nav>
-      </header>
-      <Routes>
-        <Route path="/" element={<HealthPage />} />
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<OrdersPage />} />
         <Route path="/customers" element={<CustomersPage />} />
+        <Route path="/equipments" element={<EquipmentsPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="*" element={<p className="text-muted">Página não encontrada (SPA).</p>} />
-      </Routes>
-    </div>
+      </Route>
+    </Routes>
   );
 }

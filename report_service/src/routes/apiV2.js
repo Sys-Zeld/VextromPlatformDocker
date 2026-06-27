@@ -24,6 +24,19 @@ function createReportServiceV2Router(deps) {
   router.put("/sites/:id", asyncHandler(controller.updateSite));
   router.delete("/sites/:id", asyncHandler(controller.deleteSite));
 
+  // Orders (lista + exclusão)
+  router.get("/orders", asyncHandler(controller.listOrders));
+  router.delete("/orders/:id", asyncHandler(controller.deleteOrder));
+
+  // Equipments (CRUD)
+  router.get("/equipments", asyncHandler(controller.listEquipments));
+  router.post("/equipments", asyncHandler(controller.createEquipment));
+  router.put("/equipments/:id", asyncHandler(controller.updateEquipment));
+  router.delete("/equipments/:id", asyncHandler(controller.deleteEquipment));
+
+  // Analytics (dashboard)
+  router.get("/analytics", asyncHandler(controller.analytics));
+
   return router;
 }
 
