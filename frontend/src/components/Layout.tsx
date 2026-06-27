@@ -80,11 +80,10 @@ export default function Layout() {
             </NavLink>
           ))}
           <div className="vx-nav__spacer" />
-          <div className="vx-nav__legacy">
-            <a href="/admin/report-service">
-              <span className="material-symbols-outlined align-middle" style={{ fontSize: 18 }}>arrow_back</span> Sistema legado
-            </a>
-          </div>
+          <a href="/admin/report-service" className="vx-nav__link vx-nav__link--muted">
+            <span className="material-symbols-outlined">arrow_back</span>
+            Sistema legado
+          </a>
         </nav>
       </aside>
 

@@ -113,13 +113,17 @@ body {
   border-left-color: var(--primary);
 }
 .vx-nav__spacer { flex: 1; }
-.vx-nav__legacy {
-  margin: 8px 6px 4px;
-  font-size: 0.82rem;
+/* Link "Sistema legado": mesmo tratamento de ícone/alinhamento dos itens de
+   navegação, apenas com cor levemente mais suave para indicar ação secundária. */
+.vx-nav__link--muted {
   color: var(--vx-sidebar-muted);
+  font-weight: 500;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0;
+  padding-top: 14px;
 }
-.vx-nav__legacy a { color: var(--vx-sidebar-muted); text-decoration: none; }
-.vx-nav__legacy a:hover { color: #fff; }
+.vx-nav__link--muted:hover { background: rgba(255, 255, 255, 0.05); }
 
 /* Conteúdo deslocado pela sidebar */
 .vx-content {
@@ -256,8 +260,9 @@ body {
   background: rgba(var(--bs-primary-rgb), 0.14); color: var(--primary);
 }
 
-/* ---- Responsivo: sidebar recolhe em telas estreitas ------------------ */
+/* Ícone do botão de menu (toggle) alinhado ao mesmo tamanho dos itens da nav */
 .vx-sidebar-toggle { display: none; }
+.vx-sidebar-toggle .material-symbols-outlined { font-size: 21px; line-height: 1; }
 @media (max-width: 991px) {
   .vx-sidebar { transform: translateX(-100%); transition: transform 0.2s ease; }
   .vx-sidebar.is-open { transform: translateX(0); }
