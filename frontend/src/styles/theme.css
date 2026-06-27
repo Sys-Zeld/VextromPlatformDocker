@@ -234,14 +234,18 @@ body {
 
 /* Botão somente-ícone (ações compactas em tabelas) */
 .vx-icon-btn {
+  flex: 0 0 auto;          /* não encolhe quando a coluna fica estreita (evita sobreposição) */
   display: inline-grid;
   place-items: center;
   width: 32px;
   height: 32px;
+  min-width: 32px;
   padding: 0;
   line-height: 1;
 }
-.vx-icon-btn .material-symbols-outlined { font-size: 18px; }
+.vx-icon-btn .material-symbols-outlined { font-size: 18px; line-height: 1; }
+/* Linha de ações em ícone: nunca quebra/sobrepõe */
+.vx-actions { display: inline-flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
 .btn-primary {
   --bs-btn-bg: var(--primary);
   --bs-btn-border-color: var(--primary);

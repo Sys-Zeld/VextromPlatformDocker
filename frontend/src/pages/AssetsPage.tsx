@@ -108,8 +108,8 @@ export default function AssetsPage() {
               <tr key={t.id}>
                 <td>{t.name}</td><td>{t.role}</td><td>{t.company}</td><td>{t.email}</td>
                 <td>{t.is_lead ? <Badge bg="primary">Lead</Badge> : ""}</td>
-                <td>
-                  <div className="d-flex justify-content-end gap-1">
+                <td className="text-end">
+                  <div className="vx-actions justify-content-end">
                     <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })} />
                     <IconAction icon="handyman" label="Ferramentas" variant="outline-primary" as={Link} to={`/assets/technicians/${t.id}/tools`} />
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mTechDelete.isPending} onClick={() => { if (confirm(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }} />
