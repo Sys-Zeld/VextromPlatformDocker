@@ -120,7 +120,8 @@ export default function OrdersPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="edit" label="Editar cadastro" variant="outline-secondary" onClick={() => openEdit(o)} />
-                  <IconAction icon="open_in_new" label="Editor completo" variant="outline-primary" href={`/admin/report-service/orders/${o.id}`} />
+                  <IconAction icon="edit_note" label="Editor (novo)" variant="outline-primary" as={Link} to={`/orders/${o.id}/editor`} />
+                  <IconAction icon="open_in_new" label="Editor completo (legado)" variant="outline-secondary" href={`/admin/report-service/orders/${o.id}`} />
                   <IconAction icon="picture_as_pdf" label="Histórico de PDFs" variant="outline-secondary" as={Link} to={`/orders/${o.id}/pdf-history`} />
                   <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />
                 </div>

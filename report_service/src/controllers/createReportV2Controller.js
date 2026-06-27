@@ -244,6 +244,55 @@ function createReportServiceV2Controller(deps) {
       return res.status(204).end();
     },
 
+    // ---- Order editor (fatia 1: cabeçalho + timesheet) ------------------
+    async getOrderEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const [report, timesheet, technicians] = await Promise.all([
+        service.ensureReportForOrder(orderId, order.title),
+        repo.listTimesheetByOrder(orderId),
+        repo.listGlobalTechnicians()
+      ]);
+      const locked = String(order.status || "").toLowerCase() === "approved";
+      return res.json({ order, report, timesheet, technicians, locked });
+    },
+
+    async addTimesheet(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") {
+        return res.status(409).json({ error: "OS aprovada — apontamentos bloqueados.", errorCode: "ORDER_APPROVED_LOCKED" });
+      }
+      const created = await repo.createTimesheetEntry({ serviceOrderId: orderId, ...mapTimesheetBody(req.body) });
+      return res.status(201).json(created);
+    },
+
+    async updateTimesheet(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") {
+        return res.status(409).json({ error: "OS aprovada — apontamentos bloqueados.", errorCode: "ORDER_APPROVED_LOCKED" });
+      }
+      const updated = await repo.updateTimesheetEntry(Number(req.params.entryId), mapTimesheetBody(req.body));
+      if (!updated) return res.status(404).json({ error: "Registro não encontrado." });
+      return res.json(updated);
+    },
+
+    async deleteTimesheet(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") {
+        return res.status(409).json({ error: "OS aprovada — apontamentos bloqueados.", errorCode: "ORDER_APPROVED_LOCKED" });
+      }
+      const ok = await repo.deleteTimesheetEntry(Number(req.params.entryId));
+      if (!ok) return res.status(404).json({ error: "Registro não encontrado." });
+      return res.status(204).end();
+    },
+
     // ---- Equipments ------------------------------------------------------
     async listEquipments(_req, res) {
       const [equipments, customers, sites] = await Promise.all([
@@ -638,6 +687,33 @@ function createReportServiceV2Controller(deps) {
       });
     }
   };
+
+  function parseTimeToMinutes(value) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+
+  function computeWorkedHours(checkInClient, checkOutClient) {
+    const a = parseTimeToMinutes(checkInClient);
+    const b = parseTimeToMinutes(checkOutClient);
+    return a !== null && b !== null && b > a ? Math.round(((b - a) / 60) * 100) / 100 : null;
+  }
+
+  function mapTimesheetBody(body) {
+    const checkInClient = sanitize(body.checkInClient || body.check_in_client);
+    const checkOutClient = sanitize(body.checkOutClient || body.check_out_client);
+    return {
+      activityDate: sanitize(body.activityDate || body.activity_date),
+      checkInBase: sanitize(body.checkInBase || body.check_in_base),
+      checkInClient,
+      checkOutClient,
+      checkOutBase: sanitize(body.checkOutBase || body.check_out_base),
+      technicianName: sanitize(body.technicianName || body.technician_name),
+      workedHours: computeWorkedHours(checkInClient, checkOutClient),
+      notes: sanitize(body.notes)
+    };
+  }
 
   function normalizeTechIds(value) {
     return Array.from(new Set(
