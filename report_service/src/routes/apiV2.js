@@ -14,7 +14,15 @@ function createReportServiceV2Router(deps) {
   });
 
   router.get("/session", asyncHandler(controller.session));
+
+  // Customers + Sites (piloto Fase 2) — CRUD JSON reusando services/repositories.
   router.get("/customers", asyncHandler(controller.listCustomers));
+  router.post("/customers", asyncHandler(controller.createCustomer));
+  router.put("/customers/:id", asyncHandler(controller.updateCustomer));
+  router.delete("/customers/:id", asyncHandler(controller.deleteCustomer));
+  router.post("/sites", asyncHandler(controller.createSite));
+  router.put("/sites/:id", asyncHandler(controller.updateSite));
+  router.delete("/sites/:id", asyncHandler(controller.deleteSite));
 
   return router;
 }
