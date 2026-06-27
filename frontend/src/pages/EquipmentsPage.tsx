@@ -67,7 +67,8 @@ export default function EquipmentsPage() {
 
   const { equipments = [], customers = [], sites = [] } = data ?? {};
   const sitesForCustomer = (customerId: number | "") =>
-    sites.filter((s: Site) => !customerId || s.customer_id === customerId);
+    // customer_id pode vir como string (bigint do Postgres) — coerção numérica.
+    sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
 
   const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
   const openEdit = (e: Equipment) => { setEditId(e.id); setForm(toInput(e)); setActionError(null); setShow(true); };

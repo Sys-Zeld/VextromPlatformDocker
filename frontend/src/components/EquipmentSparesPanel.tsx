@@ -40,7 +40,8 @@ export default function EquipmentSparesPanel() {
 
   const customers = catalog?.customers ?? [];
   const equipments = useMemo(
-    () => (catalog?.equipments ?? []).filter((e) => !customerId || e.customer_id === customerId),
+    // customer_id pode vir como string (bigint do Postgres) — compara com coerção numérica.
+    () => (catalog?.equipments ?? []).filter((e) => !customerId || Number(e.customer_id) === customerId),
     [catalog, customerId]
   );
 
