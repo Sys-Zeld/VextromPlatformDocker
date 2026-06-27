@@ -1,6 +1,21 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Table } from "react-bootstrap";
+
+const PAGE_SIZE = 20;
+
+// Gera os números de página com reticências (janela ao redor da página atual).
+function pageWindow(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push("…");
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push("…");
+  pages.push(total);
+  return pages;
+}
 import {
   SparePart,
   SparePartInput,
@@ -42,6 +57,7 @@ export default function SparePartsPage() {
   const [form, setForm] = useState<SparePartInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["spare-parts"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -69,6 +85,12 @@ export default function SparePartsPage() {
           .some((v) => (v || "").toLowerCase().includes(q)))
     : all;
 
+  const totalPages = Math.max(1, Math.ceil(spareParts.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = spareParts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const firstIndex = spareParts.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const lastIndex = (currentPage - 1) * PAGE_SIZE + pageItems.length;
+
   const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
   const openEdit = (s: SparePart) => { setEditId(s.id); setForm(toInput(s)); setActionError(null); setShow(true); };
   const submit = (ev: React.FormEvent) => {
@@ -83,7 +105,7 @@ export default function SparePartsPage() {
       <Card.Header className="d-flex justify-content-between align-items-center gap-2">
         <span>Spare Parts (catálogo)</span>
         <div className="d-flex gap-2">
-          <Form.Control size="sm" placeholder="Filtrar…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 220 }} />
+          <Form.Control size="sm" placeholder="Filtrar…" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} style={{ maxWidth: 220 }} />
           <Button size="sm" onClick={openNew}>Nova peça</Button>
         </div>
       </Card.Header>
@@ -94,7 +116,7 @@ export default function SparePartsPage() {
         </thead>
         <tbody>
           {spareParts.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhuma peça.</td></tr>}
-          {spareParts.map((s) => (
+          {pageItems.map((s) => (
             <tr key={s.id}>
               <td>{s.description}</td>
               <td>{s.part_number}</td>
@@ -115,8 +137,25 @@ export default function SparePartsPage() {
           ))}
         </tbody>
       </Table>
-      <Card.Footer className="text-muted small">
-        Vínculo por equipamento, import por IA/PDF e bulk import continuam no sistema legado por ora.
+      <Card.Footer className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span className="text-muted small">
+          {spareParts.length > 0
+            ? `Mostrando ${firstIndex}–${lastIndex} de ${spareParts.length} peça(s)`
+            : "Nenhuma peça"}
+        </span>
+        {totalPages > 1 && (
+          <Pagination size="sm" className="mb-0">
+            <Pagination.Prev disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} />
+            {pageWindow(currentPage, totalPages).map((p, i) =>
+              p === "…" ? (
+                <Pagination.Ellipsis key={`e${i}`} disabled />
+              ) : (
+                <Pagination.Item key={p} active={p === currentPage} onClick={() => setPage(p)}>{p}</Pagination.Item>
+              )
+            )}
+            <Pagination.Next disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)} />
+          </Pagination>
+        )}
       </Card.Footer>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg">
