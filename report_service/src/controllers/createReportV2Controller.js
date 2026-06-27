@@ -244,18 +244,106 @@ function createReportServiceV2Controller(deps) {
       return res.status(204).end();
     },
 
-    // ---- Order editor (fatia 1: cabeçalho + timesheet) ------------------
+    // ---- Order editor (cabeçalho + timesheet + equipamentos/equipe) -----
     async getOrderEditor(req, res) {
       const orderId = Number(req.params.id);
       const order = await repo.getOrderById(orderId);
       if (!order) return res.status(404).json({ error: "OS não encontrada." });
-      const [report, timesheet, technicians] = await Promise.all([
+      const [report, timesheet, technicians, instruments, orderEquipments, allEquipments, linkedTechnicians, linkedInstruments] = await Promise.all([
         service.ensureReportForOrder(orderId, order.title),
         repo.listTimesheetByOrder(orderId),
-        repo.listGlobalTechnicians()
+        repo.listGlobalTechnicians(),
+        repo.listGlobalInstruments(),
+        repo.listOrderEquipments(orderId),
+        repo.listEquipments(),
+        repo.listTechniciansByOrder(orderId),
+        repo.listInstrumentsByOrder(orderId)
       ]);
+      // Equipamentos elegíveis: mesmo cliente (e site, se houver) e ainda não vinculados.
+      const linkedEqIds = new Set(orderEquipments.map((e) => Number(e.equipment_id)));
+      const hasSite = Number.isInteger(Number(order.site_id)) && Number(order.site_id) > 0;
+      const availableEquipments = (allEquipments || []).filter((e) => {
+        if (Number(e.customer_id) !== Number(order.customer_id)) return false;
+        if (hasSite && Number(e.site_id) !== Number(order.site_id)) return false;
+        return !linkedEqIds.has(Number(e.id));
+      });
+      const linkedTechIds = new Set(linkedTechnicians.map((t) => Number(t.id)));
+      const linkedInstrIds = new Set(linkedInstruments.map((i) => Number(i.id)));
       const locked = String(order.status || "").toLowerCase() === "approved";
-      return res.json({ order, report, timesheet, technicians, locked });
+      return res.json({
+        order, report, timesheet, locked,
+        orderEquipments, availableEquipments,
+        linkedTechnicians, technicians,
+        availableTechnicians: technicians.filter((t) => !linkedTechIds.has(Number(t.id))),
+        linkedInstruments, instruments,
+        availableInstruments: instruments.filter((i) => !linkedInstrIds.has(Number(i.id)))
+      });
+    },
+
+    // Equipamentos da OS
+    async attachOrderEquipment(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const equipmentId = Number(req.body.equipmentId || req.body.equipment_id);
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+      const sameCustomer = Number(equipment.customer_id) === Number(order.customer_id);
+      const sameSite = Number.isInteger(Number(order.site_id)) && Number(order.site_id) > 0
+        ? Number(equipment.site_id) === Number(order.site_id) : true;
+      if (!sameCustomer || !sameSite) return res.status(422).json({ error: "Equipamento não pertence ao cliente/site da OS." });
+      await repo.attachEquipmentToOrder(orderId, equipmentId, sanitize(req.body.notes));
+      return res.status(201).json({ ok: true });
+    },
+
+    async detachOrderEquipment(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      await repo.detachEquipmentFromOrder(orderId, Number(req.params.equipmentId));
+      return res.status(204).end();
+    },
+
+    // Técnicos da OS
+    async linkOrderTechnician(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const techId = Number(req.body.technicianId || req.body.technician_id);
+      if (techId > 0) await repo.linkTechnicianToOrder(orderId, techId);
+      return res.status(201).json({ ok: true });
+    },
+
+    async unlinkOrderTechnician(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      await repo.unlinkTechnicianFromOrder(orderId, Number(req.params.techId));
+      return res.status(204).end();
+    },
+
+    // Instrumentos da OS
+    async linkOrderInstrument(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const instrId = Number(req.body.instrumentId || req.body.instrument_id);
+      if (instrId > 0) await repo.linkInstrumentToOrder(orderId, instrId);
+      return res.status(201).json({ ok: true });
+    },
+
+    async unlinkOrderInstrument(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      await repo.unlinkInstrumentFromOrder(orderId, Number(req.params.instrId));
+      return res.status(204).end();
     },
 
     async addTimesheet(req, res) {

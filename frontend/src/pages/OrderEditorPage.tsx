@@ -7,10 +7,65 @@ import {
   TimesheetEntry,
   TimesheetInput,
   addTimesheet,
+  attachEquipment,
   deleteTimesheet,
+  detachEquipment,
   getOrderEditor,
+  linkInstrument,
+  linkTechnician,
+  unlinkInstrument,
+  unlinkTechnician,
   updateTimesheet
 } from "../api/orderEditor";
+
+interface LinkItem { id: number; label: string }
+
+function LinkListCard(props: {
+  title: string;
+  linked: LinkItem[];
+  available: LinkItem[];
+  addLabel: string;
+  onAdd: (id: number) => void;
+  onRemove: (id: number) => void;
+  locked: boolean;
+  busy: boolean;
+}) {
+  const [sel, setSel] = useState<string>("");
+  return (
+    <Card>
+      <Card.Header className="d-flex justify-content-between align-items-center">
+        <span>{props.title}</span>
+        <Badge bg="light" text="dark">{props.linked.length}</Badge>
+      </Card.Header>
+      {!props.locked && (
+        <Card.Body className="d-flex gap-2">
+          <Form.Select size="sm" value={sel} onChange={(e) => setSel(e.target.value)}>
+            <option value="">{props.addLabel}</option>
+            {props.available.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+          </Form.Select>
+          <Button size="sm" disabled={!sel || props.busy} onClick={() => { props.onAdd(Number(sel)); setSel(""); }}>Vincular</Button>
+        </Card.Body>
+      )}
+      <Table striped responsive hover className="mb-0 align-middle">
+        <tbody>
+          {props.linked.length === 0 && <tr><td className="text-muted">Nenhum vínculo.</td></tr>}
+          {props.linked.map((l) => (
+            <tr key={l.id}>
+              <td>{l.label}</td>
+              <td className="text-end" style={{ width: 60 }}>
+                {!props.locked && (
+                  <div className="vx-actions justify-content-end">
+                    <IconAction icon="link_off" label="Remover" variant="outline-danger" disabled={props.busy} onClick={() => props.onRemove(l.id)} />
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
 
 const EMPTY: TimesheetInput = {
   activityDate: "", checkInBase: "", checkInClient: "", checkOutClient: "", checkOutBase: "", technicianName: "", notes: ""
@@ -51,6 +106,13 @@ export default function OrderEditorPage() {
   const mUpdate = useMutation({ mutationFn: (p: { id: number; input: TimesheetInput }) => updateTimesheet(orderId, p.id, p.input), onSuccess: () => { setShow(false); invalidate(); }, onError });
   const mDelete = useMutation({ mutationFn: (entryId: number) => deleteTimesheet(orderId, entryId), onSuccess: invalidate, onError });
 
+  const mAttachEq = useMutation({ mutationFn: (id: number) => attachEquipment(orderId, id), onSuccess: invalidate, onError });
+  const mDetachEq = useMutation({ mutationFn: (id: number) => detachEquipment(orderId, id), onSuccess: invalidate, onError });
+  const mLinkTech = useMutation({ mutationFn: (id: number) => linkTechnician(orderId, id), onSuccess: invalidate, onError });
+  const mUnlinkTech = useMutation({ mutationFn: (id: number) => unlinkTechnician(orderId, id), onSuccess: invalidate, onError });
+  const mLinkInstr = useMutation({ mutationFn: (id: number) => linkInstrument(orderId, id), onSuccess: invalidate, onError });
+  const mUnlinkInstr = useMutation({ mutationFn: (id: number) => unlinkInstrument(orderId, id), onSuccess: invalidate, onError });
+
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
   }
@@ -58,8 +120,20 @@ export default function OrderEditorPage() {
     return <Alert variant="danger">Falha ao carregar a OS: {(error as Error)?.message}</Alert>;
   }
 
-  const { order, timesheet, technicians, locked } = data;
+  const {
+    order, timesheet, technicians, locked,
+    orderEquipments, availableEquipments,
+    linkedTechnicians, availableTechnicians,
+    linkedInstruments, availableInstruments
+  } = data;
   const totalHours = timesheet.reduce((sum, t) => sum + (Number(t.worked_hours) || 0), 0);
+
+  const eqLinked: LinkItem[] = orderEquipments.map((e) => ({ id: e.equipment_id, label: `${e.type ?? ""}${e.serial_number ? ` — ${e.serial_number}` : ""}${e.tag_number ? ` [${e.tag_number}]` : ""}`.trim() }));
+  const eqAvail: LinkItem[] = availableEquipments.map((e) => ({ id: e.id, label: `${e.type ?? ""}${e.serial_number ? ` — ${e.serial_number}` : ""}${e.tag_number ? ` [${e.tag_number}]` : ""}`.trim() }));
+  const techLinked: LinkItem[] = linkedTechnicians.map((t) => ({ id: t.id, label: `${t.name}${t.role ? ` — ${t.role}` : ""}` }));
+  const techAvail: LinkItem[] = availableTechnicians.map((t) => ({ id: t.id, label: t.name }));
+  const instrLinked: LinkItem[] = linkedInstruments.map((i) => ({ id: i.id, label: `${i.name}${i.model ? ` (${i.model})` : ""}` }));
+  const instrAvail: LinkItem[] = availableInstruments.map((i) => ({ id: i.id, label: `${i.name}${i.model ? ` (${i.model})` : ""}` }));
 
   const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
   const openEdit = (t: TimesheetEntry) => { setEditId(t.id); setForm(toInput(t)); setActionError(null); setShow(true); };
@@ -89,6 +163,44 @@ export default function OrderEditorPage() {
           </dl>
         </Card.Body>
       </Card>
+
+      {/* Equipamentos / Equipe / Instrumentos da OS */}
+      <LinkListCard
+        title="Equipamentos da OS"
+        linked={eqLinked}
+        available={eqAvail}
+        addLabel="Vincular equipamento…"
+        onAdd={(id) => mAttachEq.mutate(id)}
+        onRemove={(id) => mDetachEq.mutate(id)}
+        locked={locked}
+        busy={mAttachEq.isPending || mDetachEq.isPending}
+      />
+      <div className="row g-4">
+        <div className="col-lg-6">
+          <LinkListCard
+            title="Técnicos da OS"
+            linked={techLinked}
+            available={techAvail}
+            addLabel="Vincular técnico…"
+            onAdd={(id) => mLinkTech.mutate(id)}
+            onRemove={(id) => mUnlinkTech.mutate(id)}
+            locked={locked}
+            busy={mLinkTech.isPending || mUnlinkTech.isPending}
+          />
+        </div>
+        <div className="col-lg-6">
+          <LinkListCard
+            title="Instrumentos da OS"
+            linked={instrLinked}
+            available={instrAvail}
+            addLabel="Vincular instrumento…"
+            onAdd={(id) => mLinkInstr.mutate(id)}
+            onRemove={(id) => mUnlinkInstr.mutate(id)}
+            locked={locked}
+            busy={mLinkInstr.isPending || mUnlinkInstr.isPending}
+          />
+        </div>
+      </div>
 
       {/* Timesheet */}
       <Card>

@@ -1,5 +1,18 @@
 import { api } from "./client";
-import type { Order, Technician } from "./orders";
+import type { Order } from "./orders";
+import type { Equipment } from "./equipments";
+import type { Instrument, Technician } from "./assets";
+
+export interface OrderEquipment {
+  equipment_id: number;
+  type: string | null;
+  serial_number: string | null;
+  tag_number: string | null;
+  manufacturer: string | null;
+  model_family: string | null;
+  customer_name: string | null;
+  site_name: string | null;
+}
 
 export interface TimesheetEntry {
   id: number;
@@ -18,8 +31,15 @@ export interface OrderEditorPayload {
   order: Order & { service_order_code?: string | null; description?: string | null; proposal_number?: string | null; closing_date?: string | null };
   report: { id: number; status?: string | null };
   timesheet: TimesheetEntry[];
-  technicians: Technician[];
   locked: boolean;
+  orderEquipments: OrderEquipment[];
+  availableEquipments: Equipment[];
+  linkedTechnicians: Technician[];
+  technicians: Technician[];
+  availableTechnicians: Technician[];
+  linkedInstruments: Instrument[];
+  instruments: Instrument[];
+  availableInstruments: Instrument[];
 }
 
 export interface TimesheetInput {
@@ -46,4 +66,24 @@ export function updateTimesheet(id: number, entryId: number, input: TimesheetInp
 
 export function deleteTimesheet(id: number, entryId: number) {
   return api<void>(`/orders/${id}/timesheet/${entryId}`, { method: "DELETE" });
+}
+
+// ---- Equipamentos / técnicos / instrumentos da OS -----------------------
+export function attachEquipment(id: number, equipmentId: number, notes = "") {
+  return api<{ ok: boolean }>(`/orders/${id}/equipments`, { method: "POST", body: JSON.stringify({ equipmentId, notes }) });
+}
+export function detachEquipment(id: number, equipmentId: number) {
+  return api<void>(`/orders/${id}/equipments/${equipmentId}`, { method: "DELETE" });
+}
+export function linkTechnician(id: number, technicianId: number) {
+  return api<{ ok: boolean }>(`/orders/${id}/technicians`, { method: "POST", body: JSON.stringify({ technicianId }) });
+}
+export function unlinkTechnician(id: number, techId: number) {
+  return api<void>(`/orders/${id}/technicians/${techId}`, { method: "DELETE" });
+}
+export function linkInstrument(id: number, instrumentId: number) {
+  return api<{ ok: boolean }>(`/orders/${id}/instruments`, { method: "POST", body: JSON.stringify({ instrumentId }) });
+}
+export function unlinkInstrument(id: number, instrId: number) {
+  return api<void>(`/orders/${id}/instruments/${instrId}`, { method: "DELETE" });
 }

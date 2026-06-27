@@ -30,11 +30,17 @@ function createReportServiceV2Router(deps) {
   router.put("/orders/:id", asyncHandler(controller.updateOrderRegistration));
   router.delete("/orders/:id", asyncHandler(controller.deleteOrder));
 
-  // Order editor (fatia 1: cabeçalho + timesheet)
+  // Order editor (cabeçalho + timesheet + equipamentos/equipe da OS)
   router.get("/orders/:id/editor", asyncHandler(controller.getOrderEditor));
   router.post("/orders/:id/timesheet", asyncHandler(controller.addTimesheet));
   router.put("/orders/:id/timesheet/:entryId", asyncHandler(controller.updateTimesheet));
   router.delete("/orders/:id/timesheet/:entryId", asyncHandler(controller.deleteTimesheet));
+  router.post("/orders/:id/equipments", asyncHandler(controller.attachOrderEquipment));
+  router.delete("/orders/:id/equipments/:equipmentId", asyncHandler(controller.detachOrderEquipment));
+  router.post("/orders/:id/technicians", asyncHandler(controller.linkOrderTechnician));
+  router.delete("/orders/:id/technicians/:techId", asyncHandler(controller.unlinkOrderTechnician));
+  router.post("/orders/:id/instruments", asyncHandler(controller.linkOrderInstrument));
+  router.delete("/orders/:id/instruments/:instrId", asyncHandler(controller.unlinkOrderInstrument));
 
   // Equipments (CRUD)
   router.get("/equipments", asyncHandler(controller.listEquipments));
