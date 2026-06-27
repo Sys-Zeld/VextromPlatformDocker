@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import {
   Tool,
   ToolCreateInput,
@@ -79,8 +80,10 @@ export default function TechnicianToolsPage() {
               <td>{t.description}</td>
               <td>{t.serial_number}</td>
               <td className="text-end">
-                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(t)}>Editar</Button>
-                <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir "${t.item}"?`)) mDelete.mutate(t.id); }}>Excluir</Button>
+                <div className="vx-actions justify-content-end">
+                  <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(t)} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir "${t.item}"?`)) mDelete.mutate(t.id); }} />
+                </div>
               </td>
             </tr>
           ))}

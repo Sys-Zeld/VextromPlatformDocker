@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Tab, Table, Tabs } from "react-bootstrap";
 import EquipmentSparesPanel from "../components/EquipmentSparesPanel";
 import SparePartsImportModal from "../components/SparePartsImportModal";
+import IconAction from "../components/IconAction";
 
 const PAGE_SIZE = 20;
 
@@ -131,13 +132,10 @@ export default function SparePartsPage() {
               <td>{s.lead_time}</td>
               <td>{s.is_obsolete ? <Badge bg="danger">Obsoleta</Badge> : <Badge bg="success">Ativa</Badge>}</td>
               <td className="text-end">
-                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(s)}>Editar</Button>
-                <Button
-                  size="sm"
-                  variant="outline-danger"
-                  disabled={mDelete.isPending}
-                  onClick={() => { if (confirm(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }}
-                >Excluir</Button>
+                <div className="vx-actions justify-content-end">
+                  <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }} />
+                </div>
               </td>
             </tr>
           ))}

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Form, Modal, OverlayTrigger, Spinner, Table, Tooltip } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import {
   Instrument,
   InstrumentInput,
@@ -21,19 +22,6 @@ const EMPTY_INSTR: InstrumentInput = {
   name: "", model: "", serialNumber: "", certificateNumber: "", certificateLink: "",
   responsibleTechnicianId: "", lastCalibrationDate: "", calibrationDueDate: "", notes: ""
 };
-
-// Botão somente-ícone com legenda (tooltip) no hover. Aceita props de Button
-// (inclusive as={Link} to=...) via rest.
-type IconActionProps = { icon: string; label: string } & Record<string, unknown>;
-function IconAction({ icon, label, ...rest }: IconActionProps) {
-  return (
-    <OverlayTrigger placement="top" overlay={<Tooltip>{label}</Tooltip>}>
-      <Button size="sm" className="vx-icon-btn" aria-label={label} {...rest}>
-        <span className="material-symbols-outlined">{icon}</span>
-      </Button>
-    </OverlayTrigger>
-  );
-}
 
 function techToInput(t: Technician): TechnicianInput {
   return { name: t.name, role: t.role ?? "", company: t.company ?? "", email: t.email ?? "", phone: t.phone ?? "", isLead: Boolean(t.is_lead) };
@@ -136,8 +124,10 @@ export default function AssetsPage() {
                 <td>{i.name}</td><td>{i.model}</td><td>{i.serial_number}</td><td>{i.certificate_number}</td>
                 <td>{techName(i.responsible_technician_id)}</td><td>{i.calibration_due_date?.slice(0, 10) ?? "—"}</td>
                 <td className="text-end">
-                  <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setInstrModal({ id: i.id, form: instrToInput(i) })}>Editar</Button>
-                  <Button size="sm" variant="outline-danger" disabled={mInstrDelete.isPending} onClick={() => { if (confirm(`Excluir o instrumento "${i.name}"?`)) mInstrDelete.mutate(i.id); }}>Excluir</Button>
+                  <div className="vx-actions justify-content-end">
+                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setInstrModal({ id: i.id, form: instrToInput(i) })} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mInstrDelete.isPending} onClick={() => { if (confirm(`Excluir o instrumento "${i.name}"?`)) mInstrDelete.mutate(i.id); }} />
+                  </div>
                 </td>
               </tr>
             ))}

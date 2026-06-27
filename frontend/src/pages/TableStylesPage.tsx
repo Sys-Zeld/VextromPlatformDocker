@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Card, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import { listTableStyles, resetTableStyle } from "../api/tableStyles";
 
 export default function TableStylesPage() {
@@ -35,12 +36,15 @@ export default function TableStylesPage() {
               <td>{t.label}</td>
               <td>{t.hasCustomStyle ? <Badge bg="info">Customizado</Badge> : <Badge bg="secondary">Padrão</Badge>}</td>
               <td className="text-end">
-                <Button
-                  size="sm"
-                  variant="outline-secondary"
-                  disabled={!t.hasCustomStyle || mReset.isPending}
-                  onClick={() => { if (confirm(`Restaurar o estilo padrão de "${t.label}"?`)) mReset.mutate(t.key); }}
-                >Restaurar padrão</Button>
+                <div className="vx-actions justify-content-end">
+                  <IconAction
+                    icon="restart_alt"
+                    label="Restaurar padrão"
+                    variant="outline-secondary"
+                    disabled={!t.hasCustomStyle || mReset.isPending}
+                    onClick={() => { if (confirm(`Restaurar o estilo padrão de "${t.label}"?`)) mReset.mutate(t.key); }}
+                  />
+                </div>
               </td>
             </tr>
           ))}

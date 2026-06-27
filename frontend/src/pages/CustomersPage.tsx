@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import {
   CUSTOMER_TYPES,
   Customer,
@@ -137,13 +138,10 @@ export default function CustomersPage() {
                 <td>{c.customer_type}</td>
                 <td>{c.notes}</td>
                 <td className="text-end">
-                  <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setEditingCustomer(c)}>Editar</Button>
-                  <Button
-                    size="sm"
-                    variant="outline-danger"
-                    disabled={mDeleteCustomer.isPending}
-                    onClick={() => { if (confirm(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }}
-                  >Excluir</Button>
+                  <div className="vx-actions justify-content-end">
+                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingCustomer(c)} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCustomer.isPending} onClick={() => { if (confirm(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }} />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -200,13 +198,10 @@ export default function CustomersPage() {
                 <td>{s.site_code}</td>
                 <td>{s.location}</td>
                 <td className="text-end">
-                  <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setEditingSite(s)}>Editar</Button>
-                  <Button
-                    size="sm"
-                    variant="outline-danger"
-                    disabled={mDeleteSite.isPending}
-                    onClick={() => { if (confirm(`Excluir o site "${s.site_name}"?`)) mDeleteSite.mutate(s.id); }}
-                  >Excluir</Button>
+                  <div className="vx-actions justify-content-end">
+                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingSite(s)} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteSite.isPending} onClick={() => { if (confirm(`Excluir o site "${s.site_name}"?`)) mDeleteSite.mutate(s.id); }} />
+                  </div>
                 </td>
               </tr>
             ))}

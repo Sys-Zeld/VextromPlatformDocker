@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import { api } from "../api/client";
 import {
   ORDER_STATUSES,
@@ -117,15 +118,12 @@ export default function OrdersPage() {
               <td><Badge bg={STATUS_VARIANT[o.status || "draft"] || "secondary"}>{o.status || "draft"}</Badge></td>
               <td>{fmtDate(o.opening_date)}</td>
               <td className="text-end">
-                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(o)}>Editar</Button>
-                <a className="btn btn-sm btn-outline-primary me-2" href={`/admin/report-service/orders/${o.id}`}>Editor completo</a>
-                <Link className="btn btn-sm btn-outline-secondary me-2" to={`/orders/${o.id}/pdf-history`}>PDFs</Link>
-                <Button
-                  size="sm"
-                  variant="outline-danger"
-                  disabled={mDelete.isPending}
-                  onClick={() => { if (confirm(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }}
-                >Excluir</Button>
+                <div className="vx-actions justify-content-end">
+                  <IconAction icon="edit" label="Editar cadastro" variant="outline-secondary" onClick={() => openEdit(o)} />
+                  <IconAction icon="open_in_new" label="Editor completo" variant="outline-primary" href={`/admin/report-service/orders/${o.id}`} />
+                  <IconAction icon="picture_as_pdf" label="Histórico de PDFs" variant="outline-secondary" as={Link} to={`/orders/${o.id}/pdf-history`} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />
+                </div>
               </td>
             </tr>
           ))}

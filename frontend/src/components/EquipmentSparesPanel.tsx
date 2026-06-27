@@ -13,6 +13,7 @@ import {
   updateEquipmentSpare
 } from "../api/spareParts";
 import SparePartsImportModal from "./SparePartsImportModal";
+import IconAction from "./IconAction";
 
 const EMPTY: EquipmentSpareInput = {
   description: "", manufacturer: "", equipmentModel: "", partNumber: "", leadTime: "",
@@ -132,8 +133,10 @@ export default function EquipmentSparesPanel() {
                     <td>{s.quantity}</td>
                     <td>{s.is_obsolete ? <Badge bg="danger">Obsoleta</Badge> : <Badge bg="success">Ativa</Badge>}</td>
                     <td className="text-end">
-                      <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => setEditModal({ id: s.id, form: toInput(s) })}>Editar</Button>
-                      <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Remover "${s.description}" deste equipamento?`)) mDelete.mutate(s.id); }}>Remover</Button>
+                      <div className="vx-actions justify-content-end">
+                        <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditModal({ id: s.id, form: toInput(s) })} />
+                        <IconAction icon="link_off" label="Remover do equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Remover "${s.description}" deste equipamento?`)) mDelete.mutate(s.id); }} />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -164,7 +167,9 @@ export default function EquipmentSparesPanel() {
                         onChange={(e) => setLinkQty({ ...linkQty, [s.id]: Math.max(1, Number(e.target.value)) })} />
                     </td>
                     <td className="text-end">
-                      <Button size="sm" disabled={mLink.isPending} onClick={() => mLink.mutate({ sparePartId: s.id, quantity: linkQty[s.id] ?? 1 })}>Vincular</Button>
+                      <div className="vx-actions justify-content-end">
+                        <IconAction icon="add_link" label="Vincular ao equipamento" variant="primary" disabled={mLink.isPending} onClick={() => mLink.mutate({ sparePartId: s.id, quantity: linkQty[s.id] ?? 1 })} />
+                      </div>
                     </td>
                   </tr>
                 ))}

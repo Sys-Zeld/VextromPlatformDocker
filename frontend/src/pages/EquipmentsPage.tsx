@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import IconAction from "../components/IconAction";
 import {
   Equipment,
   EquipmentInput,
@@ -103,13 +104,10 @@ export default function EquipmentsPage() {
               <td>{e.tag_number}</td>
               <td>{e.customer_name || "—"}</td>
               <td className="text-end">
-                <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(e)}>Editar</Button>
-                <Button
-                  size="sm"
-                  variant="outline-danger"
-                  disabled={mDelete.isPending}
-                  onClick={() => { if (confirm(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }}
-                >Excluir</Button>
+                <div className="vx-actions justify-content-end">
+                  <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />
+                </div>
               </td>
             </tr>
           ))}
