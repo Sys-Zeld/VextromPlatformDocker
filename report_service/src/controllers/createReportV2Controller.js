@@ -4,6 +4,7 @@
 const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
 const analyticsService = require("../services/analyticsService");
+const { getReportConfigSettings, saveReportConfigSettings } = require("../services/reportConfigSettings");
 
 function createReportServiceV2Controller(deps) {
   const sanitize = typeof deps.sanitizeInput === "function" ? deps.sanitizeInput : (v) => v;
@@ -178,8 +179,166 @@ function createReportServiceV2Controller(deps) {
     async analytics(req, res) {
       const payload = await analyticsService.getDashboardPayload(req.query);
       return res.json(payload);
+    },
+
+    // ---- Spare parts (catálogo) -----------------------------------------
+    async listSpareParts(_req, res) {
+      const [spareParts, equipments, customers] = await Promise.all([
+        repo.listSpareParts(),
+        repo.listEquipments(),
+        repo.listCustomers()
+      ]);
+      return res.json({ spareParts, equipments, customers });
+    },
+
+    async createSparePart(req, res) {
+      try {
+        const created = await repo.createSparePart(mapSparePartBody(req.body));
+        return res.status(201).json(created);
+      } catch (err) {
+        if (err && (err.code === "pn_duplicate" || err.statusCode === 409)) {
+          return res.status(409).json({ error: "Part Number já cadastrado.", errorCode: "PN_DUPLICATE" });
+        }
+        throw err;
+      }
+    },
+
+    async updateSparePart(req, res) {
+      const id = Number(req.params.id);
+      try {
+        const updated = await repo.updateSparePart(id, mapSparePartBody(req.body));
+        if (!updated) return res.status(404).json({ error: "Peça não encontrada." });
+        return res.json(updated);
+      } catch (err) {
+        if (err && (err.code === "pn_duplicate" || err.statusCode === 409)) {
+          return res.status(409).json({ error: "Part Number já cadastrado.", errorCode: "PN_DUPLICATE" });
+        }
+        throw err;
+      }
+    },
+
+    async deleteSparePart(req, res) {
+      const id = Number(req.params.id);
+      try {
+        const ok = await repo.deleteSparePart(id);
+        if (!ok) return res.status(404).json({ error: "Peça não encontrada." });
+        return res.status(204).end();
+      } catch (err) {
+        if (err && err.code === "23503") {
+          return res.status(409).json({ error: "Peça vinculada a equipamentos e não pode ser excluída.", errorCode: "SPARE_HAS_DEPENDENTS" });
+        }
+        throw err;
+      }
+    },
+
+    // ---- Config do relatório --------------------------------------------
+    async getConfig(_req, res) {
+      const reportConfig = await getReportConfigSettings();
+      return res.json(reportConfig);
+    },
+
+    async saveConfig(req, res) {
+      await saveReportConfigSettings({
+        logoVextrom: sanitize(req.body.logoVextrom),
+        logoChloride: sanitize(req.body.logoChloride),
+        logoCover: sanitize(req.body.logoCover),
+        templateKey: sanitize(req.body.templateKey),
+        footerHtml: req.body.footerHtml !== undefined ? String(req.body.footerHtml) : undefined,
+        defaultScopeHtml: req.body.defaultScopeHtml !== undefined ? String(req.body.defaultScopeHtml) : undefined,
+        defaultRecommendationsHtml: req.body.defaultRecommendationsHtml !== undefined ? String(req.body.defaultRecommendationsHtml) : undefined
+      });
+      const reportConfig = await getReportConfigSettings();
+      return res.json(reportConfig);
+    },
+
+    // ---- Assets globais (técnicos + instrumentos) -----------------------
+    async listAssets(_req, res) {
+      const [technicians, instruments] = await Promise.all([
+        repo.listGlobalTechnicians(),
+        repo.listGlobalInstruments()
+      ]);
+      return res.json({ technicians, instruments });
+    },
+
+    async createTechnician(req, res) {
+      const created = await repo.createGlobalTechnician(mapTechnicianBody(req.body));
+      return res.status(201).json(created);
+    },
+
+    async updateTechnician(req, res) {
+      const updated = await repo.updateGlobalTechnician(Number(req.params.id), mapTechnicianBody(req.body));
+      if (!updated) return res.status(404).json({ error: "Técnico não encontrado." });
+      return res.json(updated);
+    },
+
+    async deleteTechnician(req, res) {
+      try {
+        const ok = await repo.deleteGlobalTechnician(Number(req.params.id));
+        if (!ok) return res.status(404).json({ error: "Técnico não encontrado." });
+        return res.status(204).end();
+      } catch (err) {
+        if (err && err.code === "23503") {
+          return res.status(409).json({ error: "Técnico vinculado a registros e não pode ser excluído.", errorCode: "TECH_HAS_DEPENDENTS" });
+        }
+        throw err;
+      }
+    },
+
+    async createInstrument(req, res) {
+      const created = await repo.createGlobalInstrument(mapInstrumentBody(req.body));
+      return res.status(201).json(created);
+    },
+
+    async updateInstrument(req, res) {
+      const updated = await repo.updateGlobalInstrument(Number(req.params.id), mapInstrumentBody(req.body));
+      if (!updated) return res.status(404).json({ error: "Instrumento não encontrado." });
+      return res.json(updated);
+    },
+
+    async deleteInstrument(req, res) {
+      const ok = await repo.deleteGlobalInstrument(Number(req.params.id));
+      if (!ok) return res.status(404).json({ error: "Instrumento não encontrado." });
+      return res.status(204).end();
     }
   };
+
+  function mapSparePartBody(body) {
+    return {
+      description: sanitize(body.description),
+      manufacturer: sanitize(body.manufacturer),
+      equipmentModel: sanitize(body.equipmentModel || body.equipment_model),
+      partNumber: sanitize(body.partNumber || body.part_number),
+      leadTime: sanitize(body.leadTime || body.lead_time),
+      isObsolete: body.isObsolete === true || body.isObsolete === "true" || body.is_obsolete === "on",
+      replacedByPartNumber: sanitize(body.replacedByPartNumber || body.replaced_by_part_number),
+      equipmentFamily: sanitize(body.equipmentFamily || body.equipment_family)
+    };
+  }
+
+  function mapTechnicianBody(body) {
+    return {
+      name: sanitize(body.name),
+      role: sanitize(body.role),
+      company: sanitize(body.company),
+      email: sanitize(body.email),
+      phone: sanitize(body.phone),
+      isLead: body.isLead === true || body.isLead === "true" || body.is_lead === "on"
+    };
+  }
+
+  function mapInstrumentBody(body) {
+    return {
+      name: sanitize(body.name),
+      model: sanitize(body.model),
+      serialNumber: sanitize(body.serialNumber || body.serial_number),
+      certificateNumber: sanitize(body.certificateNumber || body.certificate_number),
+      certificateLink: sanitize(body.certificateLink || body.certificate_link),
+      responsibleTechnicianId: Number(body.responsibleTechnicianId || body.responsible_technician_id || 0),
+      lastCalibrationDate: sanitize(body.lastCalibrationDate || body.last_calibration_date) || null,
+      calibrationDueDate: sanitize(body.calibrationDueDate || body.calibration_due_date) || null,
+      notes: sanitize(body.notes)
+    };
+  }
 
   function mapEquipmentBody(body) {
     return {

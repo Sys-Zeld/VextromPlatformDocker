@@ -15,6 +15,9 @@ const NAV = [
   { to: "/", label: "Ordens de Serviço", end: true },
   { to: "/customers", label: "Clientes" },
   { to: "/equipments", label: "Equipamentos" },
+  { to: "/spare-parts", label: "Peças" },
+  { to: "/assets", label: "Equipe & Instrumentos" },
+  { to: "/config", label: "Configuração" },
   { to: "/analytics", label: "Analytics" }
 ];
 

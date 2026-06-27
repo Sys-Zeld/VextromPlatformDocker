@@ -37,6 +37,25 @@ function createReportServiceV2Router(deps) {
   // Analytics (dashboard)
   router.get("/analytics", asyncHandler(controller.analytics));
 
+  // Spare parts (catálogo)
+  router.get("/spare-parts", asyncHandler(controller.listSpareParts));
+  router.post("/spare-parts", asyncHandler(controller.createSparePart));
+  router.put("/spare-parts/:id", asyncHandler(controller.updateSparePart));
+  router.delete("/spare-parts/:id", asyncHandler(controller.deleteSparePart));
+
+  // Config do relatório
+  router.get("/config", asyncHandler(controller.getConfig));
+  router.put("/config", asyncHandler(controller.saveConfig));
+
+  // Assets globais (técnicos + instrumentos)
+  router.get("/assets", asyncHandler(controller.listAssets));
+  router.post("/assets/technicians", asyncHandler(controller.createTechnician));
+  router.put("/assets/technicians/:id", asyncHandler(controller.updateTechnician));
+  router.delete("/assets/technicians/:id", asyncHandler(controller.deleteTechnician));
+  router.post("/assets/instruments", asyncHandler(controller.createInstrument));
+  router.put("/assets/instruments/:id", asyncHandler(controller.updateInstrument));
+  router.delete("/assets/instruments/:id", asyncHandler(controller.deleteInstrument));
+
   return router;
 }
 
