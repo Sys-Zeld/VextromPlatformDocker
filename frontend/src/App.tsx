@@ -5,6 +5,8 @@ import Layout from "./components/Layout";
 
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 const OrderEditorPage = lazy(() => import("./pages/OrderEditorPage"));
+const ReportEditorPage = lazy(() => import("./pages/ReportEditorPage"));
+const SignReportPage = lazy(() => import("./pages/SignReportPage"));
 const CustomersPage = lazy(() => import("./pages/CustomersPage"));
 const EquipmentsPage = lazy(() => import("./pages/EquipmentsPage"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
@@ -32,6 +34,8 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<OrdersPage />} />
           <Route path="/orders/:id/editor" element={<OrderEditorPage />} />
+          <Route path="/orders/:id/report" element={<ReportEditorPage />} />
+          <Route path="/orders/:id/sign" element={<SignReportPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/equipments" element={<EquipmentsPage />} />
           <Route path="/spare-parts" element={<SparePartsPage />} />
