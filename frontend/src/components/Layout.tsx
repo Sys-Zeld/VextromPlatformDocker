@@ -74,7 +74,7 @@ const SENTINELGRID_MODULE: ModuleNav = {
   section: "Manutenção",
   fallbackTitle: "SentinelGrid",
   nav: SENTINELGRID_NAV,
-  footer: { href: "/admin/module-hub", label: "Service Hub", icon: "grid_view" }
+  footer: { href: "/admin/hub", label: "Service Hub", icon: "grid_view" }
 };
 
 function resolveModule(pathname: string): ModuleNav {

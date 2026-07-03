@@ -22,7 +22,7 @@ export default function SentinelHomePage() {
             <strong>SentinelGrid</strong>
             <Badge bg="warning" text="dark">Em desenvolvimento</Badge>
           </span>
-          <a className="small" href="/admin/module-hub">← Service Hub</a>
+          <a className="small" href="/admin/hub">← Service Hub</a>
         </Card.Header>
         <Card.Body>
           <p className="text-muted mb-0">
