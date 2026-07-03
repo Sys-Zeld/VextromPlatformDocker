@@ -238,8 +238,13 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 // build existe (REACT_APP_ENABLED=true), para não afetar o boot padrão.
 if (env.reactAppEnabled) {
   const frontendDist = path.join(__dirname, "..", "frontend", "dist");
+  // Segurança: toda a SPA exige sessão de admin. Sem login, o browser é
+  // redirecionado ao /admin/login ANTES de qualquer tela renderizar (evita o
+  // "flash" da UI); chamadas fetch recebem 401. Gate aplicado ao estático e ao
+  // fallback de rotas do SPA.
+  app.use("/app", requireAdminAuth);
   app.use("/app", express.static(frontendDist));
-  app.get("/app/*", (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+  app.get("/app/*", requireAdminAuth, (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
 }
 app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
   const rel = objectStorage.normalizeKey(req.params[0] || "");
