@@ -1,16 +1,25 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, Spinner, Tab, Table, Tabs } from "react-bootstrap";
 import IconAction from "../components/IconAction";
 import RichTextEditor from "../components/RichTextEditor";
+import ComponentsStyleModal from "../components/ComponentsStyleModal";
+import AttachmentsPanel from "../components/AttachmentsPanel";
+import SendOsEmailPanel from "../components/SendOsEmailPanel";
+import MeasurementsPanel from "../components/MeasurementsPanel";
+import UpsDataPanel from "../components/UpsDataPanel";
 import {
+  Component,
+  ComponentInput,
   DailyLog,
   DailyLogInput,
   TimesheetEntry,
   TimesheetInput,
+  addComponent,
   addTimesheet,
   attachEquipment,
+  deleteComponent,
   deleteDailyLog,
   deleteTimesheet,
   detachEquipment,
@@ -19,10 +28,13 @@ import {
   linkInstrument,
   linkTechnician,
   reviseDailyLogText,
+  revalidateOrder,
   saveDailyLog,
   unlinkInstrument,
   unlinkTechnician,
-  updateTimesheet
+  updateComponent,
+  updateTimesheet,
+  validateOrder
 } from "../api/orderEditor";
 
 function stripHtml(html: string | null): string {
@@ -30,6 +42,19 @@ function stripHtml(html: string | null): string {
 }
 
 const EMPTY_LOG: DailyLogInput = { activityDate: "", title: "", content: "", notes: "", sortOrder: 0 };
+
+const EMPTY_COMPONENT: ComponentInput = { category: "", equipmentId: "", quantity: "", description: "", partNumber: "", notes: "" };
+
+function toComponentInput(c: Component): ComponentInput {
+  return {
+    category: c.category ?? "",
+    equipmentId: c.equipment_id ?? "",
+    quantity: c.quantity ?? "",
+    description: c.description ?? "",
+    partNumber: c.part_number ?? "",
+    notes: c.notes ?? ""
+  };
+}
 
 interface LinkItem { id: number; label: string }
 
@@ -139,6 +164,26 @@ export default function OrderEditorPage() {
   const mDeleteLog = useMutation({ mutationFn: (logId: number) => deleteDailyLog(orderId, logId), onSuccess: invalidate, onError });
   const mConclusion = useMutation({ mutationFn: () => generateConclusion(orderId), onSuccess: invalidate, onError });
 
+  // Componentes (tabela)
+  const [cmpShow, setCmpShow] = useState(false);
+  const [cmpEditId, setCmpEditId] = useState<number | null>(null);
+  const [cmpForm, setCmpForm] = useState<ComponentInput>(EMPTY_COMPONENT);
+  const mCreateCmp = useMutation({ mutationFn: (input: ComponentInput) => addComponent(orderId, input), onSuccess: () => { setCmpShow(false); invalidate(); }, onError });
+  const mUpdateCmp = useMutation({ mutationFn: (p: { id: number; input: ComponentInput }) => updateComponent(orderId, p.id, p.input), onSuccess: () => { setCmpShow(false); invalidate(); }, onError });
+  const mDeleteCmp = useMutation({ mutationFn: (componentId: number) => deleteComponent(orderId, componentId), onSuccess: invalidate, onError });
+  const [cmpStyleShow, setCmpStyleShow] = useState(false);
+
+  // Validar / Revalidar OS
+  const mValidate = useMutation({
+    mutationFn: () => validateOrder(orderId),
+    onSuccess: invalidate,
+    onError: (e: unknown) => {
+      const err = e as Error & { missing?: string[] };
+      setActionError(Array.isArray(err.missing) && err.missing.length ? err.missing.join(" ") : err.message);
+    }
+  });
+  const mRevalidate = useMutation({ mutationFn: () => revalidateOrder(orderId), onSuccess: invalidate, onError });
+
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
   }
@@ -150,8 +195,12 @@ export default function OrderEditorPage() {
     order, timesheet, dailyLogs, technicians, locked,
     orderEquipments, availableEquipments,
     linkedTechnicians, availableTechnicians,
-    linkedInstruments, availableInstruments
+    linkedInstruments, availableInstruments,
+    components, componentCategories, spareParts, componentsHasStyle,
+    validation, isSystemAdmin
   } = data;
+  const status = String(order.status || "").toLowerCase();
+  const statusVariant = status === "valid" ? "success" : status === "approved" ? "primary" : "secondary";
 
   const openNewLog = () => { setLogEditId(null); setLogForm(EMPTY_LOG); setActionError(null); setLogShow(true); };
   const openEditLog = (l: DailyLog) => {
@@ -179,6 +228,20 @@ export default function OrderEditorPage() {
   };
   const totalHours = timesheet.reduce((sum, t) => sum + (Number(t.worked_hours) || 0), 0);
 
+  const openNewCmp = () => { setCmpEditId(null); setCmpForm({ ...EMPTY_COMPONENT, category: componentCategories[0] ?? "" }); setActionError(null); setCmpShow(true); };
+  const openEditCmp = (c: Component) => { setCmpEditId(c.id); setCmpForm(toComponentInput(c)); setActionError(null); setCmpShow(true); };
+  const submitCmp = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (cmpEditId) mUpdateCmp.mutate({ id: cmpEditId, input: cmpForm });
+    else mCreateCmp.mutate(cmpForm);
+  };
+  const savingCmp = mCreateCmp.isPending || mUpdateCmp.isPending;
+  const eqTag = (equipmentId: number | null): string => {
+    if (equipmentId == null) return "—";
+    const e = orderEquipments.find((x) => x.equipment_id === equipmentId);
+    return e?.tag_number || "—";
+  };
+
   const eqLinked: LinkItem[] = orderEquipments.map((e) => ({ id: e.equipment_id, label: `${e.type ?? ""}${e.serial_number ? ` — ${e.serial_number}` : ""}${e.tag_number ? ` [${e.tag_number}]` : ""}`.trim() }));
   const eqAvail: LinkItem[] = availableEquipments.map((e) => ({ id: e.id, label: `${e.type ?? ""}${e.serial_number ? ` — ${e.serial_number}` : ""}${e.tag_number ? ` [${e.tag_number}]` : ""}`.trim() }));
   const techLinked: LinkItem[] = linkedTechnicians.map((t) => ({ id: t.id, label: `${t.name}${t.role ? ` — ${t.role}` : ""}` }));
@@ -201,7 +264,20 @@ export default function OrderEditorPage() {
       <Card>
         <Card.Header className="d-flex justify-content-between align-items-center">
           <span>OS {order.os_number || order.service_order_code || `#${order.id}`} <Link to="/" className="ms-2 small">← Ordens</Link></span>
-          <a className="btn btn-sm btn-outline-primary" href={`/admin/report-service/orders/${order.id}`}>Editor completo (legado)</a>
+          <div className="d-flex gap-2">
+            {status !== "approved" && (
+              <Button size="sm" variant="success" disabled={!validation.valid || mValidate.isPending} onClick={() => mValidate.mutate()} title={validation.valid ? "Validar OS" : "Complete os requisitos para validar"}>
+                {mValidate.isPending ? "Validando…" : "Validar OS"}
+              </Button>
+            )}
+            {status === "approved" && isSystemAdmin && (
+              <Button size="sm" variant="warning" disabled={mRevalidate.isPending} onClick={() => { if (confirm("Revalidar a OS aprovada? Ela volta para 'valid' e a revisão do relatório é incrementada.")) mRevalidate.mutate(); }}>
+                {mRevalidate.isPending ? "Revalidando…" : "Revalidar OS"}
+              </Button>
+            )}
+            <Link className="btn btn-sm btn-primary" to={`/orders/${orderId}/report`}>Editor de relatório</Link>
+            <a className="btn btn-sm btn-outline-secondary" href={`/admin/report-service/orders/${order.id}`}>Editor completo (legado)</a>
+          </div>
         </Card.Header>
         <Card.Body>
           {locked && <Alert variant="warning">OS aprovada — somente leitura.</Alert>}
@@ -209,25 +285,115 @@ export default function OrderEditorPage() {
             <dt className="col-sm-2">Título</dt><dd className="col-sm-10">{order.title || "—"}</dd>
             <dt className="col-sm-2">Cliente</dt><dd className="col-sm-4">{order.customer_name}</dd>
             <dt className="col-sm-2">Site</dt><dd className="col-sm-4">{order.site_name || "—"}</dd>
-            <dt className="col-sm-2">Status</dt><dd className="col-sm-4"><Badge bg="secondary">{order.status}</Badge></dd>
+            <dt className="col-sm-2">Status</dt><dd className="col-sm-4"><Badge bg={statusVariant}>{order.status}</Badge></dd>
             <dt className="col-sm-2">Abertura</dt><dd className="col-sm-4">{fmtDate(order.opening_date)}</dd>
           </dl>
+
+          {/* Requisitos de validação — só quando ainda não aprovada */}
+          {status !== "approved" && (
+            <div className="mt-3">
+              <div className="small fw-semibold mb-1">
+                Requisitos para validar {validation.valid
+                  ? <Badge bg="success" className="ms-1">completos</Badge>
+                  : <Badge bg="secondary" className="ms-1">{validation.missing.length} pendente(s)</Badge>}
+              </div>
+              <ul className="list-unstyled mb-0 small">
+                {[
+                  { ok: validation.hasEquipment, label: "Pelo menos 1 equipamento associado" },
+                  { ok: validation.hasTimesheet, label: "Pelo menos 1 registro de timesheet" },
+                  { ok: validation.hasDailyDescription, label: "Pelo menos 1 descrição diária" },
+                  { ok: validation.hasConclusion, label: "Pelo menos 1 conclusão geral" },
+                  { ok: validation.hasTechnicalTeam, label: "Pelo menos 1 pessoa na equipe técnica" }
+                ].map((r) => (
+                  <li key={r.label} className={r.ok ? "text-success" : "text-muted"}>
+                    {r.ok ? "✓" : "○"} {r.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card.Body>
       </Card>
 
-      {/* Equipamentos / Equipe / Instrumentos da OS */}
-      <LinkListCard
-        title="Equipamentos da OS"
-        linked={eqLinked}
-        available={eqAvail}
-        addLabel="Vincular equipamento…"
-        onAdd={(id) => mAttachEq.mutate(id)}
-        onRemove={(id) => mDetachEq.mutate(id)}
-        locked={locked}
-        busy={mAttachEq.isPending || mDetachEq.isPending}
-      />
-      <div className="row g-4">
-        <div className="col-lg-6">
+      {/* Abas de funcionalidades da OS */}
+      <Tabs defaultActiveKey="diario" id="order-editor-tabs" className="mb-3" mountOnEnter>
+        {/* Aba inicial: Diário de bordo + Apontamentos */}
+        <Tab eventKey="diario" title="Diário de bordo">
+          <div className="d-flex flex-column gap-4">
+            {/* Diário de bordo */}
+            <Card>
+              <Card.Header className="d-flex justify-content-between align-items-center gap-2">
+                <span>Diário de bordo <Badge bg="light" text="dark" className="ms-2">{dailyLogs.length}</Badge></span>
+                {!locked && (
+                  <div className="d-flex gap-2">
+                    <Button size="sm" variant="outline-primary" disabled={mConclusion.isPending} onClick={() => { if (confirm("Gerar/atualizar a conclusão geral a partir dos registros via IA?")) mConclusion.mutate(); }}>
+                      {mConclusion.isPending ? "Gerando…" : "Gerar conclusão (IA)"}
+                    </Button>
+                    <Button size="sm" onClick={openNewLog}>Novo registro</Button>
+                  </div>
+                )}
+              </Card.Header>
+              <Table striped responsive hover className="mb-0 align-middle">
+                <thead><tr><th>Data</th><th>Título</th><th>Conteúdo</th><th></th><th className="text-end">Ações</th></tr></thead>
+                <tbody>
+                  {dailyLogs.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum registro.</td></tr>}
+                  {dailyLogs.map((l) => (
+                    <tr key={l.id}>
+                      <td>{fmtDate(l.activity_date)}</td>
+                      <td>{l.title}</td>
+                      <td className="text-truncate" style={{ maxWidth: 380 }}>{stripHtml(l.content)}</td>
+                      <td>{l.notes === "conclusaogeral" && <Badge bg="info">conclusão</Badge>}</td>
+                      <td className="text-end">
+                        {!locked && (
+                          <div className="vx-actions justify-content-end">
+                            <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditLog(l)} />
+                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteLog.isPending} onClick={() => { if (confirm("Excluir este registro?")) mDeleteLog.mutate(l.id); }} />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+
+            {/* Timesheet */}
+            <Card>
+              <Card.Header className="d-flex justify-content-between align-items-center">
+                <span>Apontamentos (timesheet) <Badge bg="light" text="dark" className="ms-2">{totalHours.toFixed(2)} h</Badge></span>
+                {!locked && <Button size="sm" onClick={openNew}>Novo apontamento</Button>}
+              </Card.Header>
+              {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+              <Table striped responsive hover className="mb-0 align-middle">
+                <thead>
+                  <tr><th>Data</th><th>Técnico</th><th>Entrada (cli.)</th><th>Saída (cli.)</th><th>Horas</th><th>Obs.</th><th className="text-end">Ações</th></tr>
+                </thead>
+                <tbody>
+                  {timesheet.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum apontamento.</td></tr>}
+                  {timesheet.map((t) => (
+                    <tr key={t.id}>
+                      <td>{fmtDate(t.activity_date)}</td>
+                      <td>{t.technician_name}</td>
+                      <td>{t.check_in_client}</td>
+                      <td>{t.check_out_client}</td>
+                      <td>{t.worked_hours ?? "—"}</td>
+                      <td>{t.notes}</td>
+                      <td className="text-end">
+                        <div className="vx-actions justify-content-end">
+                          {!locked && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(t)} />}
+                          {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este apontamento?")) mDelete.mutate(t.id); }} />}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          </div>
+        </Tab>
+
+        {/* Técnicos da OS */}
+        <Tab eventKey="tecnicos" title="Técnicos">
           <LinkListCard
             title="Técnicos da OS"
             linked={techLinked}
@@ -238,93 +404,96 @@ export default function OrderEditorPage() {
             locked={locked}
             busy={mLinkTech.isPending || mUnlinkTech.isPending}
           />
-        </div>
-        <div className="col-lg-6">
-          <LinkListCard
-            title="Instrumentos da OS"
-            linked={instrLinked}
-            available={instrAvail}
-            addLabel="Vincular instrumento…"
-            onAdd={(id) => mLinkInstr.mutate(id)}
-            onRemove={(id) => mUnlinkInstr.mutate(id)}
-            locked={locked}
-            busy={mLinkInstr.isPending || mUnlinkInstr.isPending}
-          />
-        </div>
+        </Tab>
+
+        {/* Componentes: equipamentos + instrumentos */}
+        <Tab eventKey="componentes" title="Componentes">
+          <div className="d-flex flex-column gap-4">
+            <LinkListCard
+              title="Equipamentos da OS"
+              linked={eqLinked}
+              available={eqAvail}
+              addLabel="Vincular equipamento…"
+              onAdd={(id) => mAttachEq.mutate(id)}
+              onRemove={(id) => mDetachEq.mutate(id)}
+              locked={locked}
+              busy={mAttachEq.isPending || mDetachEq.isPending}
+            />
+            <LinkListCard
+              title="Instrumentos da OS"
+              linked={instrLinked}
+              available={instrAvail}
+              addLabel="Vincular instrumento…"
+              onAdd={(id) => mLinkInstr.mutate(id)}
+              onRemove={(id) => mUnlinkInstr.mutate(id)}
+              locked={locked}
+              busy={mLinkInstr.isPending || mUnlinkInstr.isPending}
+            />
+
+            {/* Componentes (tabela) */}
+            <Card>
+              <Card.Header className="d-flex justify-content-between align-items-center gap-2">
+                <span>Componentes (tabela) <Badge bg="light" text="dark" className="ms-2">{components.length}</Badge></span>
+                <div className="d-flex gap-2">
+                  <Button size="sm" variant="outline-secondary" onClick={() => setCmpStyleShow(true)}>
+                    🎨 Visual{componentsHasStyle && <Badge bg="success" className="ms-1" style={{ fontSize: 9 }}>custom</Badge>}
+                  </Button>
+                  {!locked && <Button size="sm" onClick={openNewCmp}>Novo componente</Button>}
+                </div>
+              </Card.Header>
+              <Table striped responsive hover className="mb-0 align-middle">
+                <thead>
+                  <tr><th>Categoria</th><th>TAG</th><th>Descrição</th><th>P/N</th><th>Qtd</th><th className="text-end">Ações</th></tr>
+                </thead>
+                <tbody>
+                  {components.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhum componente.</td></tr>}
+                  {components.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.category || "—"}</td>
+                      <td>{c.equipment_tag || eqTag(c.equipment_id)}</td>
+                      <td>{c.description || "—"}</td>
+                      <td>{c.part_number || "—"}</td>
+                      <td>{c.quantity ?? "—"}</td>
+                      <td className="text-end">
+                        {!locked && (
+                          <div className="vx-actions justify-content-end">
+                            <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditCmp(c)} />
+                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCmp.isPending} onClick={() => { if (confirm("Excluir este componente?")) mDeleteCmp.mutate(c.id); }} />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          </div>
+        </Tab>
+
+        {/* Ensaios / Medições */}
+        <Tab eventKey="ensaios" title="Ensaios/Medições">
+          <MeasurementsPanel orderId={orderId} />
+        </Tab>
+
+        {/* Dados UPS: Alber + Medições UPS + Event Logs */}
+        <Tab eventKey="dados-ups" title="Dados UPS">
+          <UpsDataPanel orderId={orderId} />
+        </Tab>
+
+        {/* Anexos da OS */}
+        <Tab eventKey="anexos" title="Anexos">
+          <AttachmentsPanel orderId={orderId} />
+        </Tab>
+
+        {/* Enviar OS por e-mail */}
+        <Tab eventKey="enviar" title="Enviar">
+          <SendOsEmailPanel orderId={orderId} technicians={linkedTechnicians} />
+        </Tab>
+      </Tabs>
+
+      <div className="text-muted small">
+        Demais blocos do relatório (seções, medições, imagens, assinaturas) chegam nas próximas fatias; por ora use o “Editor completo (legado)”.
       </div>
-
-      {/* Diário de bordo */}
-      <Card>
-        <Card.Header className="d-flex justify-content-between align-items-center gap-2">
-          <span>Diário de bordo <Badge bg="light" text="dark" className="ms-2">{dailyLogs.length}</Badge></span>
-          {!locked && (
-            <div className="d-flex gap-2">
-              <Button size="sm" variant="outline-primary" disabled={mConclusion.isPending} onClick={() => { if (confirm("Gerar/atualizar a conclusão geral a partir dos registros via IA?")) mConclusion.mutate(); }}>
-                {mConclusion.isPending ? "Gerando…" : "Gerar conclusão (IA)"}
-              </Button>
-              <Button size="sm" onClick={openNewLog}>Novo registro</Button>
-            </div>
-          )}
-        </Card.Header>
-        <Table striped responsive hover className="mb-0 align-middle">
-          <thead><tr><th>Data</th><th>Título</th><th>Conteúdo</th><th></th><th className="text-end">Ações</th></tr></thead>
-          <tbody>
-            {dailyLogs.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum registro.</td></tr>}
-            {dailyLogs.map((l) => (
-              <tr key={l.id}>
-                <td>{fmtDate(l.activity_date)}</td>
-                <td>{l.title}</td>
-                <td className="text-truncate" style={{ maxWidth: 380 }}>{stripHtml(l.content)}</td>
-                <td>{l.notes === "conclusaogeral" && <Badge bg="info">conclusão</Badge>}</td>
-                <td className="text-end">
-                  {!locked && (
-                    <div className="vx-actions justify-content-end">
-                      <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditLog(l)} />
-                      <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteLog.isPending} onClick={() => { if (confirm("Excluir este registro?")) mDeleteLog.mutate(l.id); }} />
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      </Card>
-
-      {/* Timesheet */}
-      <Card>
-        <Card.Header className="d-flex justify-content-between align-items-center">
-          <span>Apontamentos (timesheet) <Badge bg="light" text="dark" className="ms-2">{totalHours.toFixed(2)} h</Badge></span>
-          {!locked && <Button size="sm" onClick={openNew}>Novo apontamento</Button>}
-        </Card.Header>
-        {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-        <Table striped responsive hover className="mb-0 align-middle">
-          <thead>
-            <tr><th>Data</th><th>Técnico</th><th>Entrada (cli.)</th><th>Saída (cli.)</th><th>Horas</th><th>Obs.</th><th className="text-end">Ações</th></tr>
-          </thead>
-          <tbody>
-            {timesheet.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum apontamento.</td></tr>}
-            {timesheet.map((t) => (
-              <tr key={t.id}>
-                <td>{fmtDate(t.activity_date)}</td>
-                <td>{t.technician_name}</td>
-                <td>{t.check_in_client}</td>
-                <td>{t.check_out_client}</td>
-                <td>{t.worked_hours ?? "—"}</td>
-                <td>{t.notes}</td>
-                <td className="text-end">
-                  <div className="vx-actions justify-content-end">
-                    {!locked && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(t)} />}
-                    {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este apontamento?")) mDelete.mutate(t.id); }} />}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-        <Card.Footer className="text-muted small">
-          Demais blocos do relatório (técnicos, seções, medições, imagens, assinaturas) chegam nas próximas fatias; por ora use o “Editor completo (legado)”.
-        </Card.Footer>
-      </Card>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg">
         <Modal.Header closeButton><Modal.Title>{editId ? "Editar apontamento" : "Novo apontamento"}</Modal.Title></Modal.Header>
@@ -407,6 +576,59 @@ export default function OrderEditorPage() {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      {/* Modal componente */}
+      <Modal show={cmpShow} onHide={() => setCmpShow(false)} size="lg">
+        <Modal.Header closeButton><Modal.Title>{cmpEditId ? "Editar componente" : "Novo componente"}</Modal.Title></Modal.Header>
+        <Form onSubmit={submitCmp}>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+            <div className="row g-3">
+              <div className="col-md-4">
+                <Form.Label>Categoria</Form.Label>
+                <Form.Select value={cmpForm.category} onChange={(e) => setCmpForm({ ...cmpForm, category: e.target.value })}>
+                  {componentCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Equipamento (TAG)</Form.Label>
+                <Form.Select value={cmpForm.equipmentId} onChange={(e) => setCmpForm({ ...cmpForm, equipmentId: e.target.value ? Number(e.target.value) : "" })}>
+                  <option value="">Sem equipamento</option>
+                  {orderEquipments.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{e.tag_number || "—"}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Quantidade</Form.Label>
+                <Form.Control type="number" min={1} step={1} value={cmpForm.quantity} onChange={(e) => setCmpForm({ ...cmpForm, quantity: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Descrição</Form.Label>
+                <Form.Control list="cmp-descriptions" required value={cmpForm.description} onChange={(e) => setCmpForm({ ...cmpForm, description: e.target.value })} />
+                <datalist id="cmp-descriptions">
+                  {spareParts.filter((s) => s.description).map((s) => <option key={`d${s.id}`} value={s.description as string} />)}
+                </datalist>
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Part Number</Form.Label>
+                <Form.Control list="cmp-part-numbers" value={cmpForm.partNumber} onChange={(e) => setCmpForm({ ...cmpForm, partNumber: e.target.value })} />
+                <datalist id="cmp-part-numbers">
+                  {spareParts.filter((s) => s.part_number).map((s) => <option key={`p${s.id}`} value={s.part_number as string} />)}
+                </datalist>
+              </div>
+              <div className="col-12">
+                <Form.Label>Notas</Form.Label>
+                <Form.Control as="textarea" rows={2} value={cmpForm.notes} onChange={(e) => setCmpForm({ ...cmpForm, notes: e.target.value })} />
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setCmpShow(false)}>Cancelar</Button>
+            <Button type="submit" disabled={savingCmp}>{savingCmp ? "Salvando…" : "Salvar"}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      <ComponentsStyleModal show={cmpStyleShow} orderId={orderId} onHide={() => setCmpStyleShow(false)} onSaved={invalidate} />
     </div>
   );
 }

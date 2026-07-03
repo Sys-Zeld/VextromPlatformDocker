@@ -5,12 +5,14 @@
   "moduleVersions": {
     "specflow": "beta",
     "module_spec": "0.0.1",
-    "report_service": "0.2.1"
+    "report_service": "0.2.1",
+    "sentinelgrid": "0.0.1"
   },
   "moduleStatuses": {
     "specflow": "active",
     "module_spec": "in_development",
-    "report_service": "active"
+    "report_service": "active",
+    "sentinelgrid": "in_development"
   },
   "main": "src/app.js",
   "scripts": {
@@ -23,6 +25,8 @@
     "specflow:disable": "node scripts/modules-toggle.js disable specflow",
     "report-service:enable": "node scripts/modules-toggle.js enable report-service",
     "report-service:disable": "node scripts/modules-toggle.js disable report-service",
+    "sentinelgrid:enable": "node scripts/modules-toggle.js enable sentinelgrid",
+    "sentinelgrid:disable": "node scripts/modules-toggle.js disable sentinelgrid",
     "modules:enable:all": "node scripts/modules-toggle.js enable all",
     "modules:disable:all": "node scripts/modules-toggle.js disable all",
     "db:migrate": "node scripts/migrate.js",
@@ -30,6 +34,7 @@
     "db:migrate:config": "node configdb/migrate.js",
     "db:migrate:module-spec": "node module_spec/migrate.js",
     "db:migrate:report-service": "node report_service/migrate.js",
+    "db:migrate:sentinelgrid": "node sentinelgrid/migrate.js",
     "db:backup-database": "node scripts/backup-module-database.js specflow",
     "db:backup:specflow": "node scripts/backup-module-database.js specflow",
     "db:backup:config": "node scripts/backup-module-database.js config",
@@ -101,7 +106,8 @@
     "sharp": "^0.34.5",
     "unzipper": "^0.12.3",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

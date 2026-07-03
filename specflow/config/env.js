@@ -19,8 +19,10 @@ function normalizeAppBaseUrl(raw, options = {}) {
 }
 
 const nodeEnv = String(process.env.NODE_ENV || "development").toLowerCase();
+const isProduction = nodeEnv === "production";
+const appHost = isProduction ? "" : (process.env.APP_HOST || "0.0.0.0");
 const appBaseUrl = normalizeAppBaseUrl(process.env.APP_BASE_URL, {
-  isProduction: nodeEnv === "production"
+  isProduction
 });
 
 function resolveBaseDatabaseUrl() {
@@ -44,16 +46,19 @@ const specflowDatabaseUrl = process.env.SPECFLOW_DATABASE_URL || baseDatabaseUrl
 const moduleSpecDatabaseUrl = process.env.MODULE_SPEC_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "dbmodulespec");
 const reportServiceDatabaseUrl = process.env.REPORT_SERVICE_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "reportservice");
 const configDatabaseUrl = process.env.CONFIG_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "configdb");
+const sentinelgridDatabaseUrl = process.env.SENTINELGRID_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "sentinelgrid");
 
 module.exports = {
   nodeEnv,
   port: Number(process.env.PORT || 3000),
+  host: appHost,
   appBaseUrl,
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS || "",
   specflowEnabled: String(process.env.SPECFLOW_ENABLED || "true").toLowerCase() === "true",
   reactAppEnabled: String(process.env.REACT_APP_ENABLED || "false").toLowerCase() === "true",
   moduleSpecEnabled: String(process.env.MODULE_SPEC_ENABLED || "false").toLowerCase() === "true",
   reportServiceEnabled: String(process.env.REPORT_SERVICE_ENABLED || "true").toLowerCase() === "true",
+  sentinelgridEnabled: String(process.env.SENTINELGRID_ENABLED || "false").toLowerCase() === "true",
   admin: {
     user: process.env.ADMIN_USER || "admin",
     pass: process.env.ADMIN_PASS || "change-me",
@@ -83,6 +88,10 @@ module.exports = {
     config: {
       url: configDatabaseUrl,
       ssl: parseBooleanFlag(process.env.CONFIG_DATABASE_SSL, defaultDatabaseSsl)
+    },
+    sentinelgrid: {
+      url: sentinelgridDatabaseUrl,
+      ssl: parseBooleanFlag(process.env.SENTINELGRID_DATABASE_SSL, defaultDatabaseSsl)
     }
   },
   smtp: {

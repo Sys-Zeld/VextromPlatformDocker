@@ -6,7 +6,7 @@
     stored = null;
   }
 
-  var allowed = ["soft", "vextrom", "xvextrom", "xvetrom"];
+  var allowed = ["soft", "vextrom", "xvextrom", "xvetrom", "darkvextrom"];
   var theme = allowed.indexOf(stored) >= 0 ? stored : "vextrom";
   if (theme === "xvetrom") theme = "xvextrom";
 

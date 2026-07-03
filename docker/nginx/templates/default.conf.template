@@ -232,11 +232,12 @@ server {
     }
 
     # ── Assets do app: imagens de relatório e arquivos públicos ──────────────
+    # /app/assets/      → chunks JS/CSS gerados pelo Vite
     # /docs/report/img/ → imagens salvas nos relatórios (30+ por página)
     # /public/          → CSS, JS, fontes servidos pelo Node
     # Burst alto (150) para absorver o carregamento paralelo de imagens via HTTP/2.
     # Sem add_header aqui: herda todos os security headers do server block.
-    location ~* ^/(docs/|public/) {
+    location ~* ^/(app/assets/|docs/|public/) {
         limit_req  zone=assets_limit burst=150 nodelay;
         limit_conn conn_limit 75;
 

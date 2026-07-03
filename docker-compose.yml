@@ -42,12 +42,17 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-vextrom-minio-change-me}
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   minio-init:
     image: minio/mc:latest
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vextrom}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-vextrom-minio-change-me}

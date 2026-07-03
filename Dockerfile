@@ -14,16 +14,25 @@ COPY package*.json ./
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
   REPORT_PDF_RENDERER=puppeteer
 
-# --- desenvolvimento: instala devDependencies (nodemon) e monta código via volume ---
+# Development: install devDependencies and run nodemon.
 FROM base AS dev
 RUN npm ci
 COPY . .
 CMD ["npx", "nodemon", "src/app.js"]
 
-# --- produção: sem devDependencies, código copiado na imagem ---
+# React SPA build used by the production Express server at /app.
+FROM base AS frontend-build
+COPY frontend/package*.json ./frontend/
+RUN npm --prefix frontend ci
+COPY frontend ./frontend
+RUN npm --prefix frontend run build
+
+# Production: install only runtime dependencies and copy deterministic frontend assets.
 FROM base AS prod
 RUN npm ci --omit=dev
 COPY . .
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+RUN rm -rf /app/frontend/node_modules
 RUN mkdir -p /app/dados/docs && mkdir -p /app/dados/report-img/logos
 RUN chown -R pptruser:pptruser /app
 USER pptruser

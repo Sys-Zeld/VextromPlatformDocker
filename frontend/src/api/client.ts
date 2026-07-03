@@ -1,7 +1,7 @@
 // Cliente HTTP do SPA: usa a MESMA sessão de cookie do admin legado
 // (credentials: "include") e injeta o token CSRF do csurf via header X-CSRF-Token.
 
-const API_BASE = "/admin/api/v2";
+export const API_BASE = "/admin/api/v2";
 
 let csrfToken: string | null = null;
 
@@ -62,5 +62,9 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
   }
 
   if (res.status === 204) return undefined as T;
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new ApiError(res.status, "Resposta inesperada do servidor. Faça login novamente e tente outra vez.");
+  }
   return (await res.json()) as T;
 }

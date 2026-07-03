@@ -18,7 +18,17 @@ interface NavItem {
   end?: boolean;
 }
 
-const NAV: NavItem[] = [
+interface ModuleNav {
+  key: string;
+  subtitle: string;
+  crumb: string;
+  section: string;
+  fallbackTitle: string;
+  nav: NavItem[];
+  footer: { href: string; label: string; icon: string };
+}
+
+const SERVICE_REPORT_NAV: NavItem[] = [
   { to: "/", label: "Ordens de Serviço", icon: "receipt_long", end: true },
   { to: "/customers", label: "Clientes", icon: "groups" },
   { to: "/equipments", label: "Equipamentos", icon: "precision_manufacturing" },
@@ -29,19 +39,67 @@ const NAV: NavItem[] = [
   { to: "/analytics", label: "Analytics", icon: "insights" }
 ];
 
+const SENTINELGRID_NAV: NavItem[] = [
+  { to: "/sentinelgrid", label: "Início", icon: "space_dashboard", end: true },
+  { to: "/sentinelgrid/clients", label: "Clientes", icon: "groups" },
+  { to: "/sentinelgrid/sites", label: "Sites", icon: "location_city" },
+  { to: "/sentinelgrid/areas", label: "Áreas", icon: "grid_view" },
+  { to: "/sentinelgrid/catalog", label: "Catálogo", icon: "category" },
+  { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "precision_manufacturing" },
+  { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "assignment_ind" },
+  { to: "/sentinelgrid/programs", label: "Programas", icon: "event_repeat" },
+  { to: "/sentinelgrid/plans", label: "Planos", icon: "fact_check" },
+  { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
+  { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "assignment" },
+  { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar_month" },
+  { to: "/sentinelgrid/history", label: "Historico", icon: "history" },
+  { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "rule" },
+  { to: "/sentinelgrid/dashboard", label: "Dashboard", icon: "monitoring" }
+];
+
+const SERVICE_REPORT_MODULE: ModuleNav = {
+  key: "service-report",
+  subtitle: "Service Report",
+  crumb: "Vextrom Platform · Service Report",
+  section: "Operação",
+  fallbackTitle: "Service Report",
+  nav: SERVICE_REPORT_NAV,
+  footer: { href: "/admin/report-service", label: "Sistema legado", icon: "arrow_back" }
+};
+
+const SENTINELGRID_MODULE: ModuleNav = {
+  key: "sentinelgrid",
+  subtitle: "SentinelGrid",
+  crumb: "Vextrom Platform · SentinelGrid",
+  section: "Manutenção",
+  fallbackTitle: "SentinelGrid",
+  nav: SENTINELGRID_NAV,
+  footer: { href: "/admin/module-hub", label: "Service Hub", icon: "grid_view" }
+};
+
+function resolveModule(pathname: string): ModuleNav {
+  return pathname.startsWith("/sentinelgrid") ? SENTINELGRID_MODULE : SERVICE_REPORT_MODULE;
+}
+
 const THEMES: { value: AppTheme; label: string }[] = [
   { value: "soft", label: "Soft" },
   { value: "vextrom", label: "Vextrom" },
-  { value: "xvextrom", label: "X-Vextrom" }
+  { value: "xvextrom", label: "X-Vextrom" },
+  { value: "darkvextrom", label: "DarkVextrom" }
 ];
 
 const AUTO_COLLAPSE_WIDTH = 1200; // recolhe automaticamente abaixo desta largura
 const COLLAPSE_KEY = "vx_sidebar_collapsed";
 
-function pageTitle(pathname: string): string {
-  if (pathname === "/" || pathname.startsWith("/orders")) return "Ordens de Serviço";
-  const match = NAV.find((n) => n.to !== "/" && pathname.startsWith(n.to));
-  return match?.label ?? "Service Report";
+function pageTitle(pathname: string, mod: ModuleNav): string {
+  if (mod.key === "service-report" && (pathname === "/" || pathname.startsWith("/orders"))) {
+    return "Ordens de Serviço";
+  }
+  // Casa o item de rota mais específico (maior prefixo) para o título do topo.
+  const match = [...mod.nav]
+    .filter((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return match?.label ?? mod.fallbackTitle;
 }
 
 function readPreferredCollapsed(): boolean {
@@ -55,6 +113,7 @@ function readPreferredCollapsed(): boolean {
 
 export default function Layout() {
   const location = useLocation();
+  const mod = resolveModule(location.pathname);
   const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
   const [open, setOpen] = useState(false); // drawer mobile
@@ -99,13 +158,13 @@ export default function Layout() {
           </span>
           <span className="vx-brand__text">
             <span className="vx-brand__title d-block">Vextrom</span>
-            <span className="vx-brand__subtitle">Service Report</span>
+            <span className="vx-brand__subtitle">{mod.subtitle}</span>
           </span>
         </div>
 
         <nav className="vx-nav">
-          <span className="vx-nav__section">Operação</span>
-          {NAV.map((item) => (
+          <span className="vx-nav__section">{mod.section}</span>
+          {mod.nav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -119,9 +178,9 @@ export default function Layout() {
             </NavLink>
           ))}
           <div className="vx-nav__spacer" />
-          <a href="/admin/report-service" className="vx-nav__link vx-nav__link--muted" title="Sistema legado">
-            <span className="material-symbols-outlined">arrow_back</span>
-            <span className="vx-nav__label">Sistema legado</span>
+          <a href={mod.footer.href} className="vx-nav__link vx-nav__link--muted" title={mod.footer.label}>
+            <span className="material-symbols-outlined">{mod.footer.icon}</span>
+            <span className="vx-nav__label">{mod.footer.label}</span>
           </a>
         </nav>
       </aside>
@@ -138,8 +197,8 @@ export default function Layout() {
               <span className="material-symbols-outlined align-middle">menu</span>
             </button>
             <div>
-              <p className="vx-topbar__title">{pageTitle(location.pathname)}</p>
-              <span className="vx-topbar__crumb">Vextrom Platform · Service Report</span>
+              <p className="vx-topbar__title">{pageTitle(location.pathname, mod)}</p>
+              <span className="vx-topbar__crumb">{mod.crumb}</span>
             </div>
           </div>
           <div className="vx-topbar__controls">

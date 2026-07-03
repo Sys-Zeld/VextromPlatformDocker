@@ -1,8 +1,8 @@
 // Espelha o comportamento de tema do legado (views/partials/head.ejs):
 // valores válidos persistidos em localStorage["app_theme"], aplicados via data-theme.
-export type AppTheme = "soft" | "vextrom" | "xvextrom";
+export type AppTheme = "soft" | "vextrom" | "xvextrom" | "darkvextrom";
 
-const ALLOWED: AppTheme[] = ["soft", "vextrom", "xvextrom"];
+const ALLOWED: AppTheme[] = ["soft", "vextrom", "xvextrom", "darkvextrom"];
 const STORAGE_KEY = "app_theme";
 
 export function getStoredTheme(): AppTheme {

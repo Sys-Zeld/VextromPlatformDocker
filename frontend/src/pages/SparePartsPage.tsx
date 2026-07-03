@@ -213,7 +213,7 @@ export default function SparePartsPage() {
         </Form>
       </Modal>
 
-      <SparePartsImportModal show={showImport} onHide={() => setShowImport(false)} onImported={invalidate} />
+      <SparePartsImportModal show={showImport} onHide={() => setShowImport(false)} onImported={invalidate} customers={data?.customers ?? []} equipments={data?.equipments ?? []} />
         </Card>
       </Tab>
       <Tab eventKey="equipment" title="Por equipamento">

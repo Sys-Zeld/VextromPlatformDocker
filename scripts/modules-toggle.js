@@ -2,10 +2,11 @@ const fs = require("fs");
 const path = require("path");
 
 const TARGETS = {
-  all: ["SPECFLOW_ENABLED", "MODULE_SPEC_ENABLED", "REPORT_SERVICE_ENABLED"],
+  all: ["SPECFLOW_ENABLED", "MODULE_SPEC_ENABLED", "REPORT_SERVICE_ENABLED", "SENTINELGRID_ENABLED"],
   specflow: ["SPECFLOW_ENABLED"],
   "module-spec": ["MODULE_SPEC_ENABLED"],
-  "report-service": ["REPORT_SERVICE_ENABLED"]
+  "report-service": ["REPORT_SERVICE_ENABLED"],
+  sentinelgrid: ["SENTINELGRID_ENABLED"]
 };
 
 function normalizeMode(rawMode) {
@@ -49,7 +50,7 @@ function run() {
   const target = normalizeTarget(process.argv[3]);
   if (!mode || !target) {
     // eslint-disable-next-line no-console
-    console.error("Uso: node scripts/modules-toggle.js <enable|disable> <all|specflow|module-spec|report-service>");
+    console.error("Uso: node scripts/modules-toggle.js <enable|disable> <all|specflow|module-spec|report-service|sentinelgrid>");
     process.exit(1);
   }
 

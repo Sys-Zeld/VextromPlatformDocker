@@ -1,7 +1,8 @@
-import { api } from "./client";
+import { api, API_BASE } from "./client";
 import type { Order } from "./orders";
 import type { Equipment } from "./equipments";
 import type { Instrument, Technician } from "./assets";
+import type { SparePart } from "./spareParts";
 
 export interface OrderEquipment {
   equipment_id: number;
@@ -37,9 +38,33 @@ export interface DailyLog {
   sort_order: number | null;
 }
 
+export interface Component {
+  id: number;
+  category: string | null;
+  equipment_id: number | null;
+  equipment_tag: string | null;
+  description: string | null;
+  part_number: string | null;
+  quantity: number | string | null;
+  notes: string | null;
+  sort_order: number | null;
+}
+
+export interface OrderValidation {
+  valid: boolean;
+  hasEquipment: boolean;
+  hasTimesheet: boolean;
+  hasDailyDescription: boolean;
+  hasConclusion: boolean;
+  hasTechnicalTeam: boolean;
+  missing: string[];
+}
+
 export interface OrderEditorPayload {
   order: Order & { service_order_code?: string | null; description?: string | null; proposal_number?: string | null; closing_date?: string | null };
   report: { id: number; status?: string | null };
+  validation: OrderValidation;
+  isSystemAdmin: boolean;
   timesheet: TimesheetEntry[];
   dailyLogs: DailyLog[];
   locked: boolean;
@@ -51,6 +76,10 @@ export interface OrderEditorPayload {
   linkedInstruments: Instrument[];
   instruments: Instrument[];
   availableInstruments: Instrument[];
+  components: Component[];
+  componentCategories: string[];
+  spareParts: SparePart[];
+  componentsHasStyle: boolean;
 }
 
 export interface TimesheetInput {
@@ -65,6 +94,13 @@ export interface TimesheetInput {
 
 export function getOrderEditor(id: number) {
   return api<OrderEditorPayload>(`/orders/${id}/editor`);
+}
+
+export function validateOrder(id: number) {
+  return api<{ ok: boolean; status: string }>(`/orders/${id}/validate`, { method: "POST", body: JSON.stringify({}) });
+}
+export function revalidateOrder(id: number) {
+  return api<{ ok: boolean; status: string }>(`/orders/${id}/revalidate`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export function addTimesheet(id: number, input: TimesheetInput) {
@@ -97,6 +133,81 @@ export function linkInstrument(id: number, instrumentId: number) {
 }
 export function unlinkInstrument(id: number, instrId: number) {
   return api<void>(`/orders/${id}/instruments/${instrId}`, { method: "DELETE" });
+}
+
+// ---- Componentes (tabela) -----------------------------------------------
+export interface ComponentInput {
+  category: string;
+  equipmentId: number | "";
+  quantity: number | string;
+  description: string;
+  partNumber: string;
+  notes: string;
+}
+
+export function addComponent(id: number, input: ComponentInput) {
+  return api<{ ok: boolean }>(`/orders/${id}/components`, { method: "POST", body: JSON.stringify(input) });
+}
+export function updateComponent(id: number, componentId: number, input: ComponentInput) {
+  return api<{ ok: boolean }>(`/orders/${id}/components/${componentId}`, { method: "PUT", body: JSON.stringify(input) });
+}
+export function deleteComponent(id: number, componentId: number) {
+  return api<void>(`/orders/${id}/components/${componentId}`, { method: "DELETE" });
+}
+
+// Customização visual da tabela de componentes por IA (chat + preview)
+export interface ComponentsStyleConfig { customCss?: string | null; [k: string]: unknown }
+export interface ComponentsStyleResult { previewHtml: string; styleConfig: ComponentsStyleConfig | null }
+
+export function componentsStyleAi(id: number, body: { instruction?: string; apply?: boolean; currentStyle?: ComponentsStyleConfig | null }) {
+  return api<ComponentsStyleResult>(`/orders/${id}/components/style-ai`, { method: "POST", body: JSON.stringify(body) });
+}
+export function componentsStyleReset(id: number) {
+  return api<ComponentsStyleResult>(`/orders/${id}/components/style-reset`, { method: "POST", body: JSON.stringify({}) });
+}
+export function componentsStyleDefault(id: number, currentStyle: ComponentsStyleConfig | null) {
+  return api<ComponentsStyleResult>(`/orders/${id}/components/style-default`, { method: "POST", body: JSON.stringify({ currentStyle }) });
+}
+
+// ---- Anexos da OS -------------------------------------------------------
+export interface Attachment {
+  id: number;
+  service_order_id: number;
+  label: string | null;
+  original_name: string | null;
+  stored_name: string | null;
+  file_size: number | string | null;
+  mime_type: string | null;
+  created_at: string | null;
+}
+
+export function listAttachments(id: number) {
+  return api<{ ok: boolean; data: Attachment[] }>(`/orders/${id}/attachments`);
+}
+export function uploadAttachment(id: number, file: File, label: string) {
+  return api<{ ok: boolean; data?: unknown; error?: string }>(`/orders/${id}/attachments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name),
+      "X-Label": encodeURIComponent(label.trim())
+    },
+    body: file
+  });
+}
+export function deleteAttachment(id: number, attachmentId: number) {
+  return api<{ ok: boolean }>(`/orders/${id}/attachments/${attachmentId}`, { method: "DELETE" });
+}
+export function attachmentDownloadUrl(id: number, attachmentId: number): string {
+  return `${API_BASE}/orders/${id}/attachments/${attachmentId}/download`;
+}
+
+// ---- Enviar OS por e-mail -----------------------------------------------
+export function sendOsEmail(id: number, body: { to: string; cc: string }) {
+  return api<{ ok: boolean; recipients: string[]; cc: string[] }>(`/orders/${id}/send-os-email`, {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
 }
 
 // ---- Diário de bordo (daily logs) + IA ----------------------------------

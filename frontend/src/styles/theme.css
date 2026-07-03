@@ -151,9 +151,9 @@ body {
 .vx-brand__logo {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 66px;
+  height: 66px;
+  border-radius: 16px;
   background: #fff;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
   flex: none;
@@ -163,7 +163,19 @@ body {
   background: linear-gradient(145deg, #eafff1, #8fffb8);
   box-shadow: 0 0 0 1px rgba(57, 232, 125, 0.4), 0 14px 34px rgba(57, 232, 125, 0.18);
 }
-.vx-brand__logo img { width: 28px; height: 28px; }
+.vx-brand__logo img {
+  width: 48px;
+  height: 48px;
+  animation: vx-logo-hue 6s linear infinite;
+  will-change: filter;
+}
+@keyframes vx-logo-hue {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-brand__logo img { animation: none; }
+}
 .vx-brand__title { font-weight: 700; font-size: 1rem; line-height: 1.1; color: #fff; }
 .vx-brand__subtitle { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vx-sidebar-muted); }
 
@@ -243,8 +255,8 @@ body {
 .vx-shell.is-collapsed .vx-brand__text,
 .vx-shell.is-collapsed .vx-nav__label,
 .vx-shell.is-collapsed .vx-nav__section { display: none; }
-.vx-shell.is-collapsed .vx-brand__logo { width: 38px; height: 38px; }
-.vx-shell.is-collapsed .vx-brand__logo img { width: 24px; height: 24px; }
+.vx-shell.is-collapsed .vx-brand__logo { width: 54px; height: 54px; }
+.vx-shell.is-collapsed .vx-brand__logo img { width: 40px; height: 40px; }
 .vx-shell.is-collapsed .vx-nav { padding: 12px 10px; }
 .vx-shell.is-collapsed .vx-nav__link {
   justify-content: center;

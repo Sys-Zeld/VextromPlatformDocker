@@ -1,9 +1,111 @@
 // Controller do façade JSON /admin/api/v2 (consumido pelo SPA React).
 // NÃO reimplementa regra de negócio: reusa os MESMOS repositories/services
 // do web controller, apenas devolvendo res.json em vez de res.render.
+const path = require("path");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
 const analyticsService = require("../services/analyticsService");
+const objectStorage = require("../../../specflow/services/objectStorage");
+const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
+const { sanitizeReportSectionHtml } = require("../services/quillContentService");
+const { buildPreviewModel } = require("../services/reportPreviewService");
+const { normalizeReportTemplateKey, getReportTemplateOptions, renderReportPreviewHtml } = require("../services/reportTemplateService");
+const { createReportWebController } = require("./createReportWebController");
+const { parseAlberCsv } = require("../services/alberParserService");
+const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
+const { parseEventLogWorkbook } = require("../services/eventLogParser");
+const { COMPONENT_CATEGORIES } = require("../constants");
+
+function jsonArr(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch (_e) { return []; } }
+  return [];
+}
+function countSectionRows(sectionsJson) {
+  return jsonArr(sectionsJson).reduce((sum, s) => sum + (Array.isArray(s && s.rows) ? s.rows.length : 0), 0);
+}
+
+// Idiomas suportados para tradução do relatório (espelha REPORT_LANGUAGES do legado).
+const REPORT_LANGUAGES = [
+  { key: "pt", label: "Português" },
+  { key: "en", label: "Inglês" },
+  { key: "es", label: "Espanhol" },
+  { key: "fr", label: "Francês" }
+];
+const REPORT_LANGUAGE_KEYS = new Set(REPORT_LANGUAGES.map((l) => l.key));
+function normalizeReportLanguageKey(value, fallback = "pt") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return REPORT_LANGUAGE_KEYS.has(normalized) ? normalized : fallback;
+}
+
+// Utilitários de e-mail (equivalentes aos helpers locais do web controller legado).
+function parseEmailList(raw) {
+  return String(raw || "").split(/[;,\r\n]+/).map((item) => String(item || "").trim()).filter(Boolean);
+}
+function isValidEmailAddress(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ""));
+}
+function sanitizeSubjectHeaderValue(value) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+function escapeHtml(value) {
+  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderEmailPlaceholder(template, variables) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (match, key) => {
+    const k = String(key || "").trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(variables, k)) return match;
+    return escapeHtml(String(variables[k] || ""));
+  });
+}
+let _sharp;
+function getSharpOrNull() {
+  if (_sharp !== undefined) return _sharp;
+  try { _sharp = require("sharp"); } catch (_e) { _sharp = null; }
+  return _sharp;
+}
+async function optimizeImageBuffer(buffer, ext) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) return buffer;
+  const normalizedExt = String(ext || "").toLowerCase();
+  if (![".png", ".jpg", ".jpeg", ".webp"].includes(normalizedExt)) return buffer;
+  const sharp = getSharpOrNull();
+  if (!sharp) return buffer;
+  try {
+    const source = sharp(buffer, { animated: false });
+    const metadata = await source.metadata();
+    const transformed = Number(metadata.width || 0) > 1600 ? source.resize({ width: 1600, withoutEnlargement: true }) : source;
+    if (normalizedExt === ".png") return transformed.png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
+    if (normalizedExt === ".webp") return transformed.webp({ quality: 80 }).toBuffer();
+    return transformed.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+  } catch (_err) {
+    return buffer;
+  }
+}
+
+function buildOsTemplateVariables(order, technicians) {
+  const techNames = (Array.isArray(technicians) ? technicians : [])
+    .map((t) => String(t.name || "").trim()).filter(Boolean).join(", ");
+  return {
+    os_codigo: order.service_order_code || order.service_order_display || `OS-${order.id}`,
+    os_titulo: order.title || "",
+    cliente: order.customer_name || "",
+    local: order.site_name || "",
+    data_abertura: (() => {
+      const val = order.opening_date;
+      if (!val) return "";
+      const iso = val instanceof Date
+        ? `${val.getUTCFullYear()}-${String(val.getUTCMonth() + 1).padStart(2, "0")}-${String(val.getUTCDate()).padStart(2, "0")}`
+        : String(val).slice(0, 10);
+      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+    })(),
+    status: order.status || "",
+    nr_proposta: order.proposal_number || "",
+    tecnicos: techNames
+  };
+}
 const { getReportConfigSettings, saveReportConfigSettings } = require("../services/reportConfigSettings");
 const {
   getDefaultTimesheetStyleConfig,
@@ -11,7 +113,12 @@ const {
   getDefaultEquipmentStyleConfig,
   getDefaultComponentsStyleConfig,
   getDefaultUpsStyleConfig,
-  getDefaultEventLogStyleConfig
+  getDefaultEventLogStyleConfig,
+  generateDefaultComponentsCss,
+  buildComponentsStyleConfig,
+  saveDefaultComponentsStyleConfig,
+  buildComponentsPreviewHtml,
+  applyComponentsStyleViaAi
 } = require("../services/measurementStyleService");
 
 const TABLE_STYLE_TYPES = [
@@ -23,6 +130,128 @@ const TABLE_STYLE_TYPES = [
   { key: "eventlog", label: "Event Log", get: getDefaultEventLogStyleConfig, settingKey: "report.preview.eventlog.style.default" }
 ];
 
+// Normaliza a tabela de ensaios/medições (mesmas regras do legado: máx. 12 colunas, 80 linhas).
+function normalizeMeasurementInput(body) {
+  const trim = (v) => String(v == null ? "" : v).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").trim();
+  const rawCols = Array.isArray(body.columns) ? body.columns : [];
+  const columns = rawCols.map(trim).filter(Boolean).slice(0, 12);
+  const safeColumns = columns.length ? columns : ["Teste", "Valor", "Observações"];
+  const rawRows = Array.isArray(body.rows) ? body.rows : [];
+  const rows = rawRows
+    .map((row) => {
+      const src = Array.isArray(row) ? row : [];
+      const cells = [];
+      for (let i = 0; i < safeColumns.length; i += 1) cells.push(trim(src[i]));
+      return cells;
+    })
+    .filter((row) => row.some((cell) => String(cell || "").trim()))
+    .slice(0, 80);
+  return {
+    id: Number(body.measurementId || body.measurement_id || 0),
+    title: trim(body.title) || "Ensaios/Medições",
+    columns: safeColumns,
+    rows: rows.length ? rows : [safeColumns.map(() => "")],
+    notes: trim(body.notes),
+    sortOrder: Number(body.sortOrder || body.sort_order || 0)
+  };
+}
+
+function dedupeEmailList(items) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const email = String(item || "").trim();
+    const key = email.toLowerCase();
+    if (!email || seen.has(key)) return;
+    seen.add(key);
+    result.push(email);
+  });
+  return result;
+}
+
+function buildSignedReportTemplateVariables(order, report, signedLink, extra = {}) {
+  return {
+    os_codigo: order.service_order_code || order.service_order_display || `OS-${order.id}`,
+    relatorio_numero: String(report.report_number || ""),
+    cliente: order.customer_name || "",
+    local: order.site_name || "",
+    nr_proposta: order.proposal_number || "",
+    link_relatorio: signedLink || "",
+    signatario: String(extra.signatario || ""),
+    signatario_email: String(extra.signatario_email || ""),
+    tecnicos: String(extra.tecnicos || ""),
+    emails_notificados: String(extra.emails_notificados || "")
+  };
+}
+
+// Guard do link de assinatura eletrônica: OS 'valid' + assinatura do técnico Vextrom.
+function buildElectronicSignatureLinkGuard({ order, signatures } = {}) {
+  const orderStatus = String(order && order.status || "").toLowerCase();
+  const sigs = Array.isArray(signatures) ? signatures : [];
+  const hasValidOrder = orderStatus === "valid";
+  const hasVextromSignature = sigs.some((item) => String(item && item.signer_type || "").toLowerCase() === "vextrom_technician");
+  const reasons = [];
+  if (!hasValidOrder) reasons.push("A OS precisa estar com status valid.");
+  if (!hasVextromSignature) reasons.push("É obrigatória pelo menos 1 assinatura do técnico Vextrom.");
+  return { allowed: hasValidOrder && hasVextromSignature, hasValidOrder, hasVextromSignature, reasons };
+}
+
+// Incrementa a revisão do relatório (A → B → … → Z → AA), igual ao legado.
+function incrementReportRevision(value) {
+  const input = String(value || "").trim().toUpperCase();
+  if (!/^[A-Z]+$/.test(input)) return "A";
+  const chars = input.split("");
+  let cursor = chars.length - 1;
+  while (cursor >= 0) {
+    if (chars[cursor] !== "Z") { chars[cursor] = String.fromCharCode(chars[cursor].charCodeAt(0) + 1); return chars.join(""); }
+    chars[cursor] = "A";
+    cursor -= 1;
+  }
+  return `A${chars.join("")}`;
+}
+
+// Regras de validação da OS (mesmas do legado buildOrderValidationSummary).
+function buildOrderValidationSummary({ orderEquipments, timesheet, dailyLogs, technicians } = {}) {
+  const eq = Array.isArray(orderEquipments) ? orderEquipments : [];
+  const ts = Array.isArray(timesheet) ? timesheet : [];
+  const logs = Array.isArray(dailyLogs) ? dailyLogs : [];
+  const techs = Array.isArray(technicians) ? technicians : [];
+  const hasEquipment = eq.length > 0;
+  const hasTimesheet = ts.length > 0;
+  const hasDailyDescription = logs.some((i) => String(i && i.notes || "").trim().toLowerCase() !== "conclusaogeral");
+  const hasConclusion = logs.some((i) => String(i && i.notes || "").trim().toLowerCase() === "conclusaogeral");
+  const hasTechnicalTeam = techs.length > 0;
+  const missing = [];
+  if (!hasEquipment) missing.push("A OS precisa de pelo menos 1 equipamento associado.");
+  if (!hasTimesheet) missing.push("A OS precisa de pelo menos 1 registro de timesheet.");
+  if (!hasDailyDescription) missing.push("A OS precisa de pelo menos 1 descrição diária.");
+  if (!hasConclusion) missing.push("A OS precisa de pelo menos 1 conclusão geral.");
+  if (!hasTechnicalTeam) missing.push("A OS precisa de pelo menos 1 pessoa na equipe técnica.");
+  return { valid: missing.length === 0, hasEquipment, hasTimesheet, hasDailyDescription, hasConclusion, hasTechnicalTeam, missing };
+}
+
+function parsePositiveInt(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function setNoSniff(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+}
+
+function setFrameIsolationHeaders(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+}
+
+function isPngDataUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("data:image/png;base64,")) return false;
+  const payload = raw.slice("data:image/png;base64,".length);
+  if (!payload || payload.length > 2 * 1024 * 1024) return false;
+  return /^[a-zA-Z0-9+/]+={0,2}$/.test(payload);
+}
+
 function createReportServiceV2Controller(deps) {
   const sanitize = typeof deps.sanitizeInput === "function" ? deps.sanitizeInput : (v) => v;
   const extractSparePartsFromDocument = deps.extractSparePartsFromDocument;
@@ -33,6 +262,23 @@ function createReportServiceV2Controller(deps) {
 
   function localIsoDate() {
     return new Date().toISOString().slice(0, 10);
+  }
+
+  // Instância lazy do web controller: reusamos os handlers JSON de tradução
+  // (job assíncrono + progresso persistido no banco) sem duplicar a pipeline de IA.
+  let _webController = null;
+  function web() {
+    if (!_webController) _webController = createReportWebController(deps);
+    return _webController;
+  }
+
+  function resolveBaseUrl(req) {
+    const appBaseUrl = process.env.APP_BASE_URL;
+    if (appBaseUrl) return String(appBaseUrl).replace(/\/+$/, "");
+    const host = String((req.get && req.get("host")) || req.headers.host || "").trim();
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const protocol = forwardedProto || req.protocol || "http";
+    return host ? `${protocol}://${host}` : "http://localhost:3000";
   }
 
   function stripHtmlToText(html) {
@@ -272,7 +518,7 @@ function createReportServiceV2Controller(deps) {
       const orderId = Number(req.params.id);
       const order = await repo.getOrderById(orderId);
       if (!order) return res.status(404).json({ error: "OS não encontrada." });
-      const [report, timesheet, dailyLogs, technicians, instruments, orderEquipments, allEquipments, linkedTechnicians, linkedInstruments] = await Promise.all([
+      const [report, timesheet, dailyLogs, technicians, instruments, orderEquipments, allEquipments, linkedTechnicians, linkedInstruments, spareParts] = await Promise.all([
         service.ensureReportForOrder(orderId, order.title),
         repo.listTimesheetByOrder(orderId),
         repo.listDailyLogsByOrder(orderId),
@@ -281,8 +527,10 @@ function createReportServiceV2Controller(deps) {
         repo.listOrderEquipments(orderId),
         repo.listEquipments(),
         repo.listTechniciansByOrder(orderId),
-        repo.listInstrumentsByOrder(orderId)
+        repo.listInstrumentsByOrder(orderId),
+        repo.listSpareParts()
       ]);
+      const components = await repo.listComponents(report.id);
       // Equipamentos elegíveis: mesmo cliente (e site, se houver) e ainda não vinculados.
       const linkedEqIds = new Set(orderEquipments.map((e) => Number(e.equipment_id)));
       const hasSite = Number.isInteger(Number(order.site_id)) && Number(order.site_id) > 0;
@@ -294,14 +542,57 @@ function createReportServiceV2Controller(deps) {
       const linkedTechIds = new Set(linkedTechnicians.map((t) => Number(t.id)));
       const linkedInstrIds = new Set(linkedInstruments.map((i) => Number(i.id)));
       const locked = String(order.status || "").toLowerCase() === "approved";
+      const validation = buildOrderValidationSummary({ orderEquipments, timesheet, dailyLogs, technicians: linkedTechnicians });
+      const isSystemAdmin = String(res.locals.adminRole || "").toLowerCase() === "admin";
       return res.json({
+        validation, isSystemAdmin,
         order, report, timesheet, dailyLogs, locked,
         orderEquipments, availableEquipments,
         linkedTechnicians, technicians,
         availableTechnicians: technicians.filter((t) => !linkedTechIds.has(Number(t.id))),
         linkedInstruments, instruments,
-        availableInstruments: instruments.filter((i) => !linkedInstrIds.has(Number(i.id)))
+        availableInstruments: instruments.filter((i) => !linkedInstrIds.has(Number(i.id))),
+        components, componentCategories: COMPONENT_CATEGORIES, spareParts,
+        componentsHasStyle: !!report.components_style_config
       });
+    },
+
+    // Validar / Revalidar a OS
+    async validateOrder(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") {
+        return res.status(409).json({ error: "OS aprovada — bloqueada para edição.", errorCode: "edit_locked" });
+      }
+      const [orderEquipments, timesheet, dailyLogs, technicians] = await Promise.all([
+        repo.listOrderEquipments(orderId),
+        repo.listTimesheetByOrder(orderId),
+        repo.listDailyLogsByOrder(orderId),
+        repo.listTechniciansByOrder(orderId)
+      ]);
+      const summary = buildOrderValidationSummary({ orderEquipments, timesheet, dailyLogs, technicians });
+      if (!summary.valid) {
+        return res.status(422).json({ error: "A OS não atende aos requisitos de validação.", errorCode: "validation_error", missing: summary.missing });
+      }
+      await service.updateOrder(orderId, { status: "valid", updatedBy: res.locals.adminUsername || "" });
+      return res.json({ ok: true, status: "valid" });
+    },
+
+    async revalidateOrder(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(res.locals.adminRole || "").toLowerCase() !== "admin") {
+        return res.status(403).json({ error: "Apenas administradores do sistema podem revalidar.", errorCode: "forbidden_admin" });
+      }
+      if (String(order.status || "").toLowerCase() !== "approved") {
+        return res.status(409).json({ error: "A OS precisa estar aprovada para ser revalidada.", errorCode: "invalid_state" });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await service.updateOrder(orderId, { status: "valid", updatedBy: res.locals.adminUsername || "revalidate-os" });
+      await service.updateReport(report.id, { revision: incrementReportRevision(report.revision || "A"), issueDate: localIsoDate() });
+      return res.json({ ok: true, status: "valid" });
     },
 
     // Equipamentos da OS
@@ -367,6 +658,934 @@ function createReportServiceV2Controller(deps) {
       if (!order) return res.status(404).json({ error: "OS não encontrada." });
       if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
       await repo.unlinkInstrumentFromOrder(orderId, Number(req.params.instrId));
+      return res.status(204).end();
+    },
+
+    // ---- Componentes (tabela) -------------------------------------------
+    async addOrderComponent(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await service.createComponent(report.id, {
+        category: req.body.category,
+        equipmentId: req.body.equipmentId || req.body.equipment_id,
+        quantity: req.body.quantity,
+        description: req.body.description,
+        partNumber: req.body.partNumber || req.body.part_number,
+        notes: req.body.notes,
+        sortOrder: req.body.sortOrder || req.body.sort_order
+      });
+      return res.status(201).json({ ok: true });
+    },
+
+    async updateOrderComponent(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const componentId = Number(req.params.componentId);
+      if (!Number.isInteger(componentId) || componentId <= 0) return res.status(422).json({ error: "Componente inválido." });
+      const report = await service.ensureReportForOrder(orderId);
+      const components = await repo.listComponents(report.id);
+      if (!components.some((item) => Number(item.id) === componentId)) return res.status(404).json({ error: "Componente não encontrado nesta OS." });
+      await service.updateComponent(componentId, {
+        category: req.body.category,
+        equipmentId: req.body.equipmentId || req.body.equipment_id,
+        quantity: req.body.quantity,
+        description: req.body.description,
+        partNumber: req.body.partNumber || req.body.part_number,
+        notes: req.body.notes,
+        sortOrder: req.body.sortOrder || req.body.sort_order
+      });
+      return res.json({ ok: true });
+    },
+
+    async deleteOrderComponent(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const componentId = Number(req.params.componentId);
+      if (!Number.isInteger(componentId) || componentId <= 0) return res.status(422).json({ error: "Componente inválido." });
+      const report = await service.ensureReportForOrder(orderId);
+      const components = await repo.listComponents(report.id);
+      if (!components.some((item) => Number(item.id) === componentId)) return res.status(404).json({ error: "Componente não encontrado nesta OS." });
+      await repo.deleteComponent(componentId);
+      return res.status(204).end();
+    },
+
+    // ---- Ensaios / Medições (tabelas @ensaios) --------------------------
+    async listMeasurements(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      const rows = await repo.listMeasurementTables(report.id);
+      const parseArr = (v) => {
+        if (Array.isArray(v)) return v;
+        if (typeof v === "string") { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch (_e) { return []; } }
+        return [];
+      };
+      const measurements = (rows || []).map((m) => ({
+        id: m.id,
+        seq_id: m.seq_id ?? m.id,
+        title: m.title || "",
+        columns: parseArr(m.columns_json),
+        rows: parseArr(m.rows_json),
+        notes: m.notes || "",
+        sort_order: m.sort_order ?? 0
+      }));
+      const locked = String(order.status || "").toLowerCase() === "approved";
+      return res.json({ measurements, locked });
+    },
+
+    async saveMeasurement(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = normalizeMeasurementInput(req.body || {});
+      if (Number.isInteger(payload.id) && payload.id > 0) {
+        await repo.updateMeasurementTable(payload.id, report.id, payload);
+      } else {
+        await repo.createMeasurementTable({ serviceReportId: report.id, ...payload });
+      }
+      return res.json({ ok: true });
+    },
+
+    async deleteMeasurement(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const measurementId = Number(req.params.measurementId);
+      if (!Number.isInteger(measurementId) || measurementId <= 0) return res.status(422).json({ error: "ID de ensaio inválido." });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteMeasurementTable(measurementId, report.id);
+      return res.status(204).end();
+    },
+
+    // ---- Dados UPS: Leituras Alber + Medições UPS + Event Logs ----------
+    async getUpsData(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      const [alberRows, upsRows, eventRows] = await Promise.all([
+        repo.listLeiturasAlberByReport(report.id).catch(() => []),
+        repo.listUpsMeasuresByReport(report.id).catch(() => []),
+        repo.listEventLogsByReport(report.id).catch(() => [])
+      ]);
+      const alber = (alberRows || []).map((a) => ({
+        id: a.id,
+        location_name: a.location_name || "",
+        battery_name: a.battery_name || "",
+        model_number: a.model_number || "",
+        total_strings: a.total_strings ?? 0,
+        nome_arquivo: a.nome_arquivo || "",
+        cell_count: Array.isArray(a.celulas) ? a.celulas.length : jsonArr(a.celulas).length,
+        created_at: a.created_at || null
+      }));
+      const upsMeasures = (upsRows || []).map((u) => ({
+        id: u.id, seq_id: u.seq_id ?? u.id, title: u.title || "",
+        sections: jsonArr(u.sections_json).length, rows: countSectionRows(u.sections_json)
+      }));
+      const eventLogs = (eventRows || []).map((e) => ({
+        id: e.id, seq_id: e.seq_id ?? e.id, title: e.title || "",
+        sections: jsonArr(e.sections_json).length, rows: countSectionRows(e.sections_json)
+      }));
+      const locked = String(order.status || "").toLowerCase() === "approved";
+      return res.json({ alber, upsMeasures, eventLogs, locked });
+    },
+
+    async importAlber(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ ok: false, error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      const fileName = sanitize(decodeURIComponent(String(req.headers["x-file-name"] || "arquivo.csv")));
+      const parsed = parseAlberCsv(buffer.toString("utf-8"), fileName);
+      if (!parsed.isValid) return res.status(422).json({ ok: false, error: (parsed.errors || []).join(" | ") || "Arquivo inválido." });
+      const { header, celulas } = parsed;
+      const stringNums = [...new Set(celulas.map((c) => c.stringNum))].sort((a, b) => a - b);
+      const stringLabels = {};
+      stringNums.forEach((n) => { stringLabels[String(n)] = `Banco ${n}`; });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.createLeituraAlber({
+        serviceReportId: report.id,
+        locationName: header.locationName, batteryName: header.batteryName, modelNumber: header.modelNumber,
+        installDate: header.installDate, totalStrings: header.totalStrings, nomeArquivo: header.nomeArquivo,
+        stringLabels, celulas
+      });
+      return res.status(201).json({ ok: true });
+    },
+
+    async deleteAlber(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteLeituraAlber(Number(req.params.leituraId), report.id);
+      return res.status(204).end();
+    },
+
+    async importUpsMeasures(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ ok: false, error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      const fileName = sanitize(decodeURIComponent(String(req.headers["x-file-name"] || "Measures.xls")));
+      let parsed;
+      try { parsed = parseUpsMeasuresWorkbook(buffer, fileName); }
+      catch (err) { return res.status(422).json({ ok: false, error: err && err.message ? err.message : "Falha ao processar o arquivo." }); }
+      if (!parsed.sections.length && !parsed.header.length) return res.status(422).json({ ok: false, error: "Nenhum dado reconhecido no arquivo." });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.createUpsMeasures({
+        serviceReportId: report.id,
+        title: sanitize(parsed.title) || "Medições UPS",
+        header: Array.isArray(parsed.header) ? parsed.header : [],
+        sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+        notes: "", sortOrder: 0
+      });
+      return res.status(201).json({ ok: true });
+    },
+
+    async deleteUpsMeasures(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteUpsMeasures(Number(req.params.upsId), report.id);
+      return res.status(204).end();
+    },
+
+    async importEventLog(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ ok: false, error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      const fileName = sanitize(decodeURIComponent(String(req.headers["x-file-name"] || "Event Log.xls")));
+      let parsed;
+      try { parsed = parseEventLogWorkbook(buffer, fileName); }
+      catch (err) { return res.status(422).json({ ok: false, error: err && err.message ? err.message : "Falha ao processar o arquivo." }); }
+      if (!parsed.sections.length && !parsed.header.length) return res.status(422).json({ ok: false, error: "Nenhum dado reconhecido no arquivo." });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.createEventLog({
+        serviceReportId: report.id,
+        title: sanitize(parsed.title) || "Event Log UPS",
+        header: Array.isArray(parsed.header) ? parsed.header : [],
+        sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+        notes: "", sortOrder: 0
+      });
+      return res.status(201).json({ ok: true });
+    },
+
+    async deleteEventLog(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteEventLog(Number(req.params.eventLogId), report.id);
+      return res.status(204).end();
+    },
+
+    // ---- Componentes: customização visual da tabela por IA --------------
+    // O SPA envia JSON: currentStyle é objeto (ou ausente); no legado vinha como string.
+    async componentsStyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const { instruction, apply, currentStyle } = req.body || {};
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+      const parsedCurrentStyle = currentStyle || null;
+      const defaultStyle = await getDefaultComponentsStyleConfig();
+      const activeStyle = parsedCurrentStyle || report.components_style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (apply === true && parsedCurrentStyle) {
+          await repo.updateReportComponentsStyleConfig(reportId, parsedCurrentStyle);
+          return res.json({ previewHtml: buildComponentsPreviewHtml(reportId, parsedCurrentStyle), styleConfig: parsedCurrentStyle });
+        }
+        return res.json({ previewHtml: buildComponentsPreviewHtml(reportId, activeStyle), styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultComponentsCss(reportId);
+      const newCss = await applyComponentsStyleViaAi(currentCss, reportId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      if (apply === true) await repo.updateReportComponentsStyleConfig(reportId, newStyleConfig);
+      return res.json({ previewHtml: buildComponentsPreviewHtml(reportId, newStyleConfig), styleConfig: newStyleConfig });
+    },
+
+    async componentsStyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+      await repo.updateReportComponentsStyleConfig(reportId, null);
+      const defaultStyle = await getDefaultComponentsStyleConfig();
+      return res.json({ previewHtml: buildComponentsPreviewHtml(reportId, defaultStyle || null), styleConfig: defaultStyle || null });
+    },
+
+    async componentsStyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const { currentStyle } = req.body || {};
+      const report = await service.ensureReportForOrder(orderId);
+      const reportId = Number(report.id);
+      const styleConfig = buildComponentsStyleConfig(currentStyle || report.components_style_config || { customCss: generateDefaultComponentsCss(reportId) });
+      if (!styleConfig.customCss) return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      await saveDefaultComponentsStyleConfig(styleConfig);
+      await repo.updateReportComponentsStyleConfig(reportId, styleConfig);
+      return res.json({ previewHtml: buildComponentsPreviewHtml(reportId, styleConfig), styleConfig });
+    },
+
+    // ---- Anexos da OS (arquivos) ----------------------------------------
+    async listOrderAttachments(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      const attachments = await repo.listOrderAttachments(orderId);
+      return res.json({ ok: true, data: attachments });
+    },
+
+    async uploadOrderAttachment(req, res) {
+      const orderId = parsePositiveInt(req.params.id);
+      if (!orderId) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+
+      let fileNameRaw = "arquivo";
+      try { fileNameRaw = decodeURIComponent(String(req.headers["x-file-name"] || "arquivo")); }
+      catch (_err) { fileNameRaw = String(req.headers["x-file-name"] || "arquivo"); }
+      fileNameRaw = sanitize(fileNameRaw);
+      const originalName = path.basename(fileNameRaw).replace(/[^a-zA-Z0-9._\- ]/g, "").slice(0, 200) || "arquivo";
+
+      let labelRaw = "";
+      try { labelRaw = decodeURIComponent(String(req.headers["x-label"] || "")); }
+      catch (_err) { labelRaw = String(req.headers["x-label"] || ""); }
+      const label = sanitize(labelRaw).slice(0, 200);
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      if (buffer.length > 50 * 1024 * 1024) return res.status(413).json({ ok: false, error: "Arquivo muito grande. Limite: 50 MB." });
+
+      const ext = path.extname(originalName).toLowerCase();
+      if ([".html", ".htm", ".svg", ".js", ".mjs"].includes(ext)) {
+        return res.status(415).json({ ok: false, error: "Tipo de arquivo não permitido para anexos." });
+      }
+      const baseSafe = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "arquivo";
+      const unique = crypto.randomBytes(6).toString("hex");
+      const storedName = `${Date.now()}-${baseSafe}-${unique}${ext}`;
+
+      await objectStorage.putObject(
+        path.join("dados", "order-attachments", String(orderId), storedName),
+        buffer,
+        { contentType: String(req.headers["content-type"] || "application/octet-stream").split(";")[0].trim() }
+      );
+
+      const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim();
+      const uploadedBy = sanitize(String(res.locals.adminUsername || res.locals.adminEmail || ""));
+
+      const created = await repo.createOrderAttachment({
+        serviceOrderId: orderId,
+        originalName,
+        storedName,
+        label,
+        fileSize: buffer.length,
+        mimeType,
+        uploadedBy
+      });
+
+      return res.status(201).json({ ok: true, data: { id: created.id, originalName, storedName, label, fileSize: buffer.length } });
+    },
+
+    async deleteOrderAttachment(req, res) {
+      const orderId = Number(req.params.id);
+      const attachmentId = Number(req.params.attachmentId);
+      if (!Number.isInteger(attachmentId) || attachmentId <= 0) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      const attachment = await repo.getOrderAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.service_order_id) !== orderId) return res.status(404).json({ ok: false, error: "Anexo não encontrado." });
+      await repo.deleteOrderAttachment(attachmentId);
+      await objectStorage.deleteObject(path.join("dados", "order-attachments", String(orderId), attachment.stored_name));
+      return res.json({ ok: true });
+    },
+
+    async downloadOrderAttachment(req, res) {
+      const orderId = parsePositiveInt(req.params.id);
+      const attachmentId = parsePositiveInt(req.params.attachmentId);
+      if (!orderId || !attachmentId) return res.status(400).send("ID inválido.");
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).send("OS não encontrada.");
+      const attachment = await repo.getOrderAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.service_order_id) !== orderId) return res.status(404).send("Anexo não encontrado.");
+      const storageKey = path.join("dados", "order-attachments", String(orderId), attachment.stored_name);
+      if (!await objectStorage.existsObject(storageKey)) return res.status(404).send("Arquivo não encontrado no servidor.");
+      const safeName = attachment.original_name.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+      setNoSniff(res);
+      return objectStorage.sendObjectDownload(res, storageKey, safeName, attachment.mime_type || "application/octet-stream");
+    },
+
+    // ---- Enviar OS por e-mail -------------------------------------------
+    async sendOsCreatedEmail(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+
+      const technicians = await repo.listTechniciansByOrder(orderId);
+      const toFromTechs = technicians.map((t) => String(t.email || "").trim()).filter((e) => isValidEmailAddress(e));
+      const extraTo = parseEmailList(req.body.to);
+      const cc = parseEmailList(req.body.cc);
+      const to = Array.from(new Set([...toFromTechs, ...extraTo])).filter((e) => isValidEmailAddress(e));
+
+      if (!to.length) return res.status(422).json({ ok: false, error: "Nenhum destinatário válido (nenhum técnico com e-mail e nenhum destinatário extra).", errorCode: "no_recipients" });
+      if (cc.some((item) => !isValidEmailAddress(item))) return res.status(422).json({ ok: false, error: "CC contém e-mail inválido.", errorCode: "invalid_cc" });
+
+      const emailSettings = await getReportServiceEmailSettings();
+      if (!emailSettings.smtp || !emailSettings.smtp.host || !emailSettings.smtp.from) {
+        return res.status(400).json({ ok: false, error: "SMTP não configurado. Verifique as configurações de e-mail.", errorCode: "smtp" });
+      }
+
+      try {
+        const transporter = nodemailer.createTransport({
+          host: emailSettings.smtp.host,
+          port: emailSettings.smtp.port,
+          secure: emailSettings.smtp.secure,
+          auth: emailSettings.smtp.user ? { user: emailSettings.smtp.user, pass: emailSettings.smtp.pass } : undefined
+        });
+
+        const osVars = buildOsTemplateVariables(order, technicians);
+        const osTemplate = getTemplateByPurpose(emailSettings.emailTemplates, emailSettings.defaultTemplateId, "nova_os");
+        const orderDisplay = order.service_order_display || order.service_order_code || `OS-${orderId}`;
+        const subject = sanitizeSubjectHeaderValue(
+          osTemplate && osTemplate.subject ? renderEmailPlaceholder(osTemplate.subject, osVars) : `Nova OS: ${orderDisplay}`
+        );
+        let htmlBody;
+        if (osTemplate && osTemplate.html) {
+          htmlBody = `<!doctype html><html><body>${renderEmailPlaceholder(osTemplate.html, osVars)}</body></html>`;
+        } else {
+          htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;"><p style="margin:0 0 12px 0;">Uma nova Ordem de Servico foi criada e voce foi designado como tecnico responsavel.</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${orderDisplay}</p><p style="margin:0 0 8px 0;"><strong>Titulo:</strong> ${order.title || "-"}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${order.customer_name || "-"}</p><p style="margin:0 0 8px 0;"><strong>Local:</strong> ${order.site_name || "-"}</p><p style="margin:0 0 8px 0;"><strong>Data de abertura:</strong> ${osVars.data_abertura || "-"}</p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo modulo Service Report.</p></body></html>`;
+        }
+
+        await transporter.sendMail({ from: emailSettings.smtp.from, to, cc: cc.length ? cc : undefined, subject, html: htmlBody });
+        return res.json({ ok: true, recipients: to, cc });
+      } catch (_err) {
+        return res.status(502).json({ ok: false, error: "Falha ao enviar o e-mail da OS. Verifique a configuração SMTP.", errorCode: "send_failed" });
+      }
+    },
+
+    // ---- Report editor: capítulos/seções --------------------------------
+    async getReportEditor(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      const [sections, allImages, reportConfig, signatures, signRequests] = await Promise.all([
+        repo.listSections(report.id),
+        repo.listImages(report.id),
+        getReportConfigSettings(),
+        repo.listSignatures(report.id).catch(() => []),
+        repo.listSignRequestsByReportId(report.id).catch(() => [])
+      ]);
+      const images = (allImages || []).filter((img) => String(img.section_key || "") === "__tag__");
+      const locked = String(order.status || "").toLowerCase() === "approved";
+      const reportTemplates = getReportTemplateOptions();
+      const templateKey = normalizeReportTemplateKey(reportConfig.templateKey);
+      const signRequestGuard = buildElectronicSignatureLinkGuard({ order, signatures });
+      const reportLanguage = normalizeReportLanguageKey(report.document_language);
+      return res.json({
+        order, report, sections, images, locked, reportTemplates, templateKey,
+        signatures, signRequests, signRequestGuard,
+        reportLanguages: REPORT_LANGUAGES, reportLanguage
+      });
+    },
+
+    // ---- Tradução do relatório (job assíncrono com progresso) -----------
+    // Delega aos handlers JSON do web controller legado (mesma pipeline de IA + job store no banco).
+    startTranslateReportJob(req, res) { return web().startTranslateReportJob(req, res); },
+    getTranslateReportJob(req, res) { return web().getTranslateReportJob(req, res); },
+
+    // HTML do preview do relatório (renderizado no servidor) para o iframe do SPA.
+    async getReportPreviewHtml(req, res) {
+      const orderId = Number(req.params.id);
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = await service.buildReportAggregate(report.id);
+      if (!payload) return res.status(404).json({ error: "Relatório não encontrado." });
+      const reportConfig = await getReportConfigSettings();
+      const templateKey = normalizeReportTemplateKey(sanitize(req.query.templateKey || "") || reportConfig.templateKey);
+      const bodyHtml = await renderReportPreviewHtml(payload, { reportConfig, templateKey, previewMode: true });
+      const cacheVersion = Date.now();
+      // Inclui o overlay + o script de ciclo da paginação: o report-pagination.js
+      // adiciona html.report-paginating (que zera a opacidade do report-doc via CSS) e
+      // essa classe SÓ é removida no evento reportPaginationReady — sem isto o conteúdo some.
+      const fullHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=960, initial-scale=1.0" />
+  <link href="/public/css/report-preview.css" rel="stylesheet" />
+  <link href="/public/css/report-print.css" rel="stylesheet" />
+  <script src="/public/js/report-pagination.js?v=${cacheVersion}" defer></script>
+</head>
+<body>
+<div id="report-loading-overlay" class="report-loading-overlay" role="status" aria-live="polite" aria-label="Carregando documento">
+  <div class="report-loading-spinner"></div>
+  <p class="report-loading-label">Preparando documento...</p>
+</div>
+<script>
+(function () {
+  var startTime = Date.now();
+  var MIN_DELAY = 500;
+  document.documentElement.classList.add("report-paginating");
+  function hideOverlay() {
+    document.documentElement.classList.remove("report-paginating");
+    var overlay = document.getElementById("report-loading-overlay");
+    if (!overlay) return;
+    overlay.style.opacity = "0";
+    setTimeout(function () { overlay.style.display = "none"; }, 300);
+  }
+  var safetyTimer = setTimeout(function () {
+    document.documentElement.classList.remove("report-paginating");
+    var overlay = document.getElementById("report-loading-overlay");
+    if (overlay) overlay.style.display = "none";
+  }, 15000);
+  document.addEventListener("reportPaginationReady", function () {
+    clearTimeout(safetyTimer);
+    var remaining = Math.max(0, MIN_DELAY - (Date.now() - startTime));
+    setTimeout(hideOverlay, remaining);
+  }, { once: true });
+})();
+</script>
+${bodyHtml}
+<div id="rpt-image-modal" role="dialog" aria-modal="true" aria-label="Visualizacao da imagem" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);align-items:center;justify-content:center;padding:16px;">
+  <div style="position:relative;width:min(96vw,1400px);max-height:92vh;background:#111;border-radius:10px;padding:40px 16px 14px;display:flex;flex-direction:column;gap:10px;">
+    <button class="rpt-image-close" type="button" aria-label="Fechar" style="position:absolute;top:8px;right:8px;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;">&times;</button>
+    <img id="rpt-image-view" src="" alt="" style="max-width:100%;max-height:78vh;object-fit:contain;margin:0 auto;background:#111;border-radius:6px;" />
+    <p id="rpt-image-caption" style="margin:0;color:#eaeaea;font:500 0.85rem/1.35 sans-serif;text-align:center;word-break:break-word;"></p>
+  </div>
+</div>
+<script>
+  (function () {
+    var modal = document.getElementById("rpt-image-modal");
+    var view = document.getElementById("rpt-image-view");
+    var caption = document.getElementById("rpt-image-caption");
+    if (!modal || !view || !caption) return;
+    function openModal(src, text, rotation) {
+      if (!src) return;
+      view.src = src; view.alt = text || "Imagem"; caption.textContent = text || "";
+      var deg = [90, 180, 270].indexOf(Number(rotation)) !== -1 ? Number(rotation) : 0;
+      view.style.transform = deg ? "rotate(" + deg + "deg)" : "";
+      modal.style.display = "flex"; document.body.style.overflow = "hidden";
+    }
+    function closeModal() { modal.style.display = "none"; document.body.style.overflow = ""; view.src = ""; view.style.transform = ""; caption.textContent = ""; }
+    document.addEventListener("click", function (event) {
+      var img = event.target && event.target.closest ? event.target.closest(".rich-output img") : null;
+      if (img) { openModal(img.getAttribute("src") || "", img.getAttribute("alt") || "", img.getAttribute("data-rotation") || "0"); return; }
+      if (event.target === modal || (event.target && event.target.closest && event.target.closest(".rpt-image-close"))) closeModal();
+    });
+    document.addEventListener("keydown", function (event) { if (event.key === "Escape") closeModal(); });
+  })();
+</script>
+</body>
+</html>`;
+      // format=html → devolve o documento direto (para abrir em nova janela);
+      // caso contrário, JSON para o iframe srcDoc do SPA.
+      if (String(req.query.format || "") === "html") {
+        setFrameIsolationHeaders(res);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(fullHtml);
+      }
+      setNoSniff(res);
+      return res.json({ html: fullHtml, templateKey });
+    },
+
+    async createReportSection(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const beforeSections = await repo.listSections(report.id);
+      const title = sanitize(req.body.sectionTitle || req.body.section_title) || "NOVO CAPITULO";
+      const sections = await service.createReportSection(report.id, {
+        sectionTitle: title, sectionTitleText: title, contentText: "", contentHtml: "<p><br></p>", isVisible: true
+      });
+      const insertAfter = sanitize(req.body.insertAfter || req.body.insert_after || "").trim();
+      if (insertAfter && insertAfter !== "end") {
+        const beforeKeys = new Set(beforeSections.map((s) => s.section_key));
+        const newSection = sections.find((s) => !beforeKeys.has(s.section_key));
+        if (newSection) {
+          const existingKeys = beforeSections.map((s) => s.section_key);
+          const ordered = [];
+          if (insertAfter === "start") {
+            ordered.push(newSection.section_key, ...existingKeys);
+          } else {
+            let inserted = false;
+            for (const key of existingKeys) {
+              ordered.push(key);
+              if (key === insertAfter) { ordered.push(newSection.section_key); inserted = true; }
+            }
+            if (!inserted) ordered.push(newSection.section_key);
+          }
+          await repo.reorderSections(report.id, ordered);
+        }
+      }
+      return res.status(201).json({ ok: true });
+    },
+
+    async saveReportSection(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const sectionKey = sanitize(req.params.sectionKey).toLowerCase();
+      const report = await service.ensureReportForOrder(orderId);
+      await service.upsertReportSection(report.id, sectionKey, {
+        sectionTitleHtml: req.body.sectionTitleHtml,
+        sectionTitleText: sanitize(req.body.sectionTitleText),
+        contentHtml: req.body.contentHtml || "",
+        contentText: sanitize(req.body.contentText),
+        isVisible: req.body.isVisible
+      });
+      return res.json({ ok: true });
+    },
+
+    async deleteReportSection(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const sectionKey = sanitize(req.params.sectionKey).toLowerCase();
+      const report = await service.ensureReportForOrder(orderId);
+      await service.deleteReportSection(report.id, sectionKey);
+      return res.status(204).end();
+    },
+
+    async reorderReportSections(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const orderedKeys = Array.isArray(req.body.sectionKeys) ? req.body.sectionKeys : [];
+      if (!orderedKeys.length) return res.status(422).json({ error: "Lista de capítulos inválida." });
+      const sections = await repo.listSections(report.id);
+      const validKeys = new Set(sections.map((s) => s.section_key));
+      const cleanKeys = orderedKeys.map((k) => String(k)).filter((k) => validKeys.has(k));
+      await repo.reorderSections(report.id, cleanKeys);
+      const tocConfig = req.body.tocTablesConfig;
+      if (tocConfig && typeof tocConfig === "object" && !Array.isArray(tocConfig)) {
+        await repo.saveTocTablesConfig(report.id, tocConfig);
+      }
+      return res.json({ ok: true });
+    },
+
+    async getTocTables(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId);
+      const payload = await service.buildReportAggregate(report.id);
+      if (!payload) return res.status(404).json({ ok: false, error: "Relatório não encontrado." });
+      const reportConfig = await getReportConfigSettings();
+      const templateKey = normalizeReportTemplateKey(reportConfig.templateKey);
+      const model = buildPreviewModel(payload, { reportConfig, templateKey });
+      return res.json({ ok: true, sections: model.tocTablesMeta });
+    },
+
+    async renameTocTables(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const items = Array.isArray(req.body.tableNames) ? req.body.tableNames : [];
+      if (!items.length) return res.json({ ok: true });
+      const EDITABLE_TYPES = ["measurements", "discharge"];
+      await Promise.all(items.map(async (item) => {
+        const id = Number(item && item.id);
+        const type = String(item && item.type || "");
+        const title = String(item && item.title != null ? item.title : "").trim();
+        if (!id || !EDITABLE_TYPES.includes(type)) return;
+        if (type === "measurements") await repo.renameMeasurementTable(id, report.id, title);
+        if (type === "discharge") await repo.renameDischargeTest(id, report.id, title);
+      }));
+      return res.json({ ok: true });
+    },
+
+    async reviseSectionText(req, res) {
+      if (typeof reviseTextWithAi !== "function") return res.status(500).json({ error: "Serviço de IA indisponível." });
+      const text = String(req.body.text || "");
+      const html = String(req.body.html || "");
+      const preserveFormatting = req.body.preserveFormatting === true || String(req.body.preserveFormatting) === "true";
+      const prompt = sanitize(req.body.prompt || "") || "Revise o texto abaixo sem mudar muitas palavras";
+      try {
+        const result = await reviseTextWithAi({ text, html, prompt, preserveFormatting });
+        return res.json({ ok: true, revisedText: result.revisedText || "", revisedHtml: sanitizeReportSectionHtml(result.revisedHtml || "") });
+      } catch (err) {
+        return res.status(err.statusCode || 422).json({ error: err.message || "Falha ao revisar texto com IA." });
+      }
+    },
+
+    // ---- Report editor: banco de imagens (@img) -------------------------
+    async uploadReportImage(req, res) {
+      const orderId = parsePositiveInt(req.params.id);
+      if (!orderId) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ ok: false, error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+
+      let fileNameRaw = "imagem";
+      try { fileNameRaw = decodeURIComponent(String(req.headers["x-file-name"] || "imagem")); }
+      catch (_err) { fileNameRaw = String(req.headers["x-file-name"] || "imagem"); }
+      fileNameRaw = sanitize(fileNameRaw);
+      const fileNameBase = path.basename(fileNameRaw).replace(/[^a-zA-Z0-9._-]/g, "") || "imagem";
+      const extFromName = path.extname(fileNameBase).toLowerCase();
+      const mime = String(req.headers["content-type"] || "").toLowerCase();
+      const extFromMime = mime.includes("png") ? ".png"
+        : (mime.includes("jpeg") || mime.includes("jpg")) ? ".jpg"
+          : mime.includes("webp") ? ".webp"
+            : mime.includes("gif") ? ".gif" : "";
+      const ext = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extFromName) ? extFromName : extFromMime;
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!ext || !buffer.length) return res.status(400).json({ ok: false, error: "Arquivo de imagem inválido." });
+      if (buffer.length > 15 * 1024 * 1024) return res.status(413).json({ ok: false, error: "Imagem muito grande. Limite: 15 MB." });
+
+      const optimizedBuffer = await optimizeImageBuffer(buffer, ext);
+      const fileSafeBase = path.basename(fileNameBase, extFromName || path.extname(fileNameBase)).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "imagem";
+      const unique = crypto.randomBytes(6).toString("hex");
+      const finalName = `${Date.now()}-${fileSafeBase}-${unique}${ext === ".jpeg" ? ".jpg" : ext}`;
+      await objectStorage.putObject(path.join("dados", "report-img", finalName), optimizedBuffer, { contentType: mime || "application/octet-stream" });
+
+      let captionRaw = "";
+      try { captionRaw = decodeURIComponent(String(req.headers["x-caption"] || "")); }
+      catch (_err) { captionRaw = String(req.headers["x-caption"] || ""); }
+      const created = await repo.createImage({ serviceReportId: report.id, sectionKey: "__tag__", filePath: finalName, caption: sanitize(captionRaw), sortOrder: 0 });
+      return res.status(201).json({ ok: true, data: { id: created.ref_id, filePath: finalName, sizeBytes: optimizedBuffer.length } });
+    },
+
+    async updateReportImageCaption(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const imageId = Number(req.params.imageId);
+      if (!Number.isInteger(imageId) || imageId <= 0) return res.status(422).json({ error: "ID inválido." });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateImageCaptionByRefId(report.id, imageId, sanitize(req.body.caption || ""));
+      return res.json({ ok: true });
+    },
+
+    async updateReportImageRotation(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ ok: false, error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ ok: false, error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const imageId = Number(req.params.imageId);
+      if (!Number.isInteger(imageId) || imageId <= 0) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const rotation = Number(req.body.rotation);
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateImageRotationByRefId(report.id, imageId, rotation);
+      return res.json({ ok: true, rotation: [0, 90, 180, 270].includes(rotation) ? rotation : 0 });
+    },
+
+    async deleteReportImage(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const imageId = Number(req.params.imageId);
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteImageByRefId(report.id, imageId);
+      return res.status(204).end();
+    },
+
+    // ---- Assinatura eletrônica: links (sign-requests) -------------------
+    async createSignRequest(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const signatures = await repo.listSignatures(report.id).catch(() => []);
+      const guard = buildElectronicSignatureLinkGuard({ order, signatures });
+      if (!guard.allowed) return res.status(409).json({ error: "Não é possível gerar o link.", errorCode: "sign_link_blocked", reasons: guard.reasons });
+
+      const signerEmail = sanitize(req.body.signerEmail || req.body.signer_email) || "";
+      if (!isValidEmailAddress(signerEmail)) return res.status(422).json({ error: "E-mail do signatário inválido.", errorCode: "invalid_signer_email" });
+      const notifyTechnicians = req.body.notifyTechnicians !== false && req.body.notify_technicians !== false;
+      const extraNotificationEmails = parseEmailList(req.body.notificationEmails || req.body.notification_emails);
+      if (extraNotificationEmails.some((email) => !isValidEmailAddress(email))) return res.status(422).json({ error: "E-mail de notificação inválido.", errorCode: "invalid_notification_email" });
+
+      const token = crypto.randomUUID();
+      await repo.createSignRequest({
+        serviceReportId: report.id,
+        token,
+        signerName: sanitize(req.body.signerName || req.body.signer_name) || "",
+        signerEmail,
+        signerRole: sanitize(req.body.signerRole || req.body.signer_role) || "",
+        signerCompany: sanitize(req.body.signerCompany || req.body.signer_company) || "",
+        notes: sanitize(req.body.notes) || ""
+      });
+      const signLink = `${resolveBaseUrl(req)}/r/sign/${encodeURIComponent(token)}`;
+
+      const emailSettings = await getReportServiceEmailSettings();
+      if (!emailSettings.smtp || !emailSettings.smtp.host || !emailSettings.smtp.from) {
+        return res.status(201).json({ ok: true, link: signLink, emailStatus: "smtp" });
+      }
+      try {
+        const technicians = await repo.listTechniciansByOrder(orderId);
+        const transporter = nodemailer.createTransport({
+          host: emailSettings.smtp.host,
+          port: emailSettings.smtp.port,
+          secure: emailSettings.smtp.secure,
+          auth: emailSettings.smtp.user ? { user: emailSettings.smtp.user, pass: emailSettings.smtp.pass } : undefined
+        });
+        const linkTemplate = getTemplateByPurpose(emailSettings.emailTemplates, emailSettings.defaultTemplateId, "envio_assinatura");
+        const technicianEmails = notifyTechnicians
+          ? technicians.map((t) => String(t.email || "").trim()).filter((e) => isValidEmailAddress(e))
+          : [];
+        const notificationRecipients = dedupeEmailList([...technicianEmails, ...extraNotificationEmails])
+          .filter((email) => email.toLowerCase() !== signerEmail.toLowerCase());
+        const technicianNames = technicians.map((t) => String(t.name || "").trim()).filter(Boolean).join(", ");
+        const vars = buildSignedReportTemplateVariables(order, report, signLink, {
+          signatario: sanitize(req.body.signerName || req.body.signer_name) || "",
+          signatario_email: signerEmail,
+          tecnicos: technicianNames,
+          emails_notificados: notificationRecipients.join(", ")
+        });
+        const orderDisplay = order.service_order_display || order.service_order_code || `OS-${orderId}`;
+        const subject = sanitizeSubjectHeaderValue(linkTemplate && linkTemplate.subject ? renderEmailPlaceholder(linkTemplate.subject, vars) : `Solicitação de assinatura - ${report.report_number || orderDisplay}`);
+        const htmlBody = linkTemplate && linkTemplate.html
+          ? `<!doctype html><html><body>${renderEmailPlaceholder(linkTemplate.html, vars)}</body></html>`
+          : `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;"><p style="margin:0 0 12px 0;">Foi solicitada sua assinatura eletrônica para o relatório técnico.</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${escapeHtml(orderDisplay)}</p><p style="margin:0 0 8px 0;"><strong>Relatório:</strong> ${escapeHtml(report.report_number || "-")}</p><p style="margin:16px 0;"><a href="${escapeHtml(signLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#14532d;color:#fff;text-decoration:none;font-weight:600;">Abrir para assinar</a></p></body></html>`;
+        await transporter.sendMail({ from: emailSettings.smtp.from, to: signerEmail, subject, html: htmlBody });
+
+        if (notificationRecipients.length) {
+          try {
+            const notificationTemplate = getTemplateByPurpose(emailSettings.emailTemplates, emailSettings.defaultTemplateId, "notificacao_envio_assinatura");
+            const notificationSubject = sanitizeSubjectHeaderValue(notificationTemplate && notificationTemplate.subject ? renderEmailPlaceholder(notificationTemplate.subject, vars) : `Relatório enviado para assinatura - ${report.report_number || orderDisplay}`);
+            const notificationHtml = notificationTemplate && notificationTemplate.html
+              ? `<!doctype html><html><body>${renderEmailPlaceholder(notificationTemplate.html, vars)}</body></html>`
+              : `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;"><p>O relatório foi enviado ao cliente responsável para assinatura.</p><p><strong>OS:</strong> ${escapeHtml(orderDisplay)}</p><p><strong>Cliente responsável:</strong> ${escapeHtml(vars.signatario || "-")} (${escapeHtml(signerEmail)})</p></body></html>`;
+            await transporter.sendMail({ from: emailSettings.smtp.from, to: notificationRecipients, subject: notificationSubject, html: notificationHtml });
+          } catch (_notificationErr) {
+            return res.status(201).json({ ok: true, link: signLink, emailStatus: "notification_failed" });
+          }
+        }
+        return res.status(201).json({ ok: true, link: signLink, emailStatus: "sent" });
+      } catch (_err) {
+        return res.status(201).json({ ok: true, link: signLink, emailStatus: "send_failed" });
+      }
+    },
+
+    async updateSignRequest(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const requestId = Number(req.params.requestId);
+      const report = await service.ensureReportForOrder(orderId);
+      const signRequests = await repo.listSignRequestsByReportId(report.id);
+      const target = signRequests.find((item) => Number(item.id) === requestId);
+      if (!target) return res.status(404).json({ error: "Link não encontrado." });
+      if (String(target.status || "").toLowerCase() !== "pending") return res.status(409).json({ error: "Só é possível editar links pendentes.", errorCode: "sign_request_edit_blocked" });
+      await repo.updateSignRequest(requestId, {
+        signerName: sanitize(req.body.signerName || req.body.signer_name) || "",
+        signerRole: sanitize(req.body.signerRole || req.body.signer_role) || "",
+        signerCompany: sanitize(req.body.signerCompany || req.body.signer_company) || "",
+        signerEmail: sanitize(req.body.signerEmail || req.body.signer_email) || "",
+        notes: sanitize(req.body.notes) || ""
+      });
+      return res.json({ ok: true });
+    },
+
+    async cancelSignRequest(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      const requestId = Number(req.params.requestId);
+      const signRequests = await repo.listSignRequestsByReportId(report.id);
+      const target = signRequests.find((item) => Number(item.id) === requestId);
+      if (!target) return res.status(404).json({ error: "Link não encontrado." });
+      await repo.updateSignRequest(requestId, { status: "cancelled" });
+      return res.json({ ok: true });
+    },
+
+    async deleteSignRequest(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteSignRequest(Number(req.params.requestId), report.id);
+      return res.status(204).end();
+    },
+
+    // ---- Assinatura do técnico Vextrom (canvas) -------------------------
+    async getSignReport(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      const [technicians, allSignatures] = await Promise.all([
+        repo.listTechniciansByOrder(orderId),
+        repo.listSignatures(report.id).catch(() => [])
+      ]);
+      const signatures = (allSignatures || []).filter((s) => String(s.signer_type || "").toLowerCase() === "vextrom_technician");
+      const canSign = String(order.status || "").toLowerCase() === "valid";
+      return res.json({ order, report, technicians, signatures, canSign });
+    },
+
+    async createTechnicianSignature(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() !== "valid") {
+        return res.status(409).json({ error: "A OS precisa estar com status 'valid' para assinar.", errorCode: "sign_locked" });
+      }
+      const signatureData = String(req.body.signatureData || req.body.signature_data || "").trim();
+      if (!signatureData || signatureData === "data:,") {
+        return res.status(422).json({ error: "Desenhe a assinatura antes de confirmar.", errorCode: "draw_required" });
+      }
+      if (!isPngDataUrl(signatureData)) {
+        return res.status(422).json({ error: "Formato de assinatura inválido.", errorCode: "invalid_signature_format" });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      const ipAddress = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 100);
+      const userAgent = String(req.headers["user-agent"] || "").slice(0, 500);
+      await service.createSignature(report.id, {
+        signerType: "vextrom_technician",
+        signerName: sanitize(req.body.signerName || req.body.signer_name),
+        signerRole: sanitize(req.body.signerRole || req.body.signer_role),
+        signerCompany: sanitize(req.body.signerCompany || req.body.signer_company),
+        signatureData,
+        ipAddress,
+        userAgent
+      });
+      return res.status(201).json({ ok: true });
+    },
+
+    async deleteTechnicianSignature(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      if (String(order.status || "").toLowerCase() === "approved") return res.status(409).json({ error: "OS aprovada — bloqueada.", errorCode: "ORDER_APPROVED_LOCKED" });
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.deleteSignature(Number(req.params.signatureId), report.id);
       return res.status(204).end();
     },
 
@@ -747,7 +1966,13 @@ function createReportServiceV2Controller(deps) {
     },
 
     async deletePdfHistory(req, res) {
-      const entryId = Number(req.params.entryId);
+      const orderId = parsePositiveInt(req.params.id);
+      const entryId = parsePositiveInt(req.params.entryId);
+      if (!orderId || !entryId) return res.status(400).json({ error: "ID inválido." });
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+      const entry = await repo.getPdfHistoryEntry(entryId);
+      if (!entry || Number(entry.service_order_id) !== orderId) return res.status(404).json({ error: "Registro não encontrado." });
       const ok = await repo.deletePdfHistoryEntry(entryId);
       if (!ok) return res.status(404).json({ error: "Registro não encontrado." });
       return res.status(204).end();

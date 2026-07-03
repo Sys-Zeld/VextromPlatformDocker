@@ -162,6 +162,11 @@ const {
 const { getAiPromptTemplate, setAiPromptTemplate } = require("./services/aiPromptSettings");
 const { registerReportService } = require("../report_service/src/app");
 
+let registerSentinelGrid = null;
+if (env.sentinelgridEnabled) {
+  ({ registerSentinelGrid } = require("../sentinelgrid/src/app"));
+}
+
 let registerModuleSpec = null;
 let moduleSpecRepo = null;
 let moduleSpecValidateMappingsPayload = null;
@@ -525,6 +530,13 @@ async function getAccessForAdminUsername(username) {
 
 function requireAdminAuth(req, res, next) {
   if (isValidAdminSessionToken(req.cookies[ADMIN_SESSION_COOKIE_NAME])) return next();
+  if (req.accepts(["html", "json"]) === "json") {
+    return res.status(401).json({
+      error: "Nao autenticado",
+      errorCode: "UNAUTHENTICATED",
+      details: null
+    });
+  }
   return res.redirect("/admin/login");
 }
 
@@ -2048,9 +2060,11 @@ function renderAdminModuleHubPage(req, res) {
   const specflowStatus = resolveModuleStatus(moduleStatuses.specflow, "Ativo", "success");
   const moduleSpecStatus = resolveModuleStatus(moduleStatuses.module_spec, "Em desenvolvimento", "warning");
   const reportServiceStatus = resolveModuleStatus(moduleStatuses.report_service, "Em desenvolvimento", "warning");
+  const sentinelGridStatus = resolveModuleStatus(moduleStatuses.sentinelgrid, "Em desenvolvimento", "warning");
   const canAccessSpecflow = hasModuleAccess(req.adminRole, req.adminModuleAccess, "specflow");
   const canAccessModuleSpec = hasModuleAccess(req.adminRole, req.adminModuleAccess, "module-spec");
   const canAccessReportService = hasModuleAccess(req.adminRole, req.adminModuleAccess, "report-service");
+  const canAccessSentinelGrid = hasModuleAccess(req.adminRole, req.adminModuleAccess, "sentinelgrid");
   const canAccessSystemMaintenance = Boolean(String(req.adminUsername || "").trim());
 
   const moduleCards = [
@@ -2089,6 +2103,18 @@ function renderAdminModuleHubPage(req, res) {
       cta: env.reportServiceEnabled
         ? (canAccessReportService ? "Acessar" : "Sem acesso")
         : "Indisponivel"
+    },
+    {
+      key: "sentinelgrid",
+      name: "SentinelGrid",
+      description: "Gestao de manutencao de equipamentos criticos de energia (UPS, baterias, BMS).",
+      status: sentinelGridStatus.label,
+      statusVariant: sentinelGridStatus.variant,
+      moduleVersion: String(moduleVersions.sentinelgrid || "0.0.1"),
+      href: env.sentinelgridEnabled && canAccessSentinelGrid ? "/app/sentinelgrid" : "",
+      cta: env.sentinelgridEnabled
+        ? (canAccessSentinelGrid ? "Acessar" : "Sem acesso")
+        : "Em breve"
     },
     {
       key: "maintenance-system",
@@ -5309,6 +5335,17 @@ if (env.reportServiceEnabled) {
   });
 }
 
+if (env.sentinelgridEnabled && registerSentinelGrid) {
+  registerSentinelGrid(app, {
+    asyncHandler,
+    sanitizeInput,
+    sanitizeRichTextInput,
+    requireApiScope,
+    requireAdminAuth,
+    csrfProtection
+  });
+}
+
 if (env.moduleSpecEnabled && registerModuleSpec) {
   registerModuleSpec(app, {
     asyncHandler,
@@ -5407,9 +5444,10 @@ function startSpecflowServer() {
   // cuts the connection before the AI caller has a chance to abort cleanly.
   const SERVER_TIMEOUT_MS = AI_TIMEOUT_MS + 60000;
 
-  const server = app.listen(env.port, () => {
+  const listenArgs = env.host ? [env.port, env.host] : [env.port];
+  const server = app.listen(...listenArgs, () => {
     // eslint-disable-next-line no-console
-    console.log(`Server running on ${env.appBaseUrl} [AI provider: ${activeProvider}, timeout: ${AI_TIMEOUT_MS / 1000}s]`);
+    console.log(`Server running on ${env.appBaseUrl}${env.host ? ` (${env.host}:${env.port})` : ""} [AI provider: ${activeProvider}, timeout: ${AI_TIMEOUT_MS / 1000}s]`);
   });
 
   // Prevent Node.js from closing long-running AI request connections.
