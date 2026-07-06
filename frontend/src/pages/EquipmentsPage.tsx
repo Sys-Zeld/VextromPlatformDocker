@@ -11,6 +11,8 @@ import {
   updateEquipment
 } from "../api/equipments";
 import type { Site } from "../api/customers";
+import { listEquipment } from "../api/sentinelgrid/equipment";
+import { mergeNames } from "../utils/suggest";
 
 const EMPTY: EquipmentInput = {
   customerId: "",
@@ -43,6 +45,8 @@ function toInput(e: Equipment): EquipmentInput {
 export default function EquipmentsPage() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["equipments"], queryFn: listEquipments });
+  // Sugestões de TAG cruzando os módulos (cada API lê seu banco — isolamento mantido).
+  const sgEquip = useQuery({ queryKey: ["sentinelgrid", "equipment", "suggest"], queryFn: () => listEquipment({ pageSize: 500 }) });
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<EquipmentInput>(EMPTY);
@@ -67,6 +71,10 @@ export default function EquipmentsPage() {
   }
 
   const { equipments = [], customers = [], sites = [] } = data ?? {};
+  const tagOptions = mergeNames(
+    equipments.map((e: Equipment) => e.tag_number),
+    (sgEquip.data?.equipment ?? []).map((e) => e.tag)
+  );
   const sitesForCustomer = (customerId: number | "") =>
     // customer_id pode vir como string (bigint do Postgres) — coerção numérica.
     sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
@@ -83,7 +91,9 @@ export default function EquipmentsPage() {
   const saving = mCreate.isPending || mUpdate.isPending;
 
   return (
-    <Card>
+    <>
+      <datalist id="vx-rs-equipment-tag-options">{tagOptions.map((t) => <option key={t} value={t} />)}</datalist>
+      <Card>
       <Card.Header className="d-flex justify-content-between align-items-center">
         <span>Equipamentos</span>
         <Button size="sm" onClick={openNew}>Novo equipamento</Button>
@@ -160,7 +170,7 @@ export default function EquipmentsPage() {
               </div>
               <div className="col-md-4">
                 <Form.Label>TAG</Form.Label>
-                <Form.Control value={form.tagNumber} onChange={(e) => setForm({ ...form, tagNumber: e.target.value })} />
+                <Form.Control list="vx-rs-equipment-tag-options" value={form.tagNumber} onChange={(e) => setForm({ ...form, tagNumber: e.target.value })} />
               </div>
               <div className="col-md-4">
                 <Form.Label>Potência</Form.Label>
@@ -182,6 +192,7 @@ export default function EquipmentsPage() {
           </Modal.Footer>
         </Form>
       </Modal>
-    </Card>
+      </Card>
+    </>
   );
 }

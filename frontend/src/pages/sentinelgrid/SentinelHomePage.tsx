@@ -63,7 +63,6 @@ export default function SentinelHomePage() {
         <Card.Body className="d-flex flex-wrap gap-2">
           <Link to="/sentinelgrid/clients" className="btn btn-outline-primary btn-sm">Clientes</Link>
           <Link to="/sentinelgrid/sites" className="btn btn-outline-primary btn-sm">Sites</Link>
-          <Link to="/sentinelgrid/areas" className="btn btn-outline-primary btn-sm">Áreas</Link>
           <Link to="/sentinelgrid/catalog" className="btn btn-outline-primary btn-sm">Catálogo</Link>
           <Link to="/sentinelgrid/equipment" className="btn btn-outline-primary btn-sm">Equipamentos</Link>
           <Link to="/sentinelgrid/management" className="btn btn-outline-primary btn-sm">Contratos &amp; Gestores</Link>
@@ -79,6 +78,7 @@ export default function SentinelHomePage() {
             <Link to="/sentinelgrid/checklists" className="btn btn-outline-primary btn-sm ms-2">Checklists</Link>
             <Link to="/sentinelgrid/maintenance-orders" className="btn btn-outline-primary btn-sm ms-2">Ordens de manutencao</Link>
             <Link to="/sentinelgrid/calendar" className="btn btn-outline-primary btn-sm ms-2">Calendario</Link>
+            <Link to="/sentinelgrid/alerts" className="btn btn-outline-primary btn-sm ms-2">Alertas</Link>
             <Link to="/sentinelgrid/history" className="btn btn-outline-primary btn-sm ms-2">Historico</Link>
             <Link to="/sentinelgrid/recommendations" className="btn btn-outline-primary btn-sm ms-2">Recomendacoes</Link>
             <Link to="/sentinelgrid/dashboard" className="btn btn-outline-primary btn-sm ms-2">Dashboard</Link>

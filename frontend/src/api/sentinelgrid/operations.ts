@@ -97,6 +97,7 @@ export interface SgHistoryEntry {
   equipment_id: number;
   equipment_tag?: string;
   client_name?: string;
+  site_name?: string;
   event_kind: string;
   ref_table: string;
   ref_id: number | null;
@@ -164,7 +165,7 @@ export function generateCalendar(input: { year: number; equipmentId: number | nu
   return api<{ inserted: number; scanned: number }>("/sentinelgrid/calendar/generate", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function listHistory(params: { equipmentId?: number } = {}) {
+export function listHistory(params: { equipmentId?: number; clientId?: number; siteId?: number } = {}) {
   return api<{ history: SgHistoryEntry[] }>(`/sentinelgrid/history${qs(params)}`);
 }
 

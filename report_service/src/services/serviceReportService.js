@@ -623,6 +623,120 @@ async function deleteOrderFull(orderId) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Fase 11 — Integração idempotente por referência externa (ADR-004).
+// "Ensure-or-create": se já existe registro com (external_source, external_id),
+// reusa; senão cria com a referência. Não altera os cadastros feitos manualmente
+// (que ficam com external_source/id vazios).
+// ---------------------------------------------------------------------------
+
+async function ensureCustomerByRef(input = {}) {
+  const externalSource = sanitizeText(input.externalSource);
+  const externalId = sanitizeText(input.externalId);
+  if (externalSource && externalId) {
+    const existing = await repo.getCustomerByExternalRef(externalSource, externalId);
+    if (existing) return { customer: existing, created: false };
+  }
+  const name = sanitizeText(input.name);
+  if (!name) {
+    const err = new Error("Nome do cliente e obrigatorio.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const customer = await repo.createCustomer({
+    name,
+    customerType: sanitizeText(input.customerType || "others").toLowerCase(),
+    notes: sanitizeText(input.notes),
+    externalSource,
+    externalId
+  });
+  return { customer, created: true };
+}
+
+async function ensureSiteByRef(input = {}) {
+  const externalSource = sanitizeText(input.externalSource);
+  const externalId = sanitizeText(input.externalId);
+  if (externalSource && externalId) {
+    const existing = await repo.getSiteByExternalRef(externalSource, externalId);
+    if (existing) return { site: existing, created: false };
+  }
+  const customerId = repo.toInt(input.customerId);
+  if (!customerId) {
+    const err = new Error("Site requer cliente.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const siteName = sanitizeText(input.siteName);
+  if (!siteName) {
+    const err = new Error("Nome do site e obrigatorio.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const site = await repo.createSite({
+    customerId,
+    siteName,
+    siteCode: sanitizeText(input.siteCode),
+    location: sanitizeText(input.location),
+    latitude: null,
+    longitude: null,
+    notes: sanitizeText(input.notes),
+    externalSource,
+    externalId
+  });
+  return { site, created: true };
+}
+
+// Vincula um equipamento a uma OS (contrato de serviço para integração; idempotente
+// por (service_order_id, equipment_id) no repositório).
+async function linkOrderEquipment(orderId, equipmentId, notes = "") {
+  const oid = repo.toInt(orderId);
+  const eid = repo.toInt(equipmentId);
+  if (!oid || !eid) {
+    const err = new Error("OS e equipamento sao obrigatorios para o vinculo.");
+    err.statusCode = 422;
+    throw err;
+  }
+  return repo.attachEquipmentToOrder(oid, eid, sanitizeText(notes));
+}
+
+async function ensureEquipmentByRef(input = {}) {
+  const externalSource = sanitizeText(input.externalSource);
+  const externalId = sanitizeText(input.externalId);
+  if (externalSource && externalId) {
+    const existing = await repo.getEquipmentByExternalRef(externalSource, externalId);
+    if (existing) return { equipment: existing, created: false };
+  }
+  const type = sanitizeText(input.type);
+  if (!type) {
+    const err = new Error("Tipo de equipamento e obrigatorio.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const equipment = await repo.createEquipment({
+    customerId: repo.toInt(input.customerId),
+    siteId: repo.toInt(input.siteId),
+    type,
+    yearOfManufacture: sanitizeText(input.yearOfManufacture),
+    serialNumber: sanitizeText(input.serialNumber),
+    power: sanitizeText(input.power),
+    ratedAcInputVoltage: sanitizeText(input.ratedAcInputVoltage),
+    inputFrequency: sanitizeText(input.inputFrequency),
+    ratedDcVoltage: sanitizeText(input.ratedDcVoltage),
+    ratedAcOutputVoltage: sanitizeText(input.ratedAcOutputVoltage),
+    outputFrequency: sanitizeText(input.outputFrequency),
+    degreeOfProtection: sanitizeText(input.degreeOfProtection),
+    mainLabel: sanitizeText(input.mainLabel),
+    dtNumber: sanitizeText(input.dtNumber),
+    tagNumber: sanitizeText(input.tagNumber),
+    manufacturer: sanitizeText(input.manufacturer),
+    modelFamily: sanitizeText(input.modelFamily),
+    notes: sanitizeText(input.notes),
+    externalSource,
+    externalId
+  });
+  return { equipment, created: true };
+}
+
 module.exports = {
   ORDER_STATUSES,
   SECTION_DEFINITIONS,
@@ -631,6 +745,10 @@ module.exports = {
   createCustomer,
   createSite,
   createEquipment,
+  ensureCustomerByRef,
+  ensureSiteByRef,
+  ensureEquipmentByRef,
+  linkOrderEquipment,
   updateEquipment,
   deleteEquipment,
   ensureReportForOrder,

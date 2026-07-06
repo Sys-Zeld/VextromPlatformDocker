@@ -161,8 +161,10 @@ export function listMaintenanceOrders(params: {
   clientId?: number;
   status?: string;
   maintenanceType?: string;
+  page?: number;
+  pageSize?: number;
 } = {}) {
-  return api<{ orders: SgMaintenanceOrder[]; total: number }>(`/sentinelgrid/maintenance-orders${qs(params)}`);
+  return api<{ orders: SgMaintenanceOrder[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/maintenance-orders${qs(params)}`);
 }
 
 export function getMaintenanceOrder(id: number) {
@@ -175,6 +177,43 @@ export function createMaintenanceOrder(input: SgMaintenanceOrderInput) {
 
 export function createMaintenanceOrderFromPlan(input: SgOrderFromPlanInput) {
   return api<{ order: SgMaintenanceOrder }>("/sentinelgrid/maintenance-orders/from-plan", { method: "POST", body: JSON.stringify(input) }).then((r) => r.order);
+}
+
+export interface SgOrdersFromPlansInput {
+  planIds: number[];
+  checklistId?: number | null;
+  priority?: string;
+  scheduledDate?: string | null;
+  technicianId?: string;
+  clientManagerId?: number | null;
+  notes?: string;
+  skipExisting?: boolean;
+}
+
+export interface SgOrdersFromPlansResult {
+  created: number;
+  skipped: number;
+  plans: number;
+  orderIds: number[];
+}
+
+// Geração em lote: cria OMs para todos os itens dos planos informados.
+export function createMaintenanceOrdersFromPlans(input: SgOrdersFromPlansInput) {
+  return api<SgOrdersFromPlansResult>("/sentinelgrid/maintenance-orders/from-plans", { method: "POST", body: JSON.stringify(input) });
+}
+
+// Fase 11 — envia a OM (agendada) para o Service Report, criando/reabrindo uma OS.
+export interface SendToReportServiceResult {
+  rsOrderId: number;
+  rsOrderCode: string;
+  reused: boolean;
+}
+
+export function sendOrderToReportService(orderId: number) {
+  return api<SendToReportServiceResult>(
+    `/sentinelgrid/maintenance-orders/${orderId}/send-to-report-service`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
 }
 
 export function updateMaintenanceOrder(id: number, input: SgMaintenanceOrderInput) {

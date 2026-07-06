@@ -255,14 +255,28 @@ async function getCustomerById(id) {
 async function createCustomer(payload) {
   const result = await db.query(
     `
-      INSERT INTO service_report_customers (name, customer_type, notes, created_at, updated_at)
-      VALUES ($1,$2,$3,NOW(),NOW())
+      INSERT INTO service_report_customers (name, customer_type, notes, external_source, external_id, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
       RETURNING *
     `,
-    [payload.name, payload.customerType || "others", payload.notes || ""]
+    [payload.name, payload.customerType || "others", payload.notes || "", payload.externalSource || "", payload.externalId || ""]
   );
   return result.rows[0];
 }
+
+// Referência externa (Fase 11) — correlação idempotente com outro módulo.
+async function getByExternalRef(table, source, externalId) {
+  if (!source || !externalId) return null;
+  const result = await db.query(
+    `SELECT * FROM ${table} WHERE external_source = $1 AND external_id = $2 LIMIT 1`,
+    [String(source), String(externalId)]
+  );
+  return result.rows[0] || null;
+}
+
+const getCustomerByExternalRef = (source, id) => getByExternalRef("service_report_customers", source, id);
+const getSiteByExternalRef = (source, id) => getByExternalRef("service_report_customer_sites", source, id);
+const getEquipmentByExternalRef = (source, id) => getByExternalRef("service_report_equipments", source, id);
 
 async function deleteCustomer(id) {
   const result = await db.query(
@@ -336,10 +350,12 @@ async function createSite(payload) {
         latitude,
         longitude,
         notes,
+        external_source,
+        external_id,
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -349,7 +365,9 @@ async function createSite(payload) {
       payload.location || "",
       payload.latitude != null ? Number(payload.latitude) : null,
       payload.longitude != null ? Number(payload.longitude) : null,
-      payload.notes || ""
+      payload.notes || "",
+      payload.externalSource || "",
+      payload.externalId || ""
     ]
   );
   return result.rows[0];
@@ -437,10 +455,12 @@ async function createEquipment(payload) {
         manufacturer,
         model_family,
         notes,
+        external_source,
+        external_id,
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -461,7 +481,9 @@ async function createEquipment(payload) {
       payload.tagNumber || "",
       payload.manufacturer || "",
       payload.modelFamily || "",
-      payload.notes || ""
+      payload.notes || "",
+      payload.externalSource || "",
+      payload.externalId || ""
     ]
   );
   return result.rows[0];
@@ -3503,16 +3525,19 @@ module.exports = {
   deleteOrder,
   listCustomers,
   getCustomerById,
+  getCustomerByExternalRef,
   createCustomer,
   updateCustomer,
   deleteCustomer,
   listSites,
   getSiteById,
+  getSiteByExternalRef,
   createSite,
   updateSite,
   deleteSite,
   listEquipments,
   getEquipmentById,
+  getEquipmentByExternalRef,
   createEquipment,
   updateEquipment,
   deleteEquipment,

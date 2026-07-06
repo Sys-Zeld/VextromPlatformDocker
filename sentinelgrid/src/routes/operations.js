@@ -105,7 +105,11 @@ function createOperationsRouter(deps) {
   }));
 
   router.get("/history", asyncHandler(async (req, res) => {
-    res.json({ history: await repo.listHistory({ equipmentId: Number(req.query.equipmentId) || null }) });
+    res.json({ history: await repo.listHistory({
+      equipmentId: Number(req.query.equipmentId) || null,
+      clientId: Number(req.query.clientId) || null,
+      siteId: Number(req.query.siteId) || null
+    }) });
   }));
 
   router.get("/calendar", asyncHandler(async (req, res) => {

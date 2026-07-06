@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
+
+const PAGE_SIZE = 20;
 import { listClients } from "../../api/sentinelgrid/clients";
 import { listEquipment, SgEquipment } from "../../api/sentinelgrid/equipment";
 import {
@@ -62,13 +65,18 @@ export default function PlansPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<SgEquipmentPlanInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const params = useMemo(() => ({
     search,
     clientId: clientId === "" ? undefined : clientId
   }), [search, clientId]);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "plans", params], queryFn: () => listEquipmentPlans(params) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["sentinelgrid", "plans", params, page],
+    queryFn: () => listEquipmentPlans({ ...params, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
+  });
   const clients = useQuery({ queryKey: ["sentinelgrid", "clients"], queryFn: () => listClients() });
   const equipment = useQuery({ queryKey: ["sentinelgrid", "equipment", "plan-select"], queryFn: () => listEquipment({ pageSize: 100 }) });
   const programs = useQuery({ queryKey: ["sentinelgrid", "programs", "active"], queryFn: () => listMaintenancePrograms({ active: true }) });
@@ -119,17 +127,17 @@ export default function PlansPage() {
           <div className="row g-2 align-items-end">
             <div className="col-md-5">
               <Form.Label>Busca</Form.Label>
-              <Form.Control value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nome, TAG ou numero de serie" />
+              <Form.Control value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Nome, TAG ou numero de serie" />
             </div>
             <div className="col-md-5">
               <Form.Label>Cliente</Form.Label>
-              <Form.Select value={clientId} onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : "")}>
+              <Form.Select value={clientId} onChange={(e) => { setClientId(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
                 <option value="">Todos</option>
                 {(clients.data?.clients || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-2 d-grid">
-              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); }}>Limpar</Button>
+              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); setPage(1); }}>Limpar</Button>
             </div>
           </div>
         </Card.Body>
@@ -172,6 +180,7 @@ export default function PlansPage() {
             </tbody>
           </Table>
         )}
+        {!isLoading && !error && <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />}
       </Card>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg">

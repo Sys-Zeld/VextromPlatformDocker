@@ -48,6 +48,9 @@ Convenções:
 | 7 | Histórico (prontuário) | ✅ concluída (MVP operacional) |
 | 8 | Indicadores & risco | ✅ concluída (MVP operacional) |
 | 9 | Mobile & integrações | ⬜ |
+| 10 | Mapa Calendário de Manutenção | ✅ concluída (backend validado; UI aguardando navegador) |
+| 11 | Integração Service Report (Enviar OM → OS) | ✅ concluída (núcleo; UI aguardando navegador) |
+| 12 | Grupos de equipamentos por site | ✅ concluída (backend validado; UI aguardando navegador) |
 
 **Decisões pendentes que bloqueiam fases** (ver [02](02-roadmap-de-implementacao.md)):
 1. Equipamentos: reuso do Report Service vs. cadastro próprio (bloqueia Fase 1).
@@ -614,3 +617,798 @@ de fato concluídas e conectadas (não só presentes).
 **Extra (UI):** `frontend/src/styles/theme.css` — logo Vextrom ampliado (container 54px, imagem 38px) com animação contínua de tom (`@keyframes vx-logo-hue`, hue-rotate 6s linear infinite) + guarda `prefers-reduced-motion`; tamanhos do modo recolhido ajustados.
 
 <!-- Próximas entradas abaixo desta linha -->
+
+### 2026-07-03 — Fase 1 (ajuste) · Gestor do cliente com escopo de Área
+
+**Status:** ✅ concluída (backend + build validados)
+**Contexto/decisão:** cada área pode ter gestor(es) diferente(s), então o gestor ganha um
+escopo opcional de **área** (além do site). Aditivo/nullable — não muda gestores existentes.
+
+**Alterações (backend):**
+- `sentinelgrid/migrations/021_manager_area.sql` — `area_id` (FK `sg_areas`, ON DELETE SET NULL) + índice.
+- `sentinelgrid/src/validators/clientManagerValidators.js` — `areaId` (nullable positivo).
+- `sentinelgrid/src/repositories/clientManagersRepository.js` — join `sg_areas` (`area_name`) + `area_id` no insert/update.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/managers.ts` — `area_id`/`area_name` + `areaId`.
+- `frontend/src/pages/sentinelgrid/ManagementPage.tsx` — select **Área (opcional)** no form de gestor (filtrado pelo site; reseta ao trocar cliente/site), coluna Área na tabela; `ManagementPage` carrega áreas e passa à seção.
+
+**Migrations/DB:** `021_manager_area.sql`.
+**Como validar (feito):** `node --check` ✅; migrate aplicou `021` ✅; `npm --prefix frontend run build` ✅; app reiniciado sobe sem erro.
+
+### 2026-07-03 — Fase 11 (complemento) · TAG filtrada por cliente + autopreenchimento do equipamento
+
+**Status:** ✅ concluída (frontend; build validado)
+**Contexto/decisão:** no cadastro de equipamento do SG, as sugestões de TAG passam a ser
+**filtradas pelo cliente selecionado** (SG por `client_id`; RS por `customer_name` = nome do
+cliente). Ao escolher uma TAG existente, o form é **autopreenchido** a partir do equipamento
+correspondente: prioriza o do SG (todos os campos); senão o do RS, mapeando `serial_number`→Nº
+de série, `power`→Potência, notas e tipo/fabricante/modelo (nome RS → id do catálogo SG). Não
+altera a localização (cliente/site/área) já escolhida. Tudo no frontend — isolamento mantido.
+
+**Alterações (frontend):**
+- `frontend/src/pages/sentinelgrid/EquipmentsPage.tsx` — `tagOptions` filtrado pelo cliente do form; `applyTagMatch(tag)` no `onChange` do campo TAG (autofill).
+
+**Migrations/DB:** nenhuma. **Como validar:** `npm --prefix frontend run build` ✅.
+
+### 2026-07-03 — Fase 10 (ajuste) · Reset do silêncio de 24h dos alertas
+
+**Status:** ✅ concluída (backend + build validados)
+**Contexto/decisão:** o popup de alertas some por 24h após o "Ciente" (chave Redis
+`sg:alert:ack:<user>`). Adicionada a opção de **reset** — limpa o ack e o popup volta.
+
+**Alterações (backend):**
+- `sentinelgrid/src/routes/alerts.js` — `DELETE /alerts/ack` (apaga a chave; Redis fora → já é não-ciente).
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/alerts.ts` — `resetAlertAck()`.
+- `frontend/src/pages/sentinelgrid/AlertsPage.tsx` — banner "🔕 silenciado por 24h · até <data>" com botão **"Reativar aviso agora"** (só quando está silenciado); usa a mesma query key do popup (`["sentinelgrid","alerts","ack"]`), então reativa na hora.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` ✅; `npm --prefix frontend run build` ✅; app reiniciado
+sobe sem erro. No navegador: após "Ciente" no calendário, a tela de Alertas mostra o banner
+com "Reativar aviso agora" → o popup volta a aparecer no calendário.
+
+### 2026-07-03 — Fase 11 (complemento) · Sugestão cruzada de cadastros (cliente/equipamento)
+
+**Status:** ✅ concluída (frontend; build validado)
+**Contexto/decisão:** ao cadastrar cliente/equipamento em qualquer módulo, sugerir os já
+existentes **nos dois módulos** (evita divergência de grafia; critério de igualdade = nome).
+**Isolamento mantido (req. 1):** solução **100% no frontend** — cada módulo continua lendo só
+o seu banco pela sua própria API; o browser **junta** as duas listas num `<datalist>` (merge
+por nome, case-insensitive). Zero mudança de backend, nenhum join cross-DB. Critério: **nome
+do cliente** (itens 2–4) e **TAG do equipamento** (item 5; SG `tag` ↔ RS `tag_number`).
+
+**Alterações (frontend):**
+- `frontend/src/utils/suggest.ts` — `mergeNames(...)` (dedup case-insensitive + ordena).
+- `frontend/src/pages/sentinelgrid/ClientsPage.tsx` — datalist de nomes (SG clients + RS customers) nos campos Nome (novo/editar).
+- `frontend/src/pages/CustomersPage.tsx` (RS) — datalist de nomes (RS customers + SG clients).
+- `frontend/src/pages/sentinelgrid/EquipmentsPage.tsx` — datalist de TAGs (SG tag + RS tag_number).
+- `frontend/src/pages/EquipmentsPage.tsx` (RS) — datalist de TAGs (RS tag_number + SG tag).
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck; hooks das novas
+queries movidos para antes dos early returns). Validação visual no navegador pendente: ao
+digitar no campo Nome (cliente) ou TAG (equipamento), aparece a lista dos dois módulos.
+
+**Nota:** a sugestão é auxílio de digitação (não força a igualdade). Se quiser, um passo
+futuro é, ao escolher um nome já existente no outro módulo, vincular via `external_ref`
+(reusando a estratégia da Fase 11) para de fato correlacionar os registros.
+
+### 2026-07-03 — Fase 12 · Grupos de equipamentos por site (facilita gerar planos)
+
+**Status:** ✅ concluída (backend validado por smoke test; UI compila, aguardando navegador)
+**Contexto/decisão:** grupo de equipamentos **por site** para agilizar a criação de planos
+("gerar para todos do grupo"). Decisões do usuário: gestão **na página de Equipamentos**
+(seleção → adicionar ao grupo) e geração **pelo "Gerar Planos" do programa** (seletor de
+grupo que marca os membros dentro do escopo). Membros restritos ao site do grupo (validado
+no repositório — equipamentos de outro site são descartados no add).
+
+**Alterações (backend):**
+- `sentinelgrid/migrations/020_equipment_groups.sql` — `sg_equipment_groups` (site_id, nome único por site) + `sg_equipment_group_members` (PK group+equip).
+- `sentinelgrid/src/validators/equipmentGroupValidators.js` — schemas de grupo e de membros.
+- `sentinelgrid/src/repositories/equipmentGroupsRepository.js` — list/get(+members)/create/update/softDelete; `addMembers` (só equipamentos do mesmo site → retorna `added`/`skippedWrongSite`), `removeMember`; `member_count` por grupo.
+- `sentinelgrid/src/routes/equipmentGroups.js` — CRUD + `POST/DELETE /:id/members`; montado em `/equipment-groups`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/equipmentGroups.ts` — client tipado.
+- `frontend/src/pages/sentinelgrid/EquipmentGroupsModals.tsx` — `AddToGroupModal` (grupo novo/existente do site) + `GroupsModal` (lista, membros, remover, excluir).
+- `frontend/src/pages/sentinelgrid/EquipmentsPage.tsx` — seleção por checkbox, barra "Adicionar ao grupo" (só mesmo site), botão "Grupos".
+- `frontend/src/pages/sentinelgrid/GeneratePlansModal.tsx` — seletor "Selecionar por grupo…" que marca os membros **dentro do escopo** do programa (nota dos que ficaram de fora).
+
+**Migrations/DB:** `020_equipment_groups.sql`.
+
+**Como validar (feito):** `node --check` ✅; migrate SG aplicou `020` ✅; smoke test no container ✅
+— cria grupo, `addMembers` só entra equipamentos do mesmo site (added=2, skippedWrongSite=0),
+`member_count`/`getGroup` corretos, `removeMember` ok, cleanup. `npm --prefix frontend run build` ✅.
+App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** validação visual no navegador (Equipamentos → seleção → "Adicionar
+ao grupo"; "Gerar planos" → "Selecionar por grupo"). Futuro opcional: filtrar o dropdown de grupos
+do "Gerar Planos" por site, e renomear grupo pela UI.
+
+### 2026-07-03 — Fase 11 · Integração Service Report ↔ SentinelGrid (PLANEJAMENTO)
+
+**Status:** ⬜ planejada
+**Contexto/decisão:** "Enviar OM" a partir do Mapa Calendário cria uma **OS no Service
+Report** com o equipamento vinculado. **Princípios (não quebrar nada):** integração só
+por **contrato/API** — SentinelGrid **não** acessa o banco `reportservice` (ADR-001/005);
+reusa o `internalIntegrationService` (HTTP interno para `APP_BASE_URL`) ou uma façade de
+integração exportada pelo RS. Mudanças no RS são **aditivas** (colunas nullable + upsert
+por referência externa); o ciclo de vida da OM não muda (status `agendada` já existe).
+
+#### Levantamento (o que já existe)
+- **RS OS:** `service_report_orders` (cliente+site → `service_order_code`, cria report). Endpoint `POST /api/report-service/orders` (`createOrder`).
+- **RS equipamento:** `service_report_equipments` (ligado a cliente/site). Vínculo OS↔equip: `service_report_order_equipments` (único por `(service_order_id, equipment_id)`), via `POST /orders/:id/equipments` (`attachOrderEquipment`).
+- **SG OM:** `sg_maintenance_orders` (1 equipamento por OM; `status` inclui `agendada`); o Mapa já expõe eventos `om_manutencao` com `status`.
+- **Sem referência externa** entre módulos hoje.
+
+#### A) Regras de negócio (spec)
+- **A.1 Gatilho:** no Mapa, eventos `om_manutencao` com `status = agendada` habilitam a ação **"Enviar OM"** no dia.
+- **A.2 Confirmação:** modal de confirmação antes de enviar (mostra OM, equipamento, cliente/site, data).
+- **A.3 Efeito:** cria **1 OS no RS** com título = `order_number` + escopo da OM; **vincula o equipamento** da OM à OS. Idempotente: se a OM já foi enviada, reabre/retorna a OS existente (não duplica).
+- **A.4 Rastreabilidade:** grava na OM o vínculo com a OS (`rs_service_order_id`, `sent_at`); mantém mapeamento de cliente/site/equipamento entre módulos.
+- **A.5 Isolamento:** toda escrita no RS passa pela API do RS; SG nunca toca `reportservice` diretamente.
+
+#### B) Item 4 — Estratégia de unicidade de equipamento entre módulos (RECOMENDAÇÃO)
+Cada módulo mantém **seu próprio cadastro** (isolamento preservado); a unicidade entre
+módulos vem de uma **referência externa** (ADR-004), com "ensure-or-create" idempotente.
+- **Master:** SentinelGrid é a fonte de verdade do equipamento no domínio de manutenção.
+- **No RS (aditivo):** `service_report_equipments` (e `customers`/`sites`) ganham `external_source TEXT` + `external_id TEXT` e **índice único parcial** `(external_source, external_id)`. "Ensure-or-create by external ref" → 1 equipamento RS por equipamento SG (sem duplicar).
+- **No SG:** tabela de mapeamento `sg_rs_links (entity_type, sg_id, rs_id, UNIQUE(entity_type, sg_id))` — evita poluir as tabelas de domínio e guarda os ids do RS para reuso.
+- **Unicidade "por módulo":** cada base continua com seu id próprio; o par `external_ref` garante correlação 1:1 e impede duplicação no envio.
+- **Alternativas descartadas:** (b) correlacionar por `serial_number`/`tag` (natural key) — frágil/ambíguo; (c) tabela de equipamento compartilhada — **quebra o isolamento** (ADR-001).
+
+#### C) Plano de fatias
+- **11.1 — RS: referência externa + upsert idempotente.** Migration RS: `external_source`/`external_id` (+ índice único) em `service_report_equipments`, `service_report_customers`, `service_report_sites`. `serviceReportService`: `ensureCustomerByRef`/`ensureSiteByRef`/`ensureEquipmentByRef` (cria só na 1ª vez). Sem mudança nos fluxos atuais (colunas nullable).
+- **11.2 — SG: mapeamento + serviço de envio.** Migrations SG: `sg_rs_links`; colunas `rs_service_order_id`/`sent_at` em `sg_maintenance_orders`. `integrationService.sendOrderToReportService(omId, actor)`: valida OM `agendada`; via HTTP-contrato garante customer/site/equipment no RS; cria OS (title = OM); attach equipment; grava `sg_rs_links` + carimba a OM. Idempotente (reusa mapeamento/OS).
+- **11.3 — SG: rota façade.** `POST /maintenance-orders/:id/send-to-report-service` (só `agendada`; já enviada → retorna a OS existente). Erros de integração → mensagem clara, sem efeitos parciais (best-effort transacional no lado SG; no RS, upsert idempotente).
+- **11.4 — Frontend.** No Mapa (visão Dia/card do evento): botão **"Enviar OM"** para `om_manutencao`/`agendada`; **modal de confirmação**; ao confirmar chama a rota; sucesso → link para a OS no Service Report; bloqueia/《reabre》se já enviada.
+
+#### D) Transporte (ADR-003, a confirmar)
+Reusar `internalIntegrationService` (HTTP para `APP_BASE_URL` + `/api/report-service/...`).
+**A definir:** autenticação da chamada interna (sessão admin propagada vs. token/serviço
+interno) — o RS apiV2 hoje roda sob a auth do painel.
+
+**Migrations/DB previstas:** RS (external_ref nas 3 tabelas); SG (`sg_rs_links`, colunas na OM). Todas aditivas/nullable.
+
+**Como validar (previsto):** upsert por external ref não duplica (2ª chamada reusa); enviar OM `agendada` cria OS + vincula equipamento; reenvio retorna a mesma OS; regras atuais do RS e da OM intactas.
+
+**Decisões (2026-07-03):**
+1. ✅ **Item 4 — Referência externa + mapeamento** (SG master; `external_source`/`external_id` únicos no RS; `sg_rs_links` no SG; ensure-or-create idempotente). Descartadas: natural key por serial/tag e cadastro compartilhado.
+2. ✅ **Reenvio — reabrir a OS existente** (não duplica; retorna/abre a OS já criada para a OM).
+3. ⏳ **Cliente/Site no RS:** proposto criar automaticamente a partir do nome do SG na 1ª vez (via external_ref) — confirmar na 11.1.
+4. ⏳ **Transporte/auth** da chamada interna RS (ADR-003) — validar na 11.1 (sessão admin propagada vs. token interno).
+5. ⏳ **Múltiplos equipamentos** (OS por site, juntando OMs do mesmo site+data) — fatia futura; agora 1 OM → 1 OS com 1 equipamento.
+
+**Pendências/próximo passo:** iniciar **11.1** (referência externa + upsert idempotente no RS), aditiva e base da idempotência; depois 11.2 (mapeamento + serviço de envio no SG), 11.3 (rota) e 11.4 (UI "Enviar OM" no Mapa).
+
+### 2026-07-03 — Fase 11 · Fatia 11.1: Referência externa + ensure-or-create no Service Report
+
+**Status:** ✅ concluída (backend RS validado por smoke test; aditivo, não altera fluxos atuais)
+**Contexto/decisão:** base idempotente da integração (ADR-004). Colunas `external_source`/
+`external_id` (com índice único parcial) em cliente/site/equipamento do RS; funções
+`ensure*ByRef` que reusam o registro quando a referência externa já existe e só criam na
+1ª vez. Registros manuais existentes ficam com referência vazia — nada muda para eles.
+
+**Alterações (Service Report):**
+- `report_service/migrate.js` — `external_source`/`external_id` + `CREATE UNIQUE INDEX … WHERE external_source <> '' AND external_id <> ''` em `service_report_customers`, `service_report_customer_sites`, `service_report_equipments` (aditivo/idempotente).
+- `report_service/src/repositories/serviceReportRepository.js` — `getByExternalRef` + `getCustomerByExternalRef`/`getSiteByExternalRef`/`getEquipmentByExternalRef`; `createCustomer`/`createSite`/`createEquipment` passam a gravar `external_source`/`external_id` (default `''`).
+- `report_service/src/services/serviceReportService.js` — `ensureCustomerByRef`/`ensureSiteByRef`/`ensureEquipmentByRef` (ensure-or-create idempotente).
+
+**Migrations/DB:** colunas + índices únicos aplicados no banco `reportservice` (via `report_service/migrate.js`).
+
+**Como validar (feito):** `node --check` nos 3 arquivos ✅; migrate RS aplicado ✅; smoke test
+no container ✅ — 1ª chamada cria (created=true), 2ª **reusa o mesmo id** (created=false) para
+cliente, site e equipamento; `external_source`/`external_id` gravados; cleanup ok. App
+reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** **11.2** — SG: `sg_rs_links` + colunas `rs_service_order_id`/`sent_at`
+na OM + `integrationService.sendOrderToReportService(omId)` chamando o RS por contrato
+(HTTP interno) para ensure entidades → criar OS (title = OM) → vincular equipamento → gravar
+mapeamento; reenvio reabre a OS. Validar transporte/auth (ADR-003) aqui.
+
+### 2026-07-03 — Fase 11 · Fatia 11.2: Mapeamento + serviço de envio (SG → OS no RS)
+
+**Status:** ✅ concluída (E2E validado no container)
+**Contexto/decisão:** **Transporte (ADR-003 resolvido para já): in-process, remote-ready.**
+A apiV2 do RS roda sob `requireAdminAuth` (`/admin/report-service`) e o `internalIntegrationService`
+(HTTP) não é usado por ninguém — HTTP interno exigiria propagar sessão admin (frágil). Como
+o app é um único processo Node, o SG consome o **contrato de serviço do RS in-process**
+(`serviceReportService.*`), **nunca** o banco/repo do RS (ADR-001/005). Tudo isolado atrás do
+`reportServiceIntegration` do SG — trocável por HTTP no futuro sem mexer nos chamadores.
+
+**Alterações (Service Report):**
+- `report_service/src/services/serviceReportService.js` — `linkOrderEquipment(orderId, equipmentId, notes)` (wrapper de serviço sobre `repo.attachEquipmentToOrder`, idempotente por `(service_order_id, equipment_id)`).
+
+**Alterações (SentinelGrid):**
+- `sentinelgrid/migrations/019_report_service_links.sql` — `sg_rs_links (entity_type, sg_id, rs_id, PK)` + `rs_service_order_id`/`rs_service_order_code`/`rs_sent_at` em `sg_maintenance_orders`.
+- `sentinelgrid/src/services/reportServiceIntegration.js` — `sendOrderToReportService(orderId, actor)`: valida OM `agendada`; ensure cliente/site/equipamento no RS por referência externa; cria OS (title = `order_number` + escopo); vincula equipamento; grava `sg_rs_links` + carimba a OM (transação SG). **Reenvio → reabre a OS** (via `rs_service_order_id`).
+
+**Migrations/DB:** `019_report_service_links.sql` no SG; sem nova migration no RS.
+
+**Como validar (feito):** `node --check` ✅; migrate SG aplicou `019` ✅; smoke E2E no container ✅
+— OM `agendada` → **SEND1 cria OS** (`OS-SBMD-2026-239`, reused=false) com **1 equipamento
+vinculado**; **SEND2 reabre a mesma OS** (reused=true, mesmo id); cleanup ok. App reiniciado
+sobe sem erro.
+
+**Nota (robustez):** ensure* (cliente/site/equip) são idempotentes; `createOrder` do RS não é.
+Há uma janela mínima entre criar a OS e carimbar a OM (bancos distintos, sem transação
+cross-DB): num crash exatamente nesse ponto, um novo envio criaria outra OS. Hardening
+opcional futuro: referência externa também em `service_report_orders` (`ensureOrderByRef`).
+
+**Pendências/próximo passo:** **11.3** — rota `POST /maintenance-orders/:id/send-to-report-service`
+(façade); **11.4** — botão "Enviar OM" + confirmação no Mapa, com link para a OS.
+
+### 2026-07-03 — Fase 11 · Fatias 11.3 + 11.4: Rota + UI "Enviar OM" (FASE 11 — NÚCLEO CONCLUÍDO)
+
+**Status:** ✅ concluída (backend validado; UI compila, aguardando navegador)
+**Contexto/decisão:** expõe o envio como rota da façade e adiciona o gatilho no Mapa. A ação
+só aparece para eventos `om_manutencao` com `status = agendada` (item 1). Confirmação antes
+de enviar (item 2). Ao confirmar, cria/reabre a OS e vincula o equipamento (item 3), com link
+para abrir a OS no Service Report.
+
+**Alterações (backend):**
+- `sentinelgrid/src/routes/maintenanceOrders.js` — `POST /:id/send-to-report-service` → `reportServiceIntegration.sendOrderToReportService`; erros mapeados: `SG_ORDER_INVALID`→404, `SG_ORDER_NOT_SCHEDULED`→409, `statusCode` do RS repassado.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/maintenanceOrders.ts` — `sendOrderToReportService(orderId)`.
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — no `EventCard`: botão **"Enviar OM"** (só `om_manutencao`/`agendada`), passo de **confirmação** inline, feedback com o código da OS e link **"Abrir OS"** (`/orders/:id/editor`). Invalida map-events/alerts após envio.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` na rota ✅; app reiniciado sobe sem erro ✅;
+`npm --prefix frontend run build` ✅. O caminho de serviço já foi validado E2E na 11.2
+(cria OS + vincula equipamento; reenvio reabre). Falta o clique tela-a-tela no navegador.
+
+---
+
+## ✅ FASE 11 (Integração Service Report — núcleo) CONCLUÍDA
+
+Entregue: **11.1** referência externa + `ensure*ByRef` idempotente no RS; **11.2** `sg_rs_links`
++ carimbo na OM + `sendOrderToReportService` (in-process, contrato de serviço do RS —
+remote-ready, ADR-003); **11.3** rota façade; **11.4** botão "Enviar OM" + confirmação no Mapa.
+Itens do pedido cobertos: (1) ação no dia para OM `agendada`; (2) confirmação; (3) cria OS com
+título da OM + vincula equipamento; (4) unicidade por módulo via referência externa + `sg_rs_links`
+(SG master), sem duplicar. **Isolamento preservado** (SG usa só o contrato de serviço do RS).
+
+**Pendências/futuro:** validação visual no navegador; hardening opcional (`ensureOrderByRef` p/
+fechar a janela create-OS↔carimbo); **OS por site** (juntar OMs do mesmo site+data numa OS);
+avaliar auth/token se algum dia o transporte virar HTTP entre processos.
+
+### 2026-07-03 — Fase 10 (extensão) · Sistema de alertas (popup + tela + ack no Redis)
+
+**Status:** ✅ concluída (backend validado por smoke test E2E; UI aguardando navegador)
+**Contexto/decisão:** alertas das ordens/pendências em prazo de manutenção. Reusa o motor
+do Mapa (10.1–10.3): "alerta" = evento com prioridade acima de `informativo` (próxima,
+vencida, corretiva, aprovação pendente, recomendação crítica, relatório pendente,
+equipamento restrito), ordenado por prioridade. **Popup** ao abrir o Calendário, com
+estado de "ciente" **no Redis por 24h** (some por 24h após o usuário confirmar). **Tela**
+`/sentinelgrid/alerts` lista tudo por prioridade. Redis é infra compartilhada (ADR-002);
+degrada em silêncio se estiver fora (considera não-ciente).
+
+**Alterações (backend):**
+- `sentinelgrid/src/redis.js` — client ioredis do módulo (reusa `env.redis.url`).
+- `sentinelgrid/src/repositories/calendarMapRepository.js` — `listAlerts(filters)` (filtra prioridade ≠ informativo, ordena por prioridade/atraso/data, conta por prioridade).
+- `sentinelgrid/src/routes/alerts.js` — `GET /alerts`, `GET/POST /alerts/ack` (chave `sg:alert:ack:<user>`, TTL 24h; janela de −1 ano a +1 ano).
+- `sentinelgrid/src/routes/apiV2.js` — monta `/alerts`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/calendarMap.ts` — `EVENT_KIND_LABEL`.
+- `frontend/src/api/sentinelgrid/alerts.ts` — `listAlerts`/`getAlertAck`/`ackAlerts`.
+- `frontend/src/pages/sentinelgrid/AlertsPage.tsx` — tela de lista por prioridade (contadores + tabela).
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — popup ao abrir (mostra top 10, "Ver todos", "Ciente por 24h" → ack no Redis).
+- `frontend/src/App.tsx`, `Layout.tsx`, `SentinelHomePage.tsx` — rota/menu/link "Alertas".
+
+**Migrations/DB:** nenhuma (estado de ciente vive no Redis).
+
+**Como validar (feito):** `node --check` ✅; smoke test no container ✅ — `ttl` do ack = 86400;
+E2E: OM criada a +10 dias → `listAlerts` retornou **1 alerta** (`atencao`, `om_manutencao`,
+`proxima`); cleanup ok. `npm --prefix frontend run build` ✅. App reiniciado sobe sem erro
+(Redis conecta).
+
+**Pendências/próximo passo:** validação visual no navegador (`/app/sentinelgrid/calendar`
+dispara o popup quando há alertas; `/app/sentinelgrid/alerts` lista tudo).
+
+### 2026-07-03 — Fase 2 (ajuste) · Gerar Planos a partir do Programa + calendário anual
+
+**Status:** ✅ concluída (backend validado por smoke test; UI aguardando navegador)
+**Contexto/decisão:** ação "Gerar Planos" no Programa que cria planos por equipamento
+conforme a **frequência da periodicidade**. Decisões do usuário: (1) equipamentos
+**selecionados na hora** dentre os que casam com o escopo do programa; (2) as datas do
+ano viram **um item de plano por ocorrência** (ex.: trimestral a partir de 01/09 → 4
+itens). A tela mostra um **calendário anual** com as datas preenchidas a partir da data
+inicial (horizonte de 12 meses rolando). Motor read-only: sem migration; reusa
+`sg_equipment_plans`/`sg_plan_items` e o gerador de calendário existente (que cria 1
+entrada por item de plano — agora N por ocorrência).
+
+**Alterações (backend):**
+- `sentinelgrid/src/repositories/equipmentRepository.js` — `listByProgramScope(program)` (filtra equipamentos pelos campos de escopo não nulos: tipo/fabricante/modelo/criticidade; contrato restringe pelo cliente).
+- `sentinelgrid/src/repositories/equipmentPlansRepository.js` — `generatePlansForProgram({ programId, equipmentIds, dates, actor })` (transação: 1 plano por equipamento + 1 item por data).
+- `sentinelgrid/src/validators/maintenanceProgramValidators.js` — `parseGeneratePlansInput` (equipmentIds ≥ 1, dates `YYYY-MM-DD` ≥ 1).
+- `sentinelgrid/src/routes/maintenancePrograms.js` — `GET /:id/scope-equipment` e `POST /:id/generate-plans` (equipamento inválido→400, FK→400).
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/programs.ts` — `listProgramScopeEquipment`, `generatePlansFromProgram`, `PERIODICITY_MONTHS`, tipo `SgScopeEquipment`.
+- `frontend/src/pages/sentinelgrid/GeneratePlansModal.tsx` — novo: data inicial, ocorrências derivadas da periodicidade, **calendário anual editável** (12 mini-meses; clicar num dia inclui/remove a data; chips removíveis; botão "Recalcular pela periodicidade" re-semeia), seleção de equipamentos do escopo, geração + resumo com link para Planos.
+- `frontend/src/pages/sentinelgrid/ProgramsPage.tsx` — ação "Gerar planos" (ícone) por programa ativo, abre o modal.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` nos arquivos backend ✅; smoke test no container ✅
+— programa trimestral (escopo tipo=1/criticidade=media) casou 1 equipamento; `generatePlansForProgram`
+criou 1 plano com **4 itens** (01/09, 01/12, 01/03, 01/06); `getPlan` confirmou as datas;
+cleanup soft-delete ✅. `npm --prefix frontend run build` ✅. App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** validação visual no navegador (`/app/sentinelgrid/programs`
+→ "Gerar planos"). Opcional futuro: gerar OMs direto do calendário/itens em lote.
+
+### 2026-07-03 — Fase 2 (ajuste) · Período do "Gerar Planos" limitado à vigência do contrato
+
+**Status:** ✅ concluída (backend validado; UI aguardando navegador)
+**Contexto/decisão:** quando o programa tem **contrato** vinculado, o calendário e a
+geração de datas passam a respeitar `valid_from`/`valid_to` do contrato; sem contrato,
+mantém o horizonte de 12 meses. As datas fora da janela do contrato aparecem
+desabilitadas (não clicáveis) e o input de data inicial ganha `min`/`max` do contrato.
+
+**Alterações (backend):**
+- `sentinelgrid/src/repositories/maintenanceProgramsRepository.js` — `SELECT_COLS` inclui `to_char(ct.valid_from/valid_to,'YYYY-MM-DD')` como `contract_valid_from`/`contract_valid_to` (fluem em `listPrograms`/`getProgram`).
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/programs.ts` — `SgMaintenanceProgram` ganha `contract_valid_from`/`contract_valid_to`.
+- `frontend/src/pages/sentinelgrid/GeneratePlansModal.tsx` — janela do contrato limita ocorrências (`computeOccurrences` até o fim), o calendário renderiza os meses do contrato inteiro (teto 36) via `monthsBetween`, dias fora da janela desabilitados, `min`/`max` na data inicial e faixa informativa com o período. Sem contrato: fallback de 12 meses.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` no repositório ✅; `npm --prefix frontend run build` ✅;
+app reiniciado, `listPrograms` retorna `contract_valid_from/to` sem erro (programa sem
+contrato → `null`, cai no fallback). Path com contrato aguarda dados/validação visual.
+
+### 2026-07-03 — Fase 2 (ajuste) · Programa com vários intervalos → um plano por intervalo
+
+**Status:** ✅ concluída (backend validado por smoke test; UI aguardando navegador)
+**Contexto/decisão:** decisão do usuário — o programa passa a suportar **vários intervalos
+de manutenção em meses** (ex.: [1, 3, 12]) e o "Gerar Planos" cria **um plano por intervalo**
+para cada equipamento, cada um com seu calendário editável de datas. Intervalos livres em
+meses (cobre "2 meses" etc.), mapeados à periodicidade do enum (1→mensal, 3→trimestral,
+6→semestral, 12→anual, 24→bienal; demais→personalizada). A `periodicity` base do programa
+permanece (compat). **Nota:** o agrupamento "OS por site" (2ª parte do pedido) fica para a
+próxima fatia — mexe na geração de Ordens de Serviço, não em "Gerar Planos".
+
+**Alterações (backend):**
+- `sentinelgrid/migrations/018_program_intervals.sql` — `plan_intervals_months INTEGER[]` em `sg_maintenance_programs` + backfill a partir da periodicidade.
+- `sentinelgrid/src/validators/maintenanceProgramValidators.js` — `planIntervalsMonths` no programa; contrato de geração agora é `{ equipmentIds, plans:[{ intervalMonths, dates }] }`.
+- `sentinelgrid/src/repositories/maintenanceProgramsRepository.js` — insert/update incluem `plan_intervals_months`.
+- `sentinelgrid/src/repositories/equipmentPlansRepository.js` — `generatePlansForProgram` cria 1 plano por (equipamento × intervalo), `intervalToPeriodicity`/`intervalLabel`.
+- `sentinelgrid/src/routes/maintenancePrograms.js` — geração usa `input.plans`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/programs.ts` — `plan_intervals_months`/`planIntervalsMonths`, `GeneratePlanSpec`, `periodicityToMonths`; `generatePlansFromProgram` recebe `plans`.
+- `frontend/src/pages/sentinelgrid/ProgramsPage.tsx` — campo "Intervalos de manutenção (meses)" (parse de lista) no formulário.
+- `frontend/src/pages/sentinelgrid/GeneratePlansModal.tsx` — seletor de intervalos (um por vez), calendário editável por intervalo, resumo `equipamentos × intervalos`, geração via `plans`.
+
+**Migrations/DB:** `018_program_intervals.sql` aplicada no container `app`.
+
+**Como validar (feito):** `node --check` ✅; migrate aplicou `018` (backfill: programa 3 → `[3]`) ✅;
+smoke test no container ✅ — geração com 2 intervalos (1 mês/3 datas + 3 meses/2 datas) criou
+**2 planos** ("(mensal)" e "(a cada 3 meses)") com periodicidade e itens corretos; cleanup ok.
+`npm --prefix frontend run build` ✅. App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** **OS por site** — Ordem de Serviço que agrupa, por site+data,
+os equipamentos atendidos pelo mesmo plano (mantendo plano/OM por equipamento). Requer
+desenho da entidade de OS e da geração a partir do calendário/planos.
+
+### 2026-07-03 — Fase 3 (ajuste) · Gerar OMs em lote a partir dos itens do plano
+
+**Status:** ✅ concluída (backend validado por smoke test; UI aguardando navegador)
+**Contexto/decisão:** dois gatilhos para gerar OMs a partir dos **itens** do plano: (1) logo
+após "Gerar Planos", perguntar ao usuário se quer gerar as ordens dos itens dos planos
+recém-criados; (2) no modal "Gerar OM por plano", opção "todos os itens do plano". Ambos
+usam o mesmo endpoint de **lote** (`POST /maintenance-orders/from-plans`, aceita `planIds[]`).
+Idempotente por padrão: pula itens que já têm OM (`skipExisting`), evitando duplicar. Cada
+OM nasce na `next_due_date` do item, com status inicial derivado (preventiva c/parada →
+`aguardando_aprovacao`, etc.).
+
+**Alterações (backend):**
+- `sentinelgrid/src/repositories/equipmentPlansRepository.js` — `generatePlansForProgram` agora retorna `planIds` dos planos criados.
+- `sentinelgrid/src/repositories/maintenanceOrdersRepository.js` — `createOrdersFromPlans({ planIds, checklistId, priority, scheduledDate, technicianId, clientManagerId, notes, skipExisting })` (1 OM por item; planos inválidos/inativos ignorados; retorna `created/skipped/plans/orderIds`).
+- `sentinelgrid/src/validators/maintenanceOrderValidators.js` — `orderFromPlansInputSchema`/`parseOrderFromPlansInput`.
+- `sentinelgrid/src/routes/maintenanceOrders.js` — `POST /from-plans`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/programs.ts` — `generatePlansFromProgram` retorna `planIds`.
+- `frontend/src/api/sentinelgrid/maintenanceOrders.ts` — `createMaintenanceOrdersFromPlans`.
+- `frontend/src/pages/sentinelgrid/GeneratePlansModal.tsx` — após gerar, pergunta "Gerar ordens dos itens?" e chama o lote com os `planIds` criados; mostra o resultado.
+- `frontend/src/pages/sentinelgrid/MaintenanceOrdersPage.tsx` — switch "Gerar OMs de todos os itens do plano" no modal (oculta item/data/escopo), faixa de sucesso com a contagem.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` ✅; smoke test no container ✅ — gerou 2 planos (4 itens),
+`createOrdersFromPlans` criou **4 OMs** (skipped 0); reexecução criou **0** (skipped 4 — idempotente);
+cleanup ok. `npm --prefix frontend run build` ✅. App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** validação visual no navegador; depois a **OS por site** (agrupar
+as OMs de um site+data numa Ordem de Serviço).
+
+### 2026-07-03 — Fase 10 · Mapa Calendário de Manutenção (PLANEJAMENTO)
+
+**Status:** ⬜ planejada
+**Contexto/decisão:** o calendário atual (`CalendarPage` + `GET /calendar`) é uma
+tabela simples que lê **apenas** `sg_calendar_entries` (manutenções planejadas
+geradas a partir dos planos). O **Mapa Calendário de Manutenção** o substitui por
+uma **visão de planejamento e risco** que agrega, num só lugar, eventos de várias
+fontes já existentes. **Princípio de projeto (ADR-001/002):** o mapa é
+**derivado/read-only** — não cria uma nova tabela de eventos nem duplica dado; ele
+**agrega e classifica** o que já existe (`sg_calendar_entries`, `sg_plan_items`,
+`sg_maintenance_orders`, `sg_recommendations`, `sg_associated_reports`, `sg_events`,
+`sg_equipment`). A única persistência nova é a **tabela de regras de vencimento
+configuráveis**. Mantém a superfície única façade JSON `/admin/api/v2/sentinelgrid`.
+
+---
+
+#### A) Regras de negócio (spec do Mapa Calendário)
+
+**A.1 — Objetivo.** Visão visual única que identifica rapidamente: manutenções
+agendadas, próximas do vencimento, vencidas, corretivas abertas, paradas
+aguardando aprovação, recomendações com prazo, recomendações críticas, relatórios
+obrigatórios não associados e equipamentos em condição restrita.
+
+**A.2 — Fontes → tipos de evento (o "de-para" da agregação).** Cada evento do mapa
+é normalizado para um contrato comum e sempre carrega `ref_table`/`ref_id` (acesso
+à origem — regra obrigatória 10):
+
+| Tipo de evento | Fonte (tabela) | Condição de inclusão | Data do evento |
+|---|---|---|---|
+| Preventiva sem parada (planejada) | `sg_calendar_entries` / `sg_plan_items` | `maintenance_type=preventiva_sem_parada`, sem OM concluída | `planned_date` / `next_due_date` |
+| Preventiva com parada (planejada) | `sg_calendar_entries` / `sg_plan_items` | `maintenance_type=preventiva_com_parada` | `planned_date` |
+| Manutenção agendada/em execução | `sg_maintenance_orders` | status ∈ {agendada, aprovada, em_execucao} | `scheduled_date`/`planned_date` |
+| Manutenção vencida | `sg_calendar_entries`/`sg_maintenance_orders` | `planned_date < hoje` e não concluída | `planned_date` |
+| Corretiva aberta | `sg_maintenance_orders` | `maintenance_type=corretiva` e status ∉ {concluida, concluida_com_pendencias, cancelada} | `planned_date`/`created_at` |
+| Aprovação pendente | `sg_maintenance_orders` | `status=aguardando_aprovacao` | `planned_date` |
+| Recomendação com prazo | `sg_recommendations` | `due_date` não nulo e status ∈ abertos | `due_date` |
+| Recomendação crítica | `sg_recommendations` | `criticality ∈ {alta, missao_critica}` e status aberto | `due_date`/`created_at` |
+| Relatório obrigatório pendente | `sg_maintenance_orders` + `sg_contracts` + `sg_associated_reports` | OM concluída de equipamento cujo contrato tem `requires_report=true` **sem** relatório associado | data de conclusão da OM |
+| Evento crítico/alarme | `sg_events` | `severity ∈ {alta, critica}` | `occurred_at` |
+| Equipamento em condição restrita | `sg_equipment` | `operational_status ∈ {operacional_restricao, em_observacao, indisponivel}` | marcador corrente (`updated_at`/hoje) |
+
+**A.3 — Contrato normalizado do evento.** Todo evento expõe: `cliente`, `site`,
+`area`, `equipamento` (tag), `tipo`, `data`, `status`, `criticidade`, `responsável`,
+`ação necessária`, além de `prioridade`, `cor`, `ref_table`, `ref_id`.
+
+**A.4 — Modos de visualização.**
+- **Por Cliente:** agrupamento `Cliente → Site → Área → Equipamento`, com resumo por
+  cliente: total no período, vencidas, próximas, recomendações críticas, aprovações
+  pendentes, equipamentos em restrição e **status geral** (A.10).
+- **Por Equipamento:** foco num equipamento — próxima manutenção, última manutenção,
+  vencidas, recomendações abertas/críticas, relatório pendente, aprovação pendente e
+  status operacional.
+
+**A.5 — Visões de período.** `ano | mês | semana | dia`.
+- **Anual:** 12 meses, cada um com contadores (planejadas, vencidas, corretivas
+  abertas, recomendações críticas, aprovações pendentes, relatórios pendentes).
+- **Mensal:** eventos por dia; cada dia indica **quantidade + maior criticidade**.
+- **Semanal:** programação operacional da semana.
+- **Diária:** detalhe das atividades do dia.
+
+**A.6 — Alertas visuais (mínimos):** próxima do vencimento, vencida, corretiva
+aberta, recomendação crítica aberta, aprovação pendente, relatório obrigatório não
+associado, equipamento em restrição e **conflito de agenda** (2+ atividades no mesmo
+equipamento — ou mesmo responsável — na mesma data/janela).
+
+**A.7 — Cores (§6):** Verde=concluído/normal · Azul=planejado/agendado ·
+Amarelo=próximo do vencimento · Laranja=atenção/aprovação pendente ·
+Vermelho=vencido/crítico/corretiva · Roxo=recomendação técnica · Cinza=cancelado/desativado.
+
+**A.8 — Prioridade (§7):** `Informativo < Atenção < Importante < Crítico < Emergencial`.
+Ladder sugerida (configurável) que considera criticidade do equipamento, tipo de
+manutenção, atraso, recomendação crítica, status operacional, impacto e aprovação:
+- **Emergencial:** corretiva emergencial aberta · OM `emergencial` · equipamento
+  `indisponivel` com pendência.
+- **Crítico:** manutenção vencida em equipamento `alta`/`missao_critica` ·
+  recomendação crítica aberta · equipamento em restrição com manutenção vencida.
+- **Importante:** manutenção vencida (demais criticidades) · dentro da janela de
+  **alerta crítico** (A.9) · aprovação de parada pendente com data próxima.
+- **Atenção:** dentro do **primeiro alerta** (próxima) · recomendação aberta com
+  prazo · aprovação pendente · relatório obrigatório pendente.
+- **Informativo:** planejado no futuro, fora das janelas de alerta.
+
+**A.9 — Regras de vencimento (configuráveis).** Janela por criticidade do equipamento
+(default = tabela do prompt), persistida em `sg_calendar_alert_rules`:
+
+| Criticidade | 1º alerta (dias antes) | Alerta crítico |
+|---|---:|---:|
+| baixa | 15 | após vencimento |
+| media | 30 | 7 dias antes |
+| alta | 45 | 15 dias antes |
+| missao_critica | 60 | 30 dias antes |
+
+Classificação da manutenção: `hoje < data − 1ºalerta` ⇒ planejada;
+`data − 1ºalerta ≤ hoje < data − crítico` ⇒ **próxima (amarelo)**;
+`data − crítico ≤ hoje < data` ⇒ **próxima crítica (laranja/vermelho)**;
+`hoje ≥ data` sem conclusão ⇒ **vencida (vermelho)**.
+
+**A.10 — Status geral (§11, pior condição no escopo filtrado):**
+`Normal` (sem pendências) → `Atenção` (manutenção próxima / aprovação pendente /
+recomendação aberta) → `Crítico` (vencida / recomendação crítica / equipamento em
+restrição) → `Emergencial` (corretiva emergencial). Vale para cliente, site, área e
+equipamento — sempre a **pior** condição encontrada.
+
+**A.11 — Filtros (§9):** cliente, site, área, equipamento, tipo de equipamento, tipo
+de manutenção, status, criticidade, responsável, recomendação crítica, aprovação
+pendente, relatório pendente e período. Atualizam o mapa dinamicamente (regra 9).
+
+**A.12 — Card do evento (§10):** título, cliente, site, área, equipamento, data, tipo,
+status, criticidade, responsável, pendências, recomendações vinculadas, relatório
+associado/pendente, ação recomendada e **link para a origem** (OM/recomendação/evento).
+
+**A.13 — Regras obrigatórias (§12):** todas mapeadas — planejada (A.2/A.5), vencida em
+destaque (A.9), recomendação com prazo e crítica (A.2), aprovação pendente (A.2),
+relatório obrigatório pendente gera alerta (A.2/A.6), equipamento restrito em destaque
+(A.2), visão por cliente e por equipamento (A.4), filtros dinâmicos (A.11), acesso à
+origem (A.3), status por criticidade/pior pendência (A.10), mapa como visão de
+planejamento/vencimento/risco (A.1).
+
+---
+
+#### B) Plano de implementação (fatias)
+
+Segue o padrão consolidado da Fase 1: migration → validator zod → repository →
+rota façade → api tipada → página SPA. Backend testado isolado antes do build.
+
+**Fatia 10.1 — Motor de agregação (backend, read-only, sem migration).**
+- `sentinelgrid/src/repositories/calendarMapRepository.js` — `listMapEvents({ from, to, view, clientId, siteId, areaId, equipmentId, equipmentTypeId, maintenanceType, status, criticality, responsible, onlyCriticalRec, onlyPendingApproval, onlyPendingReport })`: consultas às 10 fontes de A.2, normalizadas para o contrato A.3 via `UNION ALL`/montagem em JS. Deriva `atraso` e `is_overdue`.
+- `sentinelgrid/src/routes/calendarMap.js` — `GET /calendar/map` (lista de eventos) e `GET /calendar/map/summary` (rollup por cliente/site/área + status geral A.10).
+- `sentinelgrid/src/routes/apiV2.js` — monta `/calendar/map` (mantém `/calendar` legado durante a transição).
+
+**Fatia 10.2 — Regras de vencimento configuráveis (migration + CRUD).**
+- `sentinelgrid/migrations/017_calendar_alert_rules.sql` — `sg_calendar_alert_rules (criticality PK/unique, first_alert_days INT, critical_alert_days INT, critical_after_due BOOLEAN)`; **seed** com os defaults de A.9.
+- `sentinelgrid/src/validators/calendarAlertRuleValidators.js`, `.../repositories/calendarAlertRulesRepository.js`, `.../routes/calendarAlertRules.js` — CRUD (`GET`/`PUT`).
+- Motor (10.1) passa a ler as regras para classificar planejada/próxima/crítica/vencida (A.9).
+
+**Fatia 10.3 — Classificação: prioridade, cor e status geral.**
+- `sentinelgrid/src/services/calendarClassifier.js` — funções puras `deriveColor(evento)` (A.7), `derivePriority(evento, regras)` (A.8) e `worstStatus(eventos)` (A.10). Testável isolado.
+- `sentinelgrid/src/constants.js` — `ALERT_PRIORITY` e `CALENDAR_EVENT_KIND` (enums novos).
+- Motor injeta `prioridade`/`cor` em cada evento e o summary usa `worstStatus`.
+
+**Fatia 10.4 — Frontend: Mapa (visões + modos).**
+- `frontend/src/api/sentinelgrid/calendarMap.ts` — client tipado (`SgMapEvent`, `SgMapSummary`, `listMapEvents`, `getMapSummary`).
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — reescrita para o Mapa: alternância **período** (ano/mês/semana/dia) e **modo** (por cliente / por equipamento); grade colorida (A.7) com contadores por dia/mês; agrupamento `Cliente → Site → Área → Equipamento`.
+- Legenda de cores (§6) e prioridades (§7).
+
+**Fatia 10.5 — Filtros dinâmicos + card do evento + acesso à origem.**
+- Barra de filtros (A.11) que reconsulta o mapa (React Query keys por filtro).
+- `EventCard` (modal) com todos os campos de A.12 e **link para a origem** (rota da OM/recomendação/evento correspondente).
+- Realces de alerta (A.6), incluindo **conflito de agenda**.
+
+**Fatia 10.6 — Ajuste de página de configuração (regras de vencimento).**
+- UI simples (na Config do módulo ou aba do Mapa) para editar `sg_calendar_alert_rules` (A.9), atendendo "essas regras devem ser configuráveis".
+
+---
+
+**Migrations/DB (previstas):** `017_calendar_alert_rules.sql` (única persistência nova;
+o restante é derivado). Sem alteração destrutiva nas tabelas existentes.
+
+**Como validar (previsto):** `node --check` nos novos arquivos; `node sentinelgrid/migrate.js`
+aplica `017`; smoke test do motor cobrindo cada fonte de A.2 e a classificação de
+A.8/A.9/A.10; `npm --prefix frontend run build`; rota SPA `/app/sentinelgrid/calendar`
+(mapa) 200 nos 4 modos de período e nos 2 modos de escopo.
+
+**Decisões a confirmar antes de codar:**
+1. Substituir o `/calendar` atual pelo mapa ou manter os dois lado a lado durante a transição.
+2. "Relatório obrigatório pendente": basear em `contract.requires_report` do equipamento (proposto) — confirmar a origem do "obrigatório".
+3. "Conflito de agenda": conflito por **equipamento** e/ou por **responsável/técnico** (proposto: ambos).
+4. Onde expor a edição das regras de vencimento (Config do módulo vs. aba do Mapa).
+
+**Pendências/próximo passo:** aprovação do plano; então iniciar **Fatia 10.1** (motor de
+agregação), que não exige migration e já entrega valor consultável pela façade.
+
+### 2026-07-03 — Fase 10 · Fatia 10.1: Motor de agregação do Mapa Calendário
+
+**Status:** ✅ concluída (backend validado; sem migration)
+**Contexto/decisão:** primeira entrega da Fase 10. Motor **read-only** que agrega e
+normaliza as 10 fontes de A.2 num contrato único (A.3), via `WITH ev AS (UNION ALL …)`
+sobre as tabelas existentes — **sem** nova tabela de eventos (ADR-001/002). Decisões
+adotadas dos itens em aberto: (1) `/calendar/map` **coexiste** com o `/calendar` legado
+durante a transição; (2) "relatório obrigatório pendente" = OM concluída de cliente com
+`sg_contracts.requires_report=TRUE` **sem** `sg_associated_reports`. "Vencida" não é
+fonte separada: é o flag derivado `is_overdue` sobre manutenções (evita duplicidade).
+Entradas de calendário já materializadas em OM (`generated_order_id` não nulo) são
+suprimidas para não duplicar com a OM. Classificação de prioridade/cor/status geral
+fica na 10.3; aqui já saem `is_overdue` e `days_to_due`.
+
+**Alterações (backend):**
+- `sentinelgrid/src/repositories/calendarMapRepository.js` — `listMapEvents(filters)` (UNION das fontes + filtros dinâmicos A.11 na query externa; `event_date` normalizada como texto `YYYY-MM-DD`; ordenação por data/criticidade) e `mapSummary(filters)` (rollup por cliente + totais).
+- `sentinelgrid/src/routes/calendarMap.js` — `GET /calendar/map` (eventos) e `GET /calendar/map/summary`; `resolveRange` deriva janela de `from/to` ou `year/month` (default = ano corrente).
+- `sentinelgrid/src/routes/apiV2.js` — monta `/calendar/map` **antes** do router de operations (`/`) para não ser sombreado.
+
+**Migrations/DB:** nenhuma (motor derivado; a persistência nova — `sg_calendar_alert_rules` — entra na Fatia 10.2).
+
+**Como validar (feito):** `node --check` nos 3 arquivos ✅; smoke test do repositório no
+container `app` contra o banco real ✅ — `listMapEvents({})` agrega OM + planejada
+(`om_manutencao`, `planejada_sem_parada`) com `event_date` `YYYY-MM-DD`, `is_overdue`
+e `days_to_due` corretos; filtros `onlyPendingApproval`/`onlyCriticalRec` retornam
+subconjunto; `mapSummary` consolida totais por cliente. App reinicializado sobe sem
+erro (`Server running …`, façade registra o módulo).
+
+**Pendências/próximo passo:** **Fatia 10.2** — `sg_calendar_alert_rules` (migration `017`
++ seed dos defaults A.9) e CRUD; o motor passa a classificar próxima/crítica/vencida
+pelas regras configuráveis. Depois 10.3 (classificador cor/prioridade/status geral) e
+10.4 (frontend do mapa).
+
+### 2026-07-03 — Fase 10 · Fatia 10.2: Regras de vencimento configuráveis + classificação
+
+**Status:** ✅ concluída (backend, migration e smoke test validados)
+**Contexto/decisão:** persiste as janelas de alerta por criticidade (§8/A.9) e liga o
+motor (10.1) a elas. Modelagem: 1 linha por criticidade com `first_alert_days`
+(janela do 1º alerta/próxima) e `critical_alert_days` (janela do alerta crítico);
+`critical_after_due` cobre o caso "após vencimento" da criticidade baixa. Seed com os
+defaults do prompt via `ON CONFLICT DO NOTHING` (preserva ajustes do usuário). O motor
+ganhou `LEFT JOIN sg_calendar_alert_rules` e a coluna derivada `alert_level`
+(`planejada`/`proxima`/`critica`/`vencida`), calculada só para eventos de manutenção.
+
+**Alterações (backend):**
+- `sentinelgrid/migrations/017_calendar_alert_rules.sql` — `sg_calendar_alert_rules` + seed (baixa/media/alta/missao_critica).
+- `sentinelgrid/src/validators/calendarAlertRuleValidators.js` — schema zod (dias ≥ 0) + `isValidCriticality`.
+- `sentinelgrid/src/repositories/calendarAlertRulesRepository.js` — `listRules`/`getRule`/`upsertRule` (upsert idempotente).
+- `sentinelgrid/src/routes/calendarAlertRules.js` — `GET /calendar/alert-rules`, `PUT /calendar/alert-rules/:criticality` (criticidade inválida→400, zod→400).
+- `sentinelgrid/src/repositories/calendarMapRepository.js` — coluna `alert_level` (CASE por regra) e contador `upcoming` no `mapSummary`.
+- `sentinelgrid/src/routes/apiV2.js` — monta `/calendar/alert-rules`.
+
+**Migrations/DB:** `017_calendar_alert_rules.sql` aplicada no container `app` (1/17).
+
+**Como validar (feito):** `node --check` nos novos arquivos ✅; migrate aplicou `017` ✅;
+smoke test no container ✅ — `listRules` retorna as 4 criticidades com os defaults; os
+eventos a +13 e +29 dias (criticidade `media`, first=30) saem `alert_level='proxima'`;
+após `upsertRule('media', first=10)` os mesmos eventos viram `planejada` (configuração
+aplicada ponta a ponta), defaults restaurados em seguida; `mapSummary` inclui
+`upcoming`. App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** **Fatia 10.3** — classificador puro (`calendarClassifier`)
+para `cor` (A.7), `prioridade` (A.8) e `worstStatus`/status geral (A.10), consumido
+pelo motor e pelo summary. Depois **10.4** (frontend do mapa: visões ano/mês/semana/dia
+e modos por cliente/equipamento).
+
+### 2026-07-03 — Fase 10 · Fatia 10.3: Classificador (cor, prioridade, status geral)
+
+**Status:** ✅ concluída (backend + smoke test validados)
+**Contexto/decisão:** camada de **classificação pura** (sem I/O), separada do motor,
+para ser testável isolada e reusável no summary. Deriva a partir do evento já
+normalizado (event_kind, alert_level, criticality, status, is_overdue): **cor** (A.7),
+**prioridade** (A.8 — escada Informativo→Emergencial via maior nível aplicável) e
+**status geral** (A.10 — pior condição). O motor passou a anexar `color`/`priority` a
+cada evento; o summary calcula `general_status` por cliente e global (pior condição).
+
+**Alterações (backend):**
+- `sentinelgrid/src/services/calendarClassifier.js` — `deriveColor`, `derivePriority`, `eventGeneralStatus`, `worstStatus`, `classifyEvent`, `highestPriority`.
+- `sentinelgrid/src/constants.js` — enums `ALERT_PRIORITY`, `GENERAL_STATUS`, `CALENDAR_COLOR`.
+- `sentinelgrid/src/repositories/calendarMapRepository.js` — `listMapEvents` mapeia via `classifyEvent`; `mapSummary` acumula `general_status` por cliente (pior) e global.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `node --check` nos arquivos ✅; smoke test no container ✅ —
+**14/14** asserts sintéticos do classificador (corretiva emergencial→vermelho/emergencial;
+vencida alta→vermelho/crítico; próxima média→amarelo/atenção; recomendação
+crítica→roxo/crítico; aprovação→laranja/atenção; planejada futura→azul/informativo;
+`worstStatus`→emergencial); motor real devolve `color`/`priority` por evento e o summary
+devolve `general_status` (cliente e global). App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** **Fatia 10.4** — frontend do Mapa: `api/sentinelgrid/calendarMap.ts`
+(tipos + `listMapEvents`/`getMapSummary`) e reescrita da `CalendarPage` com alternância de
+período (ano/mês/semana/dia) e modo (por cliente / por equipamento), grade colorida (A.7)
+e legenda. Depois 10.5 (filtros + card do evento + acesso à origem) e 10.6 (UI das regras).
+
+### 2026-07-03 — Fase 10 · Fatia 10.4: Frontend do Mapa (visões + modos)
+
+**Status:** ✅ concluída (build React validado)
+**Contexto/decisão:** substitui a `CalendarPage` legada (tabela simples de
+`sg_calendar_entries`) pela tela do **Mapa Calendário**, consumindo o motor
+`/calendar/map` + `/calendar/map/summary`. A rota `/sentinelgrid/calendar` e o item de
+menu foram preservados (mesma URL, nova experiência). O endpoint `/calendar` legado
+continua no backend para não quebrar nada durante a transição (decisão da 10.1).
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/calendarMap.ts` — tipos (`SgMapEvent`, `SgMapSummary`, níveis/cores/prioridades), `listMapEvents`/`getMapSummary`, metadados de apresentação (`COLOR_HEX`/`COLOR_LABEL`/`PRIORITY_META`/`GENERAL_STATUS_META`) e `highestPriority`.
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — reescrita: alternância de **período** (ano/mês/semana/dia) com navegação ‹ hoje ›; **modo** por cliente / por equipamento; faixa de **status geral** + totais; **Visão Anual** (12 meses × contadores), **Mensal** (grade de dias com contagem e realce por prioridade), **Semanal** (7 colunas com chips), **Diária** (lista detalhada); **Resumo por cliente** (status geral + contadores) no modo cliente; **legenda** de cores (A.7). Chips coloridos por evento (A.7) com tooltip (cliente/site/equip/status/prioridade/ação).
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck OK; chunk
+`CalendarPage-*.js` ~15 kB). Validação visual no navegador (`/app/sentinelgrid/calendar`)
+pendente com o usuário.
+
+**Pendências/próximo passo:** **Fatia 10.5** — barra de filtros completa (A.11: site,
+área, tipo de equipamento, tipo de manutenção, status, criticidade, responsável,
+recomendação crítica, aprovação pendente, relatório pendente) + **card do evento** (modal
+A.12) com **acesso à origem** (link para OM/recomendação/evento) e realce de conflito de
+agenda. Depois **10.6** — UI de edição das regras de vencimento (`/calendar/alert-rules`).
+
+### 2026-07-03 — Fase 10 · Fatia 10.5: Filtros completos + card do evento + conflito
+
+**Status:** ✅ concluída (build React validado)
+**Contexto/decisão:** completa a UX do Mapa. Filtros A.11 encadeados (cliente→site→área,
+tipo de equipamento, tipo de manutenção, status, criticidade, responsável) + 3 toggles
+(rec. crítica, aprovação pendente, relatório pendente), todos repassados ao motor via
+React Query (atualização dinâmica — regra 9). Card do evento (A.12) como modal com acesso
+à origem (regra 10): mapeia `ref_table` → rota SPA (`sg_maintenance_orders`→Ordens,
+`sg_recommendations`→Recomendações, `sg_equipment`→Equipamento; calendar/eventos exibem a
+origem sem rota própria). Conflito de agenda (A.6) calculado no cliente: 2+ atividades de
+manutenção no mesmo equipamento/data → realce (borda + ⚠) nos chips/linhas e aviso no card.
+
+**Alterações (frontend):**
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — barra de filtros (Collapse "Filtros"); `buildConflicts` + realce; `EventCard` (modal A.12) com `originOf` (acesso à origem); chips/linhas clicáveis abrem o card; clique no resumo por cliente aplica o filtro de cliente.
+- Reuso de `listSites`/`listAreas`/`listEquipmentTypes`, `MAINTENANCE_TYPE_OPTIONS` e `CRITICALITY` para popular os selects; `MapFilters` estendido no client.
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck OK). Validação
+visual no navegador pendente com o usuário.
+
+**Pendências/próximo passo:** **Fatia 10.6** — UI de edição das regras de vencimento
+(`GET`/`PUT /calendar/alert-rules`) para atender "essas regras devem ser configuráveis"
+(A.9), fechando a Fase 10.
+
+### 2026-07-03 — Fase 10 · Fatia 10.6: UI das regras de vencimento (FASE 10 CONCLUÍDA)
+
+**Status:** ✅ concluída (build React validado)
+**Contexto/decisão:** fecha a Fase 10 tornando as janelas de alerta editáveis pela UI
+(A.9 "configuráveis"). Decisão do item em aberto: a edição fica **na própria tela do Mapa**
+(botão "Regras de vencimento" → modal), evitando uma página de config separada. Salvar
+uma regra **invalida** as queries do mapa (`map-events`/`map-summary`), então a
+reclassificação (cor/prioridade/nível) reflete na hora.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/calendarMap.ts` — `SgAlertRule`/`SgAlertRuleInput`, `listAlertRules`, `updateAlertRule`.
+- `frontend/src/pages/sentinelgrid/CalendarPage.tsx` — `AlertRulesModal` (edição por criticidade: 1º alerta, alerta crítico, "crítico só após vencimento"; salvar por linha) + botão de abertura; `CRIT_LABEL` reusa os rótulos de criticidade.
+
+**Migrations/DB:** nenhuma (usa `sg_calendar_alert_rules` da Fatia 10.2).
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck OK). Validação
+visual no navegador pendente com o usuário.
+
+---
+
+## ✅ FASE 10 (Mapa Calendário de Manutenção) CONCLUÍDA
+
+Entregue ponta a ponta: motor de agregação read-only de 10 fontes (10.1) → regras de
+vencimento configuráveis + classificação por nível (10.2) → classificador de cor,
+prioridade e status geral/pior condição (10.3) → frontend com visões ano/mês/semana/dia e
+modos por cliente/equipamento (10.4) → filtros completos, card do evento com acesso à
+origem e conflito de agenda (10.5) → UI das regras de vencimento (10.6).
+
+Backend validado por smoke tests no container (agregação, filtros, classificação,
+configurabilidade das regras) e 14/14 asserts do classificador; frontend com typecheck/build
+OK. **Superfície nova na façade:** `GET /calendar/map`, `GET /calendar/map/summary`,
+`GET`/`PUT /calendar/alert-rules`. Persistência nova: `sg_calendar_alert_rules` (migration
+`017`). O `/calendar` legado permanece durante a transição.
+
+**Pendências:** validação visual no navegador (`/app/sentinelgrid/calendar`); depois avaliar
+aposentar o endpoint/uso do `/calendar` legado. Regras obrigatórias §12 do prompt todas
+cobertas (ver spec A.13 na entrada de planejamento da Fase 10).
+
+### 2026-07-04 — Transversal (UI) · Paginação 20/página nas listas de cadastro
+
+**Status:** ✅ concluída (build/typecheck validado)
+**Contexto/decisão:** todas as listas de cadastro passam a paginar de **20 em 20**. O backend
+**já suportava** `page`/`pageSize` (retorno `{ total, page, pageSize }`) em todos os módulos —
+o trabalho foi **100% frontend**. Componente único reutilizável `Pager` (react-bootstrap
+`Pagination` + "X–Y de Z", some quando cabe numa página). Paginação **server-side** com
+`placeholderData: keepPreviousData` (não pisca ao trocar de página) nas 8 telas com filtro/busca;
+qualquer mudança de filtro/busca **reseta para a página 1**. Exceção: **Catálogo** pagina
+**client-side** (fatia 20/página sobre o conjunto completo buscado com `pageSize: 500`), porque
+`listManufacturers`/`listEquipmentTypes` também alimentam **dropdowns** de outras telas e não
+podiam ter o comportamento alterado. Gestores (mesma página de Contratos) ficou **fora** do
+pedido explícito e não foi paginado.
+
+**Alterações (frontend):**
+- `frontend/src/components/sentinelgrid/Pager.tsx` — novo componente de paginação compacta.
+- `frontend/src/api/sentinelgrid/{contracts,programs,plans,checklists,maintenanceOrders}.ts` — `page`/`pageSize` nos params e no tipo de retorno das funções de list.
+- `frontend/src/api/sentinelgrid/catalog.ts` — `pageSize` opcional em `listManufacturers`/`listEquipmentTypes`/`listModels` (não-quebra dropdowns; default inalterado).
+- `frontend/src/pages/sentinelgrid/ClientsPage.tsx`, `SitesPage.tsx`, `EquipmentsPage.tsx`, `ProgramsPage.tsx`, `PlansPage.tsx`, `ChecklistsPage.tsx`, `MaintenanceOrdersPage.tsx` — estado `page`, query com `page/pageSize=20` + `keepPreviousData`, reset ao filtrar/buscar, `<Pager>` no rodapé da lista.
+- `frontend/src/pages/sentinelgrid/CatalogPage.tsx` — paginação client-side (20/página) nas seções Fabricantes, Tipos e Modelos.
+- `frontend/src/pages/sentinelgrid/ManagementPage.tsx` — paginação na seção **Contratos**.
+
+**Migrations/DB:** nenhuma (backend já paginava).
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (tsc `--noEmit` + vite build, todos os chunks emitidos). Validação visual no navegador pendente: listar >20 registros em cada tela e conferir os controles + reset ao filtrar.

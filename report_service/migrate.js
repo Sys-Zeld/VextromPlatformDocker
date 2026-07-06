@@ -78,6 +78,15 @@ async function migrateServiceReport() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_customer_id ON service_report_equipments (customer_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_site_id ON service_report_equipments (site_id);`);
 
+  // Fase 11.1 — Referência externa (ADR-004) para integração idempotente com o SentinelGrid.
+  // Correlaciona cliente/site/equipamento sem duplicar (external_source + external_id únicos).
+  // Aditivo/nullable: não altera os fluxos atuais (registros existentes ficam com '').
+  for (const table of ["service_report_customers", "service_report_customer_sites", "service_report_equipments"]) {
+    await db.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS external_source TEXT NOT NULL DEFAULT '';`);
+    await db.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS external_id TEXT NOT NULL DEFAULT '';`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_external ON ${table} (external_source, external_id) WHERE external_source <> '' AND external_id <> '';`);
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_spare_parts (
       id BIGSERIAL PRIMARY KEY,

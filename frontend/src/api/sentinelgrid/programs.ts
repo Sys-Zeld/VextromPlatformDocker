@@ -10,7 +10,10 @@ export const CRITICALITY_OPTIONS = [
 export const MAINTENANCE_TYPE_OPTIONS = [
   { value: "preventiva_sem_parada", label: "Preventiva sem parada" },
   { value: "preventiva_com_parada", label: "Preventiva com parada" },
-  { value: "corretiva", label: "Corretiva" }
+  { value: "corretiva", label: "Corretiva" },
+  { value: "comissionamento", label: "Comissionamento" },
+  { value: "teste_bateria", label: "Teste de bateria" },
+  { value: "retrofit", label: "Retrofit" }
 ] as const;
 
 export const PERIODICITY_OPTIONS = [
@@ -39,9 +42,12 @@ export interface SgMaintenanceProgram {
   contract_id: number | null;
   contract_name?: string | null;
   contract_client_name?: string | null;
+  contract_valid_from?: string | null;
+  contract_valid_to?: string | null;
   criticality: SgCriticality | null;
   maintenance_type: SgMaintenanceType;
   periodicity: SgPeriodicity;
+  plan_intervals_months: number[];
   active: boolean;
   scope_notes: string;
   notes: string;
@@ -59,6 +65,7 @@ export interface SgMaintenanceProgramInput {
   criticality: SgCriticality | null;
   maintenanceType: SgMaintenanceType;
   periodicity: SgPeriodicity;
+  planIntervalsMonths: number[];
   active: boolean;
   scopeNotes: string;
   notes: string;
@@ -79,8 +86,10 @@ export function listMaintenancePrograms(params: {
   criticality?: string;
   maintenanceType?: string;
   active?: boolean | null;
+  page?: number;
+  pageSize?: number;
 } = {}) {
-  return api<{ programs: SgMaintenanceProgram[]; total: number }>(`/sentinelgrid/maintenance-programs${qs(params)}`);
+  return api<{ programs: SgMaintenanceProgram[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/maintenance-programs${qs(params)}`);
 }
 
 export function createMaintenanceProgram(input: SgMaintenanceProgramInput) {
@@ -94,3 +103,42 @@ export function updateMaintenanceProgram(id: number, input: SgMaintenanceProgram
 export function deleteMaintenanceProgram(id: number) {
   return api<void>(`/sentinelgrid/maintenance-programs/${id}`, { method: "DELETE" });
 }
+
+// Gerar Planos a partir do programa (escopo + datas por periodicidade).
+export interface SgScopeEquipment {
+  id: number;
+  tag: string;
+  serial_number: string;
+  client_id: number;
+  client_name?: string;
+  site_name?: string;
+  area_name?: string;
+  criticality: string;
+  equipment_type_name?: string | null;
+}
+
+export function listProgramScopeEquipment(programId: number) {
+  return api<{ equipment: SgScopeEquipment[]; total: number }>(`/sentinelgrid/maintenance-programs/${programId}/scope-equipment`);
+}
+
+export interface GeneratePlanSpec {
+  intervalMonths: number;
+  dates: string[];
+}
+
+export function generatePlansFromProgram(programId: number, input: { equipmentIds: number[]; plans: GeneratePlanSpec[] }) {
+  return api<{ program: string; createdPlans: number; createdItems: number; planIds: number[] }>(
+    `/sentinelgrid/maintenance-programs/${programId}/generate-plans`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+// Periodicidade base → intervalo em meses (fallback quando o programa não tem intervalos).
+export function periodicityToMonths(p: string): number {
+  return PERIODICITY_MONTHS[p] ?? 0;
+}
+
+// Meses por periodicidade (0 = personalizada → só a data inicial).
+export const PERIODICITY_MONTHS: Record<string, number> = {
+  mensal: 1, trimestral: 3, semestral: 6, anual: 12, bienal: 24, personalizada: 0
+};

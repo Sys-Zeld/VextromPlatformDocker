@@ -79,8 +79,10 @@ export function listChecklists(params: {
   equipmentTypeId?: number;
   maintenanceType?: string;
   active?: boolean | null;
+  page?: number;
+  pageSize?: number;
 } = {}) {
-  return api<{ checklists: SgChecklist[]; total: number }>(`/sentinelgrid/checklists${qs(params)}`);
+  return api<{ checklists: SgChecklist[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/checklists${qs(params)}`);
 }
 
 export function getChecklist(id: number) {

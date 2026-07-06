@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
+
+const PAGE_SIZE = 20;
 import {
   CLIENT_STATUS,
   SgClient,
@@ -12,6 +15,8 @@ import {
   listClients,
   updateClient
 } from "../../api/sentinelgrid/clients";
+import { listCustomers } from "../../api/customers";
+import { mergeNames } from "../../utils/suggest";
 
 const EMPTY: SgClientInput = { name: "", taxId: "", segment: "", status: "ativo", notes: "" };
 
@@ -24,9 +29,12 @@ function toInput(c: SgClient): SgClientInput {
 export default function ClientsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const onSearch = (value: string) => { setSearch(value); setPage(1); };
   const { data, isLoading, error } = useQuery({
-    queryKey: ["sentinelgrid", "clients", search],
-    queryFn: () => listClients({ search })
+    queryKey: ["sentinelgrid", "clients", search, page],
+    queryFn: () => listClients({ search, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
   });
 
   const [novo, setNovo] = useState<SgClientInput>(EMPTY);
@@ -51,6 +59,14 @@ export default function ClientsPage() {
 
   const openEdit = (c: SgClient) => { setEditing(c); setEditInput(toInput(c)); };
 
+  // Sugestões de nome cruzando os dois módulos (isolamento mantido: cada API lê seu banco).
+  const sgAll = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest-all"], queryFn: () => listClients({ pageSize: 500 }) });
+  const rsCustomers = useQuery({ queryKey: ["report-service", "customers", "suggest"], queryFn: listCustomers });
+  const nameOptions = mergeNames(
+    (sgAll.data?.clients ?? []).map((c) => c.name),
+    (rsCustomers.data?.customers ?? []).map((c) => c.name)
+  );
+
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
   }
@@ -62,6 +78,7 @@ export default function ClientsPage() {
 
   return (
     <div className="d-flex flex-column gap-4">
+      <datalist id="vx-client-name-options">{nameOptions.map((n) => <option key={n} value={n} />)}</datalist>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h2 className="h5 mb-0">SentinelGrid · Clientes</h2>
         <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
@@ -75,7 +92,7 @@ export default function ClientsPage() {
           <Form className="row g-2 align-items-end" onSubmit={(e) => { e.preventDefault(); mCreate.mutate(); }}>
             <div className="col-md-4">
               <Form.Label>Nome</Form.Label>
-              <Form.Control required value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} />
+              <Form.Control required list="vx-client-name-options" value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} />
             </div>
             <div className="col-md-3">
               <Form.Label>CNPJ / Identificação fiscal</Form.Label>
@@ -106,7 +123,7 @@ export default function ClientsPage() {
             style={{ maxWidth: 260 }}
             placeholder="Buscar por nome ou CNPJ…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onSearch(e.target.value)}
           />
         </Card.Header>
         <Table striped responsive hover className="mb-0">
@@ -131,6 +148,7 @@ export default function ClientsPage() {
             ))}
           </tbody>
         </Table>
+        <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
       </Card>
 
       <Modal show={!!editing} onHide={() => setEditing(null)}>
@@ -140,7 +158,7 @@ export default function ClientsPage() {
             <Modal.Body className="d-flex flex-column gap-3">
               <Form.Group>
                 <Form.Label>Nome</Form.Label>
-                <Form.Control required value={editInput.name} onChange={(e) => setEditInput({ ...editInput, name: e.target.value })} />
+                <Form.Control required list="vx-client-name-options" value={editInput.name} onChange={(e) => setEditInput({ ...editInput, name: e.target.value })} />
               </Form.Group>
               <Form.Group>
                 <Form.Label>CNPJ / Identificação fiscal</Form.Label>

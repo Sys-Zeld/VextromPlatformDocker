@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
+import Pager from "../../components/sentinelgrid/Pager";
 import IconAction from "../../components/IconAction";
 import { listClients } from "../../api/sentinelgrid/clients";
 import { listSites } from "../../api/sentinelgrid/sites";
@@ -19,6 +20,9 @@ import {
   statusMeta,
   updateEquipment
 } from "../../api/sentinelgrid/equipment";
+import { AddToGroupModal, GroupsModal } from "./EquipmentGroupsModals";
+import { listEquipments } from "../../api/equipments";
+import { mergeNames } from "../../utils/suggest";
 
 interface FormState extends SgEquipmentInput {
   clientId: number;
@@ -33,6 +37,8 @@ const EMPTY: FormState = {
 };
 
 const dateOnly = (v: string | null) => (v ? String(v).slice(0, 10) : "");
+
+const PAGE_SIZE = 20;
 
 function toForm(e: SgEquipment): FormState {
   return {
@@ -59,6 +65,7 @@ export default function EquipmentsPage() {
   const [clientFilter, setClientFilter] = useState(0);
   const [criticalityFilter, setCriticalityFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   const clientsQuery = useQuery({ queryKey: ["sentinelgrid", "clients", ""], queryFn: () => listClients({ pageSize: 200 }) });
   const sitesQuery = useQuery({ queryKey: ["sentinelgrid", "sites", 0, ""], queryFn: () => listSites({ pageSize: 200 }) });
@@ -68,13 +75,22 @@ export default function EquipmentsPage() {
   const modelsQuery = useQuery({ queryKey: ["sentinelgrid", "models"], queryFn: () => listModels() });
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["sentinelgrid", "equipment", clientFilter, criticalityFilter, statusFilter, search],
-    queryFn: () => listEquipment({ clientId: clientFilter || undefined, criticality: criticalityFilter || undefined, operationalStatus: statusFilter || undefined, search })
+    queryKey: ["sentinelgrid", "equipment", clientFilter, criticalityFilter, statusFilter, search, page],
+    queryFn: () => listEquipment({ clientId: clientFilter || undefined, criticality: criticalityFilter || undefined, operationalStatus: statusFilter || undefined, search, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
   });
+  // Sugestões de TAG cruzando os dois módulos (cada API lê seu próprio banco — isolamento mantido).
+  const sgAllEquip = useQuery({ queryKey: ["sentinelgrid", "equipment", "suggest-all"], queryFn: () => listEquipment({ pageSize: 500 }) });
+  const rsEquip = useQuery({ queryKey: ["report-service", "equipments", "suggest"], queryFn: listEquipments });
 
   const [form, setForm] = useState<FormState | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Seleção para agrupamento.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showAddToGroup, setShowAddToGroup] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["sentinelgrid", "equipment"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -92,6 +108,16 @@ export default function EquipmentsPage() {
   const manufacturers = mansQuery.data ?? [];
   const models = modelsQuery.data?.models ?? [];
 
+  // TAGs sugeridas filtradas pelo cliente selecionado no formulário (SG por client_id;
+  // RS por nome do cliente = customer_name, seguindo o critério de igualdade por nome).
+  const selClientId = form?.clientId || 0;
+  const selClientName = selClientId ? (clients.find((c) => Number(c.id) === selClientId)?.name || "") : "";
+  const selClientKey = selClientName.trim().toLowerCase();
+  const tagOptions = mergeNames(
+    (sgAllEquip.data?.equipment ?? []).filter((e) => !selClientId || Number(e.client_id) === selClientId).map((e) => e.tag),
+    (rsEquip.data?.equipments ?? []).filter((e) => !selClientKey || String(e.customer_name || "").trim().toLowerCase() === selClientKey).map((e) => e.tag_number)
+  );
+
   const sitesForClient = useMemo(() => (form ? sites.filter((s) => Number(s.client_id) === form.clientId) : []), [sites, form]);
   const areasForSite = useMemo(() => (form ? areas.filter((a) => Number(a.site_id) === form.siteId) : []), [areas, form]);
   const modelsForMan = useMemo(() => (form && form.manufacturerId ? models.filter((m) => Number(m.manufacturer_id) === form.manufacturerId) : models), [models, form]);
@@ -99,6 +125,46 @@ export default function EquipmentsPage() {
   const openNew = () => { setEditingId(null); setForm({ ...EMPTY }); setActionError(null); };
   const openEdit = (e: SgEquipment) => { setEditingId(e.id); setForm(toForm(e)); setActionError(null); };
   const patch = (p: Partial<FormState>) => setForm((f) => (f ? { ...f, ...p } : f));
+
+  // Ao escolher uma TAG existente, busca o equipamento (do cliente) e completa o cadastro.
+  const nameEq = (a?: string | null, b?: string | null) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+  const applyTagMatch = (tagValue: string) => {
+    const key = tagValue.trim().toLowerCase();
+    if (!key) return;
+    // Preferência: equipamento do SentinelGrid (mesmo cliente) — tem todos os campos.
+    const sgMatch = (sgAllEquip.data?.equipment ?? []).find((e) => (!selClientId || Number(e.client_id) === selClientId) && nameEq(e.tag, tagValue));
+    if (sgMatch) {
+      patch({
+        serialNumber: sgMatch.serial_number || "", ratedPower: sgMatch.rated_power || "",
+        inputVoltage: sgMatch.input_voltage || "", outputVoltage: sgMatch.output_voltage || "",
+        dcVoltage: sgMatch.dc_voltage || "", frequency: sgMatch.frequency || "",
+        redundancyConfig: sgMatch.redundancy_config || "", moduleCount: sgMatch.module_count ?? null,
+        batteryType: sgMatch.battery_type || "",
+        equipmentTypeId: sgMatch.equipment_type_id ? Number(sgMatch.equipment_type_id) : null,
+        manufacturerId: sgMatch.manufacturer_id ? Number(sgMatch.manufacturer_id) : null,
+        modelId: sgMatch.model_id ? Number(sgMatch.model_id) : null,
+        criticality: sgMatch.criticality || "media", operationalStatus: sgMatch.operational_status || "operacional_normal",
+        internalTechnician: sgMatch.internal_technician || "", notes: sgMatch.notes || ""
+      });
+      return;
+    }
+    // Senão: equipamento do Service Report (mesmo cliente por nome) — mapeia os campos disponíveis.
+    const rsMatch = (rsEquip.data?.equipments ?? []).find((e) => (!selClientKey || nameEq(e.customer_name, selClientName)) && nameEq(e.tag_number, tagValue));
+    if (rsMatch) {
+      patch({
+        serialNumber: rsMatch.serial_number || "",
+        ratedPower: rsMatch.power || "",                       // Power → Potência
+        inputVoltage: rsMatch.rated_ac_input_voltage || "",    // Ac Input → Tensão entrada
+        outputVoltage: rsMatch.rated_ac_output_voltage || "",  // Ac Output V → Tensão saída
+        dcVoltage: rsMatch.rated_dc_voltage || "",             // DC V → Tensão DC
+        frequency: rsMatch.output_frequency || "",             // Output Freq → Frequência
+        notes: rsMatch.notes || "",
+        equipmentTypeId: types.find((t) => nameEq(t.name, rsMatch.type))?.id ?? null,
+        manufacturerId: manufacturers.find((m) => nameEq(m.name, rsMatch.manufacturer))?.id ?? null,
+        modelId: models.find((m) => nameEq(m.name, rsMatch.model_family))?.id ?? null
+      });
+    }
+  };
 
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
@@ -109,12 +175,23 @@ export default function EquipmentsPage() {
 
   const equipment = data?.equipment ?? [];
 
+  const selectedEquip = equipment.filter((e) => selected.has(e.id));
+  const selectedSites = new Set(selectedEquip.map((e) => Number(e.site_id)));
+  const sameSite = selectedSites.size === 1;
+  const selSiteId = sameSite ? Array.from(selectedSites)[0] : 0;
+  const selSiteName = selectedEquip[0]?.site_name || "";
+  const toggleSel = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allOnPage = equipment.length > 0 && equipment.every((e) => selected.has(e.id));
+  const toggleAll = () => setSelected((s) => { const n = new Set(s); if (allOnPage) equipment.forEach((e) => n.delete(e.id)); else equipment.forEach((e) => n.add(e.id)); return n; });
+
   return (
     <div className="d-flex flex-column gap-4">
+      <datalist id="vx-equipment-tag-options">{tagOptions.map((t) => <option key={t} value={t} />)}</datalist>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h2 className="h5 mb-0">SentinelGrid · Equipamentos</h2>
         <div className="d-flex align-items-center gap-2">
           <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
+          <Button size="sm" variant="outline-secondary" onClick={() => setShowGroups(true)}>Grupos</Button>
           <Button size="sm" onClick={openNew}>+ Novo equipamento</Button>
         </div>
       </div>
@@ -125,32 +202,44 @@ export default function EquipmentsPage() {
         <Card.Header className="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <span>Equipamentos ({data?.total ?? equipment.length})</span>
           <div className="d-flex flex-wrap gap-2">
-            <Form.Select size="sm" style={{ maxWidth: 180 }} value={clientFilter || ""} onChange={(e) => setClientFilter(Number(e.target.value) || 0)}>
+            <Form.Select size="sm" style={{ maxWidth: 180 }} value={clientFilter || ""} onChange={(e) => { setClientFilter(Number(e.target.value) || 0); setPage(1); }}>
               <option value="">Todos os clientes</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Form.Select>
-            <Form.Select size="sm" style={{ maxWidth: 160 }} value={criticalityFilter} onChange={(e) => setCriticalityFilter(e.target.value)}>
+            <Form.Select size="sm" style={{ maxWidth: 160 }} value={criticalityFilter} onChange={(e) => { setCriticalityFilter(e.target.value); setPage(1); }}>
               <option value="">Criticidade</option>
               {CRITICALITY.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </Form.Select>
-            <Form.Select size="sm" style={{ maxWidth: 180 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <Form.Select size="sm" style={{ maxWidth: 180 }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
               <option value="">Status</option>
               {OPERATIONAL_STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </Form.Select>
-            <Form.Control size="sm" style={{ maxWidth: 200 }} placeholder="Buscar TAG / série…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Form.Control size="sm" style={{ maxWidth: 200 }} placeholder="Buscar TAG / série…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
         </Card.Header>
+        {selected.size > 0 && (
+          <Card.Body className="py-2 border-top d-flex align-items-center gap-2 flex-wrap">
+            <span className="small fw-medium">{selected.size} selecionado(s)</span>
+            <Button size="sm" onClick={() => setShowAddToGroup(true)} disabled={!sameSite}>Adicionar ao grupo</Button>
+            {!sameSite && <span className="small text-warning">Selecione equipamentos do mesmo site.</span>}
+            <Button size="sm" variant="link" className="p-0" onClick={() => setSelected(new Set())}>Limpar seleção</Button>
+          </Card.Body>
+        )}
         <Table striped responsive hover className="mb-0">
           <thead>
-            <tr><th>TAG</th><th>Tipo</th><th>Modelo</th><th>Cliente / Site / Área</th><th>Criticidade</th><th>Status</th><th className="text-end">Ações</th></tr>
+            <tr>
+              <th style={{ width: 32 }}><Form.Check checked={allOnPage} onChange={toggleAll} title="Selecionar todos" /></th>
+              <th>TAG</th><th>Tipo</th><th>Modelo</th><th>Cliente / Site / Área</th><th>Criticidade</th><th>Status</th><th className="text-end">Ações</th>
+            </tr>
           </thead>
           <tbody>
-            {equipment.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum equipamento.</td></tr>}
+            {equipment.length === 0 && <tr><td colSpan={8} className="text-muted">Nenhum equipamento.</td></tr>}
             {equipment.map((e) => {
               const cm = criticalityMeta(e.criticality);
               const sm = statusMeta(e.operational_status);
               return (
-                <tr key={e.id}>
+                <tr key={e.id} className={selected.has(e.id) ? "table-active" : undefined}>
+                  <td><Form.Check checked={selected.has(e.id)} onChange={() => toggleSel(e.id)} /></td>
                   <td>{e.tag || <span className="text-muted">—</span>}</td>
                   <td>{e.equipment_type_name || <span className="text-muted">—</span>}</td>
                   <td>{e.model_name || <span className="text-muted">—</span>}</td>
@@ -168,6 +257,7 @@ export default function EquipmentsPage() {
             })}
           </tbody>
         </Table>
+        <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
       </Card>
 
       <Modal show={!!form} onHide={() => setForm(null)} size="lg">
@@ -206,7 +296,8 @@ export default function EquipmentsPage() {
               <div className="row g-3">
                 <div className="col-md-3">
                   <Form.Label>TAG</Form.Label>
-                  <Form.Control value={form.tag} onChange={(e) => patch({ tag: e.target.value })} />
+                  <Form.Control list="vx-equipment-tag-options" value={form.tag} onChange={(e) => { const v = e.target.value; patch({ tag: v }); applyTagMatch(v); }} />
+                  <Form.Text className="text-muted">Escolha uma TAG existente para completar os dados.</Form.Text>
                 </div>
                 <div className="col-md-3">
                   <Form.Label>Nº de série</Form.Label>
@@ -278,6 +369,17 @@ export default function EquipmentsPage() {
           </Form>
         )}
       </Modal>
+
+      {showAddToGroup && sameSite && selSiteId > 0 && (
+        <AddToGroupModal
+          equipmentIds={Array.from(selected)}
+          siteId={selSiteId}
+          siteName={selSiteName}
+          onHide={() => setShowAddToGroup(false)}
+          onDone={() => { setShowAddToGroup(false); setSelected(new Set()); }}
+        />
+      )}
+      {showGroups && <GroupsModal clients={clients} onHide={() => setShowGroups(false)} />}
     </div>
   );
 }

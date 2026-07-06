@@ -19,7 +19,6 @@ const PdfHistoryPage = lazy(() => import("./pages/PdfHistoryPage"));
 const SentinelHomePage = lazy(() => import("./pages/sentinelgrid/SentinelHomePage"));
 const SentinelClientsPage = lazy(() => import("./pages/sentinelgrid/ClientsPage"));
 const SentinelSitesPage = lazy(() => import("./pages/sentinelgrid/SitesPage"));
-const SentinelAreasPage = lazy(() => import("./pages/sentinelgrid/AreasPage"));
 const SentinelCatalogPage = lazy(() => import("./pages/sentinelgrid/CatalogPage"));
 const SentinelEquipmentsPage = lazy(() => import("./pages/sentinelgrid/EquipmentsPage"));
 const SentinelManagementPage = lazy(() => import("./pages/sentinelgrid/ManagementPage"));
@@ -28,6 +27,7 @@ const SentinelPlansPage = lazy(() => import("./pages/sentinelgrid/PlansPage"));
 const SentinelChecklistsPage = lazy(() => import("./pages/sentinelgrid/ChecklistsPage"));
 const SentinelMaintenanceOrdersPage = lazy(() => import("./pages/sentinelgrid/MaintenanceOrdersPage"));
 const SentinelCalendarPage = lazy(() => import("./pages/sentinelgrid/CalendarPage"));
+const SentinelAlertsPage = lazy(() => import("./pages/sentinelgrid/AlertsPage"));
 const SentinelHistoryPage = lazy(() => import("./pages/sentinelgrid/HistoryPage"));
 const SentinelDashboardPage = lazy(() => import("./pages/sentinelgrid/DashboardPage"));
 const SentinelRecommendationsPage = lazy(() => import("./pages/sentinelgrid/RecommendationsPage"));
@@ -61,7 +61,6 @@ export default function App() {
           <Route path="/sentinelgrid" element={<SentinelHomePage />} />
           <Route path="/sentinelgrid/clients" element={<SentinelClientsPage />} />
           <Route path="/sentinelgrid/sites" element={<SentinelSitesPage />} />
-          <Route path="/sentinelgrid/areas" element={<SentinelAreasPage />} />
           <Route path="/sentinelgrid/catalog" element={<SentinelCatalogPage />} />
           <Route path="/sentinelgrid/equipment" element={<SentinelEquipmentsPage />} />
           <Route path="/sentinelgrid/management" element={<SentinelManagementPage />} />
@@ -70,6 +69,7 @@ export default function App() {
           <Route path="/sentinelgrid/checklists" element={<SentinelChecklistsPage />} />
           <Route path="/sentinelgrid/maintenance-orders" element={<SentinelMaintenanceOrdersPage />} />
           <Route path="/sentinelgrid/calendar" element={<SentinelCalendarPage />} />
+          <Route path="/sentinelgrid/alerts" element={<SentinelAlertsPage />} />
           <Route path="/sentinelgrid/history" element={<SentinelHistoryPage />} />
           <Route path="/sentinelgrid/dashboard" element={<SentinelDashboardPage />} />
           <Route path="/sentinelgrid/recommendations" element={<SentinelRecommendationsPage />} />

@@ -56,6 +56,7 @@
     "db:seed:specflow": "node specflow/seed.js",
     "db:seed:module-spec": "node module_spec/seed.js",
     "db:seed:report-service": "node report_service/seed.js",
+    "db:seed:sentinelgrid": "node sentinelgrid/seed.js",
     "db:reseed": "npm run db:reset && npm run db:seed",
     "db:seed:default": "npm run db:seed && node scripts/seed-profile-purchase.js",
     "report-service:os:init": "node scripts/report-service-init-os-seed.js",

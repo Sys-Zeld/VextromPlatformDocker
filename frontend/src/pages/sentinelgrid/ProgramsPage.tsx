@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
+
+const PAGE_SIZE = 20;
 import { listContracts } from "../../api/sentinelgrid/contracts";
 import { listEquipmentTypes, listManufacturers, listModels } from "../../api/sentinelgrid/catalog";
 import {
@@ -16,6 +19,7 @@ import {
   listMaintenancePrograms,
   updateMaintenanceProgram
 } from "../../api/sentinelgrid/programs";
+import GeneratePlansModal from "./GeneratePlansModal";
 
 const EMPTY: SgMaintenanceProgramInput = {
   name: "",
@@ -27,10 +31,14 @@ const EMPTY: SgMaintenanceProgramInput = {
   criticality: null,
   maintenanceType: "preventiva_sem_parada",
   periodicity: "semestral",
+  planIntervalsMonths: [],
   active: true,
   scopeNotes: "",
   notes: ""
 };
+
+const parseIntervals = (raw: string): number[] =>
+  Array.from(new Set(raw.split(/[,;\s]+/).map((s) => parseInt(s, 10)).filter((n) => Number.isInteger(n) && n > 0 && n <= 120))).sort((a, b) => a - b);
 
 function toInput(p: SgMaintenanceProgram): SgMaintenanceProgramInput {
   return {
@@ -43,6 +51,7 @@ function toInput(p: SgMaintenanceProgram): SgMaintenanceProgramInput {
     criticality: p.criticality,
     maintenanceType: p.maintenance_type,
     periodicity: p.periodicity,
+    planIntervalsMonths: p.plan_intervals_months || [],
     active: Boolean(p.active),
     scopeNotes: p.scope_notes || "",
     notes: p.notes || ""
@@ -64,6 +73,8 @@ export default function ProgramsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<SgMaintenanceProgramInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [genProgram, setGenProgram] = useState<SgMaintenanceProgram | null>(null);
+  const [page, setPage] = useState(1);
 
   const params = useMemo(() => ({
     search,
@@ -71,7 +82,11 @@ export default function ProgramsPage() {
     maintenanceType: filterMaintenanceType
   }), [search, filterType, filterMaintenanceType]);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "programs", params], queryFn: () => listMaintenancePrograms(params) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["sentinelgrid", "programs", params, page],
+    queryFn: () => listMaintenancePrograms({ ...params, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
+  });
   const types = useQuery({ queryKey: ["sentinelgrid", "equipment-types"], queryFn: () => listEquipmentTypes() });
   const manufacturers = useQuery({ queryKey: ["sentinelgrid", "manufacturers"], queryFn: () => listManufacturers() });
   const models = useQuery({ queryKey: ["sentinelgrid", "models"], queryFn: () => listModels() });
@@ -112,24 +127,24 @@ export default function ProgramsPage() {
           <div className="row g-2 align-items-end">
             <div className="col-md-5">
               <Form.Label>Busca</Form.Label>
-              <Form.Control value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nome ou descricao" />
+              <Form.Control value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Nome ou descricao" />
             </div>
             <div className="col-md-3">
               <Form.Label>Tipo de equipamento</Form.Label>
-              <Form.Select value={filterType} onChange={(e) => setFilterType(e.target.value ? Number(e.target.value) : "")}>
+              <Form.Select value={filterType} onChange={(e) => { setFilterType(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
                 <option value="">Todos</option>
                 {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-3">
               <Form.Label>Tipo de manutencao</Form.Label>
-              <Form.Select value={filterMaintenanceType} onChange={(e) => setFilterMaintenanceType(e.target.value)}>
+              <Form.Select value={filterMaintenanceType} onChange={(e) => { setFilterMaintenanceType(e.target.value); setPage(1); }}>
                 <option value="">Todos</option>
                 {MAINTENANCE_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-1 d-grid">
-              <Button variant="outline-secondary" onClick={() => { setSearch(""); setFilterType(""); setFilterMaintenanceType(""); }}>Limpar</Button>
+              <Button variant="outline-secondary" onClick={() => { setSearch(""); setFilterType(""); setFilterMaintenanceType(""); setPage(1); }}>Limpar</Button>
             </div>
           </div>
         </Card.Body>
@@ -165,6 +180,7 @@ export default function ProgramsPage() {
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
+                      <IconAction icon="calendar_month" label="Gerar planos" variant="outline-primary" disabled={!p.active} onClick={() => setGenProgram(p)} />
                       <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
                       <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o programa "${p.name}"?`)) mDelete.mutate(p.id); }} />
                     </div>
@@ -174,6 +190,7 @@ export default function ProgramsPage() {
             </tbody>
           </Table>
         )}
+        {!isLoading && !error && <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />}
       </Card>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg">
@@ -196,10 +213,19 @@ export default function ProgramsPage() {
                 </Form.Select>
               </div>
               <div className="col-md-6">
-                <Form.Label>Periodicidade</Form.Label>
+                <Form.Label>Periodicidade base</Form.Label>
                 <Form.Select required value={form.periodicity} onChange={(e) => setForm({ ...form, periodicity: e.target.value as SgMaintenanceProgramInput["periodicity"] })}>
                   {PERIODICITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </Form.Select>
+              </div>
+              <div className="col-12">
+                <Form.Label>Intervalos de manutenção (meses)</Form.Label>
+                <Form.Control
+                  value={form.planIntervalsMonths.join(", ")}
+                  onChange={(e) => setForm({ ...form, planIntervalsMonths: parseIntervals(e.target.value) })}
+                  placeholder="ex.: 1, 3, 12"
+                />
+                <Form.Text className="text-muted">Cada intervalo gera um plano separado no "Gerar planos" (1 = mensal, 3 = trimestral…). Vazio usa a periodicidade base.</Form.Text>
               </div>
               <div className="col-12">
                 <Form.Label>Descricao</Form.Label>
@@ -256,6 +282,8 @@ export default function ProgramsPage() {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      {genProgram && <GeneratePlansModal program={genProgram} onHide={() => setGenProgram(null)} />}
     </div>
   );
 }

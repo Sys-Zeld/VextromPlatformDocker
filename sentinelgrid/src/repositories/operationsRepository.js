@@ -253,16 +253,19 @@ async function addHistory(equipmentId, eventKind, refTable, refId, summary, acto
   )).rows[0];
 }
 
-async function listHistory({ equipmentId = null, limit = 100 } = {}) {
+async function listHistory({ equipmentId = null, clientId = null, siteId = null, limit = 100 } = {}) {
   const params = [];
   let where = "TRUE";
   if (equipmentId) { params.push(equipmentId); where += ` AND h.equipment_id = $${params.length}`; }
+  if (clientId) { params.push(clientId); where += ` AND e.client_id = $${params.length}`; }
+  if (siteId) { params.push(siteId); where += ` AND e.site_id = $${params.length}`; }
   params.push(limit);
   return (await pool.query(
-    `SELECT h.*, e.tag AS equipment_tag, c.name AS client_name
+    `SELECT h.*, e.tag AS equipment_tag, c.name AS client_name, s.name AS site_name
        FROM sg_equipment_history h
       JOIN sg_equipment e ON e.id = h.equipment_id
       JOIN sg_clients c ON c.id = e.client_id
+      LEFT JOIN sg_sites s ON s.id = e.site_id
       WHERE ${where} AND e.deleted_at IS NULL AND c.deleted_at IS NULL
       ORDER BY h.occurred_at DESC, h.id DESC
       LIMIT $${params.length}`,

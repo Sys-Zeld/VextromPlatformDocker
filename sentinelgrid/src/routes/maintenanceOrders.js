@@ -2,11 +2,13 @@ const express = require("express");
 const {
   parseMaintenanceOrderInput,
   parseOrderFromPlanInput,
+  parseOrderFromPlansInput,
   parseOrderApprovalInput,
   parseOrderStatusInput
 } = require("../validators/maintenanceOrderValidators");
 const { toValidationError, isForeignKeyError, isUniqueViolation } = require("./httpErrors");
 const repo = require("../repositories/maintenanceOrdersRepository");
+const integration = require("../services/reportServiceIntegration");
 const { createOrderExecutionRouter } = require("./orderExecution");
 
 function createMaintenanceOrdersRouter(deps) {
@@ -97,6 +99,39 @@ function createMaintenanceOrdersRouter(deps) {
       const order = await handleWrite(() => repo.createOrderFromPlan(input, actorOf(req)), res);
       if (res.headersSent) return;
       res.status(201).json({ order });
+    })
+  );
+
+  // Geração em lote: cria OMs para todos os itens de um ou mais planos.
+  router.post(
+    "/from-plans",
+    asyncHandler(async (req, res) => {
+      let input;
+      try {
+        input = parseOrderFromPlansInput(req.body);
+      } catch (err) {
+        return res.status(400).json(toValidationError(err));
+      }
+      const result = await handleWrite(() => repo.createOrdersFromPlans(input, actorOf(req)), res);
+      if (res.headersSent) return;
+      res.status(201).json(result);
+    })
+  );
+
+  // Fase 11 — Envia a OM (status 'agendada') para o Service Report, criando uma OS
+  // com o equipamento vinculado. Reenvio reabre a OS já existente.
+  router.post(
+    "/:id/send-to-report-service",
+    asyncHandler(async (req, res) => {
+      try {
+        const result = await integration.sendOrderToReportService(Number(req.params.id), actorOf(req));
+        res.status(result.reused ? 200 : 201).json(result);
+      } catch (err) {
+        if (err && err.code === "SG_ORDER_INVALID") return res.status(404).json({ error: err.message, errorCode: err.code });
+        if (err && err.code === "SG_ORDER_NOT_SCHEDULED") return res.status(409).json({ error: err.message, errorCode: err.code });
+        if (err && err.statusCode) return res.status(err.statusCode).json({ error: err.message, errorCode: "SG_INTEGRATION_ERROR" });
+        throw err;
+      }
     })
   );
 

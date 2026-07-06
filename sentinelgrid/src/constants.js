@@ -19,7 +19,10 @@ const OPERATIONAL_STATUS = [
 const MAINTENANCE_TYPE = [
   "preventiva_sem_parada",
   "preventiva_com_parada",
-  "corretiva"
+  "corretiva",
+  "comissionamento",
+  "teste_bateria",
+  "retrofit"
 ];
 
 const ORDER_STATUS = [
@@ -49,6 +52,16 @@ const PERIODICITY = ["mensal", "trimestral", "semestral", "anual", "bienal", "pe
 
 const CORRECTIVE_CLASS = ["emergencial", "urgente", "programada", "paliativa", "definitiva"];
 
+// Fase 10 — Mapa Calendário.
+// Prioridade do alerta (§7/A.8), do menor para o maior peso.
+const ALERT_PRIORITY = ["informativo", "atencao", "importante", "critico", "emergencial"];
+
+// Status geral visual (§11/A.10), do melhor para o pior.
+const GENERAL_STATUS = ["normal", "atencao", "critico", "emergencial"];
+
+// Cores do calendário (§6/A.7).
+const CALENDAR_COLOR = ["verde", "azul", "amarelo", "laranja", "vermelho", "roxo", "cinza"];
+
 module.exports = {
   CLIENT_STATUS,
   CRITICALITY,
@@ -57,5 +70,8 @@ module.exports = {
   ORDER_STATUS,
   RECOMMENDATION_STATUS,
   PERIODICITY,
-  CORRECTIVE_CLASS
+  CORRECTIVE_CLASS,
+  ALERT_PRIORITY,
+  GENERAL_STATUS,
+  CALENDAR_COLOR
 };

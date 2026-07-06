@@ -18,6 +18,7 @@ const maintenanceProgramInputSchema = z.object({
   criticality: optionalCriticality,
   maintenanceType: z.enum(MAINTENANCE_TYPE),
   periodicity: z.enum(PERIODICITY),
+  planIntervalsMonths: z.array(z.coerce.number().int().positive().max(120)).optional().default([]),
   active: z.boolean().optional().default(true),
   scopeNotes: text(1000),
   notes: text(2000)
@@ -27,4 +28,19 @@ function parseMaintenanceProgramInput(body) {
   return maintenanceProgramInputSchema.parse(body ?? {});
 }
 
-module.exports = { maintenanceProgramInputSchema, parseMaintenanceProgramInput };
+// Geração de planos a partir do programa: equipamentos + um bloco de datas por intervalo.
+// Cada item de `plans` vira um plano (por equipamento) com um item por data.
+const dateArray = z.array(z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida")).min(1, "Informe ao menos uma data");
+const generatePlansSchema = z.object({
+  equipmentIds: z.array(z.coerce.number().int().positive()).min(1, "Selecione ao menos um equipamento"),
+  plans: z.array(z.object({
+    intervalMonths: z.coerce.number().int().positive().max(120),
+    dates: dateArray
+  })).min(1, "Informe ao menos um intervalo")
+});
+
+function parseGeneratePlansInput(body) {
+  return generatePlansSchema.parse(body ?? {});
+}
+
+module.exports = { maintenanceProgramInputSchema, parseMaintenanceProgramInput, generatePlansSchema, parseGeneratePlansInput };

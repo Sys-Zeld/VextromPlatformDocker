@@ -6,12 +6,16 @@ const { createAreasRouter } = require("./areas");
 const { createLookupRouter } = require("./lookup");
 const { createEquipmentModelsRouter } = require("./equipmentModels");
 const { createEquipmentRouter } = require("./equipment");
+const { createEquipmentGroupsRouter } = require("./equipmentGroups");
 const { createClientManagersRouter } = require("./clientManagers");
 const { createContractsRouter } = require("./contracts");
 const { createMaintenanceProgramsRouter } = require("./maintenancePrograms");
 const { createEquipmentPlansRouter } = require("./equipmentPlans");
 const { createChecklistsRouter } = require("./checklists");
 const { createMaintenanceOrdersRouter } = require("./maintenanceOrders");
+const { createCalendarMapRouter } = require("./calendarMap");
+const { createCalendarAlertRulesRouter } = require("./calendarAlertRules");
+const { createAlertsRouter } = require("./alerts");
 const { createOperationsRouter } = require("./operations");
 const { lookupRepo } = require("../repositories/lookupRepository");
 
@@ -67,6 +71,7 @@ function createSentinelGridV2Router(deps) {
 
   // Fatia 1.5 — Equipamento (entidade central).
   router.use("/equipment", createEquipmentRouter(deps));
+  router.use("/equipment-groups", createEquipmentGroupsRouter(deps));
 
   // Fatia 1.6 — Gestores do cliente e Contratos.
   router.use("/client-managers", createClientManagersRouter(deps));
@@ -75,6 +80,11 @@ function createSentinelGridV2Router(deps) {
   router.use("/equipment-plans", createEquipmentPlansRouter(deps));
   router.use("/checklists", createChecklistsRouter(deps));
   router.use("/maintenance-orders", createMaintenanceOrdersRouter(deps));
+  // Fase 10 — Mapa Calendário (agregação read-only). Montado antes do router de
+  // operations ("/") para não ser sombreado por ele.
+  router.use("/calendar/map", createCalendarMapRouter(deps));
+  router.use("/calendar/alert-rules", createCalendarAlertRulesRouter(deps));
+  router.use("/alerts", createAlertsRouter(deps));
   router.use("/", createOperationsRouter(deps));
 
   return router;

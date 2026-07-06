@@ -16,6 +16,8 @@ import {
   updateCustomer,
   updateSite
 } from "../api/customers";
+import { listClients } from "../api/sentinelgrid/clients";
+import { mergeNames } from "../utils/suggest";
 
 const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", notes: "" };
 const EMPTY_SITE: SiteInput = {
@@ -31,6 +33,8 @@ const EMPTY_SITE: SiteInput = {
 export default function CustomersPage() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["customers"], queryFn: listCustomers });
+  // Sugestões de nome cruzando os módulos (SG lê seu banco; RS lê o seu — isolamento mantido).
+  const sgClients = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest"], queryFn: () => listClients({ pageSize: 500 }) });
 
   const [newCustomer, setNewCustomer] = useState<CustomerInput>(EMPTY_CUSTOMER);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -84,8 +88,14 @@ export default function CustomersPage() {
   const customers = data?.customers ?? [];
   const sites = data?.sites ?? [];
 
+  const nameOptions = mergeNames(
+    customers.map((c) => c.name),
+    (sgClients.data?.clients ?? []).map((c) => c.name)
+  );
+
   return (
     <div className="d-flex flex-column gap-4">
+      <datalist id="vx-customer-name-options">{nameOptions.map((n) => <option key={n} value={n} />)}</datalist>
       <h2 className="h5 mb-0">Clientes &amp; Sites</h2>
       {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
 
@@ -101,6 +111,7 @@ export default function CustomersPage() {
               <Form.Label>Nome</Form.Label>
               <Form.Control
                 required
+                list="vx-customer-name-options"
                 value={newCustomer.name}
                 onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
               />
@@ -219,6 +230,7 @@ export default function CustomersPage() {
                 <Form.Label>Nome</Form.Label>
                 <Form.Control
                   required
+                  list="vx-customer-name-options"
                   value={editingCustomer.name}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
                 />

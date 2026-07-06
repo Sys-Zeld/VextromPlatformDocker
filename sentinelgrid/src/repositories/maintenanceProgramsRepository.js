@@ -8,7 +8,9 @@ const BASE_FROM = `FROM sg_maintenance_programs p
   LEFT JOIN sg_clients c ON c.id = ct.client_id`;
 
 const SELECT_COLS = `p.*, t.name AS equipment_type_name, m.name AS manufacturer_name,
-  mo.name AS model_name, ct.name AS contract_name, c.name AS contract_client_name`;
+  mo.name AS model_name, ct.name AS contract_name, c.name AS contract_client_name,
+  to_char(ct.valid_from, 'YYYY-MM-DD') AS contract_valid_from,
+  to_char(ct.valid_to, 'YYYY-MM-DD') AS contract_valid_to`;
 
 async function listPrograms({
   equipmentTypeId = null,
@@ -80,7 +82,8 @@ function values(input) {
     input.periodicity,
     input.active,
     input.scopeNotes,
-    input.notes
+    input.notes,
+    input.planIntervalsMonths || []
   ];
 }
 
@@ -88,8 +91,8 @@ async function createProgram(input, actor = "") {
   const res = await pool.query(
     `INSERT INTO sg_maintenance_programs
       (name, description, equipment_type_id, manufacturer_id, model_id, contract_id, criticality,
-       maintenance_type, periodicity, active, scope_notes, notes, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+       maintenance_type, periodicity, active, scope_notes, notes, plan_intervals_months, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
      RETURNING *`,
     [...values(input), actor]
   );
@@ -101,8 +104,8 @@ async function updateProgram(id, input, actor = "") {
     `UPDATE sg_maintenance_programs
         SET name = $2, description = $3, equipment_type_id = $4, manufacturer_id = $5,
             model_id = $6, contract_id = $7, criticality = $8, maintenance_type = $9,
-            periodicity = $10, active = $11, scope_notes = $12, notes = $13,
-            updated_by = $14, updated_at = NOW()
+            periodicity = $10, active = $11, scope_notes = $12, notes = $13, plan_intervals_months = $14,
+            updated_by = $15, updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
     [id, ...values(input), actor]

@@ -63,6 +63,28 @@ async function getEquipment(id) {
   return res.rows[0] || null;
 }
 
+// Equipamentos que casam com o escopo de um programa de manutenção (Fatia "Gerar Planos").
+// Cada campo de escopo não nulo do programa restringe o conjunto; contrato restringe pelo cliente.
+async function listByProgramScope(program) {
+  const params = [];
+  let where = "e.deleted_at IS NULL";
+  const add = (cond, val) => { params.push(val); where += ` AND ${cond.replace("$?", `$${params.length}`)}`; };
+  if (program.equipment_type_id) add("e.equipment_type_id = $?", program.equipment_type_id);
+  if (program.manufacturer_id) add("e.manufacturer_id = $?", program.manufacturer_id);
+  if (program.model_id) add("e.model_id = $?", program.model_id);
+  if (program.criticality) add("e.criticality = $?", program.criticality);
+  if (program.contract_id) {
+    params.push(program.contract_id);
+    where += ` AND e.client_id = (SELECT client_id FROM sg_contracts WHERE id = $${params.length})`;
+  }
+  return (
+    await pool.query(
+      `SELECT ${SELECT_COLS} ${BASE_FROM} WHERE ${where} ORDER BY c.name ASC, e.tag ASC`,
+      params
+    )
+  ).rows;
+}
+
 const WRITE_COLS = [
   "tag", "equipment_type_id", "manufacturer_id", "model_id", "serial_number",
   "rated_power", "input_voltage", "output_voltage", "dc_voltage", "frequency",
@@ -113,4 +135,4 @@ async function softDeleteEquipment(id, actor = "") {
   return res.rowCount > 0;
 }
 
-module.exports = { listEquipment, getEquipment, createEquipment, updateEquipment, softDeleteEquipment };
+module.exports = { listEquipment, getEquipment, listByProgramScope, createEquipment, updateEquipment, softDeleteEquipment };

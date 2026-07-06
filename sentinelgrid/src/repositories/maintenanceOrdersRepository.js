@@ -334,6 +334,83 @@ async function createOrderFromPlan(input, actor = "") {
   }
 }
 
+// Geração em lote: cria uma OM por item de plano, para cada plano informado.
+// Por padrão pula itens que já têm OM (evita duplicar). Planos inválidos/inativos são ignorados.
+async function createOrdersFromPlans(input, actor = "") {
+  const planIds = Array.isArray(input.planIds) ? input.planIds : [];
+  const skipExisting = input.skipExisting !== false;
+  const client = await pool.connect();
+  let created = 0;
+  let skipped = 0;
+  let plansProcessed = 0;
+  const orderIds = [];
+  try {
+    await client.query("BEGIN");
+    for (const planId of planIds) {
+      const plan = (await client.query(
+        `SELECT p.*, e.client_id, e.site_id, e.area_id
+           FROM sg_equipment_plans p
+           JOIN sg_equipment e ON e.id = p.equipment_id
+          WHERE p.id = $1 AND p.deleted_at IS NULL AND p.active = TRUE AND e.deleted_at IS NULL`,
+        [planId]
+      )).rows[0];
+      if (!plan) continue;
+      plansProcessed += 1;
+      const items = (await client.query(
+        `SELECT * FROM sg_plan_items WHERE plan_id = $1 AND deleted_at IS NULL ORDER BY order_index ASC, id ASC`,
+        [planId]
+      )).rows;
+      for (const item of items) {
+        if (skipExisting) {
+          const ex = await client.query(
+            "SELECT 1 FROM sg_maintenance_orders WHERE plan_item_id = $1 AND deleted_at IS NULL LIMIT 1",
+            [item.id]
+          );
+          if (ex.rows[0]) { skipped += 1; continue; }
+        }
+        const orderInput = {
+          equipmentId: plan.equipment_id,
+          planId: plan.id,
+          planItemId: item.id,
+          checklistId: input.checklistId ?? null,
+          maintenanceType: item.maintenance_type || plan.maintenance_type,
+          priority: input.priority || "normal",
+          plannedDate: item.next_due_date,
+          scheduledDate: input.scheduledDate ?? null,
+          executedDate: null,
+          technicianId: input.technicianId || "",
+          clientManagerId: input.clientManagerId ?? null,
+          scope: `${plan.name} - ${item.title}`,
+          finalCondition: "",
+          notes: input.notes || "",
+          correctiveDetails: null
+        };
+        const scope = { client_id: plan.client_id, site_id: plan.site_id, area_id: plan.area_id };
+        const status = defaultStatus(orderInput);
+        const orderNumber = await nextOrderNumber(client);
+        const res = await client.query(
+          `INSERT INTO sg_maintenance_orders
+            (order_number, equipment_id, client_id, site_id, area_id, plan_id, plan_item_id, checklist_id,
+             maintenance_type, status, priority, planned_date, scheduled_date, executed_date,
+             technician_id, client_manager_id, scope, final_condition, notes, created_by, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
+           RETURNING id`,
+          [orderNumber, ...orderValues(orderInput, scope, status), actor]
+        );
+        orderIds.push(res.rows[0].id);
+        created += 1;
+      }
+    }
+    await client.query("COMMIT");
+    return { created, skipped, plans: plansProcessed, orderIds };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function approvedCount(client, orderId) {
   const res = await client.query(
     `SELECT COUNT(*)::int AS c
@@ -471,6 +548,7 @@ module.exports = {
   createOrder,
   updateOrder,
   createOrderFromPlan,
+  createOrdersFromPlans,
   softDeleteOrder,
   transitionOrderStatus,
   createApproval

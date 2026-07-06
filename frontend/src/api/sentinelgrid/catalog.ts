@@ -40,8 +40,8 @@ function qs(params: Record<string, string | number | undefined>) {
 }
 
 // --- Fabricantes ---
-export function listManufacturers(search = "") {
-  return api<{ manufacturers: SgLookup[] }>(`/sentinelgrid/manufacturers${qs({ search })}`).then((r) => r.manufacturers);
+export function listManufacturers(search = "", pageSize?: number) {
+  return api<{ manufacturers: SgLookup[] }>(`/sentinelgrid/manufacturers${qs({ search, pageSize })}`).then((r) => r.manufacturers);
 }
 export function createManufacturer(input: SgLookupInput) {
   return api<{ item: SgLookup }>("/sentinelgrid/manufacturers", { method: "POST", body: JSON.stringify(input) }).then((r) => r.item);
@@ -54,8 +54,8 @@ export function deleteManufacturer(id: number) {
 }
 
 // --- Tipos de equipamento ---
-export function listEquipmentTypes(search = "") {
-  return api<{ equipmentTypes: SgLookup[] }>(`/sentinelgrid/equipment-types${qs({ search })}`).then((r) => r.equipmentTypes);
+export function listEquipmentTypes(search = "", pageSize?: number) {
+  return api<{ equipmentTypes: SgLookup[] }>(`/sentinelgrid/equipment-types${qs({ search, pageSize })}`).then((r) => r.equipmentTypes);
 }
 export function createEquipmentType(input: SgLookupInput) {
   return api<{ item: SgLookup }>("/sentinelgrid/equipment-types", { method: "POST", body: JSON.stringify(input) }).then((r) => r.item);
@@ -68,7 +68,7 @@ export function deleteEquipmentType(id: number) {
 }
 
 // --- Modelos ---
-export function listModels(params: { manufacturerId?: number; equipmentTypeId?: number; search?: string } = {}) {
+export function listModels(params: { manufacturerId?: number; equipmentTypeId?: number; search?: string; pageSize?: number } = {}) {
   return api<{ models: SgModel[]; total: number }>(`/sentinelgrid/equipment-models${qs(params)}`);
 }
 export function createModel(input: SgModelInput) {

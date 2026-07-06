@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
 import {
   SgLookup,
   SgLookupInput,
@@ -22,6 +23,8 @@ import {
   updateModel
 } from "../../api/sentinelgrid/catalog";
 
+const PAGE_SIZE = 20;
+
 /** Seção genérica de lookup { name, notes } (Fabricantes, Tipos). */
 function LookupSection(props: {
   title: string;
@@ -36,6 +39,7 @@ function LookupSection(props: {
   const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", qKey], queryFn: load });
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<SgLookup | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,6 +50,9 @@ function LookupSection(props: {
   const mDelete = useMutation({ mutationFn: remove, onSuccess: invalidate, onError });
 
   const items = data ?? [];
+  const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <Card>
@@ -75,7 +82,7 @@ function LookupSection(props: {
           <thead><tr><th>Nome</th><th>Observações</th><th className="text-end">Ações</th></tr></thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={3} className="text-muted">Nenhum registro.</td></tr>}
-            {items.map((it) => (
+            {pageItems.map((it) => (
               <tr key={it.id}>
                 <td>{it.name}</td>
                 <td>{it.notes}</td>
@@ -90,6 +97,7 @@ function LookupSection(props: {
           </tbody>
         </Table>
       )}
+      {!isLoading && !error && <Pager page={safePage} pageSize={PAGE_SIZE} total={items.length} onPageChange={setPage} />}
 
       <Modal show={!!editing} onHide={() => setEditing(null)}>
         <Modal.Header closeButton><Modal.Title>Editar</Modal.Title></Modal.Header>
@@ -122,9 +130,10 @@ function ModelsSection() {
   const qc = useQueryClient();
   const mans = useQuery({ queryKey: ["sentinelgrid", "manufacturers"], queryFn: () => listManufacturers() });
   const types = useQuery({ queryKey: ["sentinelgrid", "equipment-types"], queryFn: () => listEquipmentTypes() });
-  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "models"], queryFn: () => listModels() });
+  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "models"], queryFn: () => listModels({ pageSize: 500 }) });
 
   const [novo, setNovo] = useState<SgModelInput>(EMPTY_MODEL);
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<SgModel | null>(null);
   const [editInput, setEditInput] = useState<SgModelInput>(EMPTY_MODEL);
   const [err, setErr] = useState<string | null>(null);
@@ -143,6 +152,9 @@ function ModelsSection() {
   const manufacturers = mans.data ?? [];
   const equipmentTypes = types.data ?? [];
   const models = data?.models ?? [];
+  const pageCount = Math.max(1, Math.ceil(models.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageModels = models.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <Card>
@@ -182,7 +194,7 @@ function ModelsSection() {
           <thead><tr><th>Modelo</th><th>Fabricante</th><th>Tipo</th><th className="text-end">Ações</th></tr></thead>
           <tbody>
             {models.length === 0 && <tr><td colSpan={4} className="text-muted">Nenhum modelo.</td></tr>}
-            {models.map((m) => (
+            {pageModels.map((m) => (
               <tr key={m.id}>
                 <td>{m.name}</td>
                 <td>{m.manufacturer_name}</td>
@@ -198,6 +210,7 @@ function ModelsSection() {
           </tbody>
         </Table>
       )}
+      {!isLoading && !error && <Pager page={safePage} pageSize={PAGE_SIZE} total={models.length} onPageChange={setPage} />}
 
       <Modal show={!!editing} onHide={() => setEditing(null)}>
         <Modal.Header closeButton><Modal.Title>Editar modelo</Modal.Title></Modal.Header>
@@ -250,7 +263,7 @@ export default function CatalogPage() {
       <LookupSection
         title="Fabricantes"
         qKey="manufacturers"
-        load={() => listManufacturers()}
+        load={() => listManufacturers("", 500)}
         create={createManufacturer}
         update={updateManufacturer}
         remove={deleteManufacturer}
@@ -258,7 +271,7 @@ export default function CatalogPage() {
       <LookupSection
         title="Tipos de equipamento"
         qKey="equipment-types"
-        load={() => listEquipmentTypes()}
+        load={() => listEquipmentTypes("", 500)}
         create={createEquipmentType}
         update={updateEquipmentType}
         remove={deleteEquipmentType}

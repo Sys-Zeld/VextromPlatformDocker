@@ -1,7 +1,7 @@
 const pool = require("../db");
 
 const BASE_FROM =
-  "FROM sg_client_managers mg JOIN sg_clients c ON c.id = mg.client_id LEFT JOIN sg_sites s ON s.id = mg.site_id";
+  "FROM sg_client_managers mg JOIN sg_clients c ON c.id = mg.client_id LEFT JOIN sg_sites s ON s.id = mg.site_id LEFT JOIN sg_areas a ON a.id = mg.area_id";
 
 async function listManagers({ clientId = null, search = "", limit = 100, offset = 0 } = {}) {
   const params = [];
@@ -22,7 +22,7 @@ async function listManagers({ clientId = null, search = "", limit = 100, offset 
   const offIdx = params.length;
   const managers = (
     await pool.query(
-      `SELECT mg.*, c.name AS client_name, s.name AS site_name
+      `SELECT mg.*, c.name AS client_name, s.name AS site_name, a.name AS area_name
          ${BASE_FROM} WHERE ${where} ORDER BY c.name ASC, mg.name ASC LIMIT $${limIdx} OFFSET $${offIdx}`,
       params
     )
@@ -37,9 +37,9 @@ async function getManager(id) {
 async function createManager(input, actor = "") {
   return (
     await pool.query(
-      `INSERT INTO sg_client_managers (client_id, site_id, name, role_type, email, phone, notes, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING *`,
-      [input.clientId, input.siteId, input.name, input.roleType, input.email, input.phone, input.notes, actor]
+      `INSERT INTO sg_client_managers (client_id, site_id, area_id, name, role_type, email, phone, notes, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING *`,
+      [input.clientId, input.siteId, input.areaId, input.name, input.roleType, input.email, input.phone, input.notes, actor]
     )
   ).rows[0];
 }
@@ -48,10 +48,10 @@ async function updateManager(id, input, actor = "") {
   return (
     await pool.query(
       `UPDATE sg_client_managers
-          SET client_id = $2, site_id = $3, name = $4, role_type = $5, email = $6, phone = $7, notes = $8,
-              updated_by = $9, updated_at = NOW()
+          SET client_id = $2, site_id = $3, area_id = $4, name = $5, role_type = $6, email = $7, phone = $8, notes = $9,
+              updated_by = $10, updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
-      [id, input.clientId, input.siteId, input.name, input.roleType, input.email, input.phone, input.notes, actor]
+      [id, input.clientId, input.siteId, input.areaId, input.name, input.roleType, input.email, input.phone, input.notes, actor]
     )
   ).rows[0] || null;
 }

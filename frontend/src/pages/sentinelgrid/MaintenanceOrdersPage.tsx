@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
+import { formatDate } from "../../utils/format";
 import { listClients } from "../../api/sentinelgrid/clients";
 import { listEquipment, SgEquipment } from "../../api/sentinelgrid/equipment";
 import { getEquipmentPlan, listEquipmentPlans } from "../../api/sentinelgrid/plans";
@@ -21,6 +23,7 @@ import {
   SgOrderStatus,
   createMaintenanceOrder,
   createMaintenanceOrderFromPlan,
+  createMaintenanceOrdersFromPlans,
   createOrderApproval,
   deleteMaintenanceOrder,
   getMaintenanceOrder,
@@ -184,6 +187,8 @@ function toInput(order: SgMaintenanceOrder): SgMaintenanceOrderInput {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function MaintenanceOrdersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -198,6 +203,8 @@ export default function MaintenanceOrdersPage() {
   const [transitionForm, setTransitionForm] = useState<SgOrderStatusInput>(EMPTY_STATUS);
   const [selectedOrder, setSelectedOrder] = useState<SgMaintenanceOrder | null>(null);
   const [showFromPlan, setShowFromPlan] = useState(false);
+  const [fromPlanAll, setFromPlanAll] = useState(false);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [showApproval, setShowApproval] = useState(false);
   const [showTransition, setShowTransition] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
@@ -209,6 +216,7 @@ export default function MaintenanceOrdersPage() {
   const [attachmentForm, setAttachmentForm] = useState(EMPTY_ATTACHMENT);
   const [actionError, setActionError] = useState<string | null>(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
+  const [page, setPage] = useState(1);
 
   const params = useMemo(() => ({
     search,
@@ -217,7 +225,11 @@ export default function MaintenanceOrdersPage() {
     maintenanceType
   }), [search, clientId, status, maintenanceType]);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "maintenance-orders", params], queryFn: () => listMaintenanceOrders(params) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["sentinelgrid", "maintenance-orders", params, page],
+    queryFn: () => listMaintenanceOrders({ ...params, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
+  });
   const clients = useQuery({ queryKey: ["sentinelgrid", "clients"], queryFn: () => listClients() });
   const equipment = useQuery({ queryKey: ["sentinelgrid", "equipment", "order-select"], queryFn: () => listEquipment({ pageSize: 100 }) });
   const plans = useQuery({ queryKey: ["sentinelgrid", "plans", "order-select"], queryFn: () => listEquipmentPlans({ active: true }) });
@@ -238,6 +250,21 @@ export default function MaintenanceOrdersPage() {
   const onError = (e: unknown) => setActionError((e as Error).message);
   const mCreate = useMutation({ mutationFn: createMaintenanceOrder, onSuccess: () => { setShow(false); invalidate(); }, onError });
   const mCreateFromPlan = useMutation({ mutationFn: createMaintenanceOrderFromPlan, onSuccess: () => { setShowFromPlan(false); invalidate(); }, onError });
+  const mCreateFromPlanAll = useMutation({
+    mutationFn: (planId: number) => createMaintenanceOrdersFromPlans({
+      planIds: [planId],
+      checklistId: fromPlanForm.checklistId,
+      priority: fromPlanForm.priority,
+      technicianId: fromPlanForm.technicianId,
+      notes: fromPlanForm.notes
+    }),
+    onSuccess: (r) => {
+      setShowFromPlan(false);
+      setInfoMsg(`Geradas ${r.created} ordem(ns) do plano${r.skipped ? ` · ${r.skipped} já existia(m)` : ""}.`);
+      invalidate();
+    },
+    onError
+  });
   const mUpdate = useMutation({ mutationFn: (p: { id: number; input: SgMaintenanceOrderInput }) => updateMaintenanceOrder(p.id, p.input), onSuccess: () => { setShow(false); invalidate(); }, onError });
   const mDelete = useMutation({ mutationFn: deleteMaintenanceOrder, onSuccess: invalidate, onError });
   const mTransition = useMutation({ mutationFn: (p: { id: number; input: SgOrderStatusInput }) => transitionMaintenanceOrderStatus(p.id, p.input), onSuccess: () => { setShowTransition(false); setSelectedOrder(null); invalidate(); }, onError });
@@ -286,6 +313,7 @@ export default function MaintenanceOrdersPage() {
   };
 
   const openFromPlan = () => {
+    setFromPlanAll(false);
     setFromPlanForm({ ...EMPTY_FROM_PLAN });
     setActionError(null);
     setShowFromPlan(true);
@@ -370,7 +398,8 @@ export default function MaintenanceOrdersPage() {
 
   const submitFromPlan = (ev: React.FormEvent) => {
     ev.preventDefault();
-    mCreateFromPlan.mutate(fromPlanForm);
+    if (fromPlanAll) mCreateFromPlanAll.mutate(fromPlanForm.planId);
+    else mCreateFromPlan.mutate(fromPlanForm);
   };
 
   const submitMeasurement = (ev: React.FormEvent) => {
@@ -416,36 +445,37 @@ export default function MaintenanceOrdersPage() {
           <div className="row g-2 align-items-end">
             <div className="col-md-4">
               <Form.Label>Busca</Form.Label>
-              <Form.Control value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Numero, TAG ou escopo" />
+              <Form.Control value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Numero, TAG ou escopo" />
             </div>
             <div className="col-md-3">
               <Form.Label>Cliente</Form.Label>
-              <Form.Select value={clientId} onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : "")}>
+              <Form.Select value={clientId} onChange={(e) => { setClientId(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
                 <option value="">Todos</option>
                 {(clients.data?.clients || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-2">
               <Form.Label>Status</Form.Label>
-              <Form.Select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <Form.Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">Todos</option>
                 {ORDER_STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-2">
               <Form.Label>Tipo</Form.Label>
-              <Form.Select value={maintenanceType} onChange={(e) => setMaintenanceType(e.target.value)}>
+              <Form.Select value={maintenanceType} onChange={(e) => { setMaintenanceType(e.target.value); setPage(1); }}>
                 <option value="">Todos</option>
                 {MAINTENANCE_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-1 d-grid">
-              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); setStatus(""); setMaintenanceType(""); }}>Limpar</Button>
+              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); setStatus(""); setMaintenanceType(""); setPage(1); }}>Limpar</Button>
             </div>
           </div>
         </Card.Body>
       </Card>
 
+      {infoMsg && <Alert variant="success" dismissible onClose={() => setInfoMsg(null)}>{infoMsg}</Alert>}
       {actionError && !show && !showFromPlan && !showApproval && !showTransition && !showChecklist && !showExecution && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
 
       <Card>
@@ -472,7 +502,7 @@ export default function MaintenanceOrdersPage() {
                     </td>
                     <td>{labelOf(MAINTENANCE_TYPE_OPTIONS, order.maintenance_type)}</td>
                     <td><Badge bg={meta.variant as string}>{meta.label}</Badge></td>
-                    <td>{order.planned_date || "-"}</td>
+                    <td>{formatDate(order.planned_date)}</td>
                     <td>{order.scope || order.plan_name || order.checklist_name || "-"}</td>
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
@@ -492,6 +522,7 @@ export default function MaintenanceOrdersPage() {
             </tbody>
           </Table>
         )}
+        {!isLoading && !error && <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />}
       </Card>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg">
@@ -599,25 +630,43 @@ export default function MaintenanceOrdersPage() {
           <Modal.Body>
             {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
             <div className="row g-3">
-              <div className="col-md-8">
+              <div className="col-12">
                 <Form.Label>Plano</Form.Label>
                 <Form.Select required value={fromPlanForm.planId || ""} onChange={(e) => setFromPlanForm({ ...fromPlanForm, planId: Number(e.target.value), planItemId: null })}>
                   <option value="">Selecione...</option>
                   {(plans.data?.plans || []).map((p) => <option key={p.id} value={p.id}>{p.equipment_tag || `#${p.equipment_id}`} / {p.name}</option>)}
                 </Form.Select>
               </div>
-              <div className="col-md-4">
-                <Form.Label>Data planejada</Form.Label>
-                <Form.Control type="date" value={fromPlanForm.plannedDate || ""} onChange={(e) => setFromPlanForm({ ...fromPlanForm, plannedDate: e.target.value || null })} />
+              <div className="col-12">
+                <Form.Check
+                  type="switch"
+                  label="Gerar OMs de todos os itens do plano"
+                  checked={fromPlanAll}
+                  onChange={(e) => setFromPlanAll(e.target.checked)}
+                />
               </div>
-              <div className="col-md-8">
-                <Form.Label>Item do plano</Form.Label>
-                <Form.Select value={fromPlanForm.planItemId ?? ""} disabled={!fromPlanForm.planId || selectedPlan.isLoading} onChange={(e) => setFromPlanForm({ ...fromPlanForm, planItemId: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">Primeiro item ativo</option>
-                  {(selectedPlan.data?.items || []).map((item) => <option key={item.id} value={item.id}>{item.order_index} - {item.title}</option>)}
-                </Form.Select>
-              </div>
-              <div className="col-md-4">
+              {fromPlanAll ? (
+                <div className="col-12">
+                  <Alert variant="info" className="py-2 mb-0 small">
+                    Serão geradas OMs para <strong>todos os {(selectedPlan.data?.items || []).length} itens</strong> do plano, cada uma na data do item. Itens que já têm OM são ignorados.
+                  </Alert>
+                </div>
+              ) : (
+                <>
+                  <div className="col-md-8">
+                    <Form.Label>Item do plano</Form.Label>
+                    <Form.Select value={fromPlanForm.planItemId ?? ""} disabled={!fromPlanForm.planId || selectedPlan.isLoading} onChange={(e) => setFromPlanForm({ ...fromPlanForm, planItemId: e.target.value ? Number(e.target.value) : null })}>
+                      <option value="">Primeiro item ativo</option>
+                      {(selectedPlan.data?.items || []).map((item) => <option key={item.id} value={item.id}>{item.order_index} - {item.title}</option>)}
+                    </Form.Select>
+                  </div>
+                  <div className="col-md-4">
+                    <Form.Label>Data planejada</Form.Label>
+                    <Form.Control type="date" value={fromPlanForm.plannedDate || ""} onChange={(e) => setFromPlanForm({ ...fromPlanForm, plannedDate: e.target.value || null })} />
+                  </div>
+                </>
+              )}
+              <div className="col-md-6">
                 <Form.Label>Prioridade</Form.Label>
                 <Form.Control value={fromPlanForm.priority} onChange={(e) => setFromPlanForm({ ...fromPlanForm, priority: e.target.value })} />
               </div>
@@ -632,10 +681,12 @@ export default function MaintenanceOrdersPage() {
                 <Form.Label>Tecnico / equipe</Form.Label>
                 <Form.Control value={fromPlanForm.technicianId} onChange={(e) => setFromPlanForm({ ...fromPlanForm, technicianId: e.target.value })} />
               </div>
-              <div className="col-12">
-                <Form.Label>Escopo gerado</Form.Label>
-                <Form.Control value={fromPlanForm.scope} onChange={(e) => setFromPlanForm({ ...fromPlanForm, scope: e.target.value })} placeholder="Se vazio, usa Plano - Item" />
-              </div>
+              {!fromPlanAll && (
+                <div className="col-md-6">
+                  <Form.Label>Escopo gerado</Form.Label>
+                  <Form.Control value={fromPlanForm.scope} onChange={(e) => setFromPlanForm({ ...fromPlanForm, scope: e.target.value })} placeholder="Se vazio, usa Plano - Item" />
+                </div>
+              )}
               <div className="col-12">
                 <Form.Label>Observacoes</Form.Label>
                 <Form.Control as="textarea" rows={2} value={fromPlanForm.notes} onChange={(e) => setFromPlanForm({ ...fromPlanForm, notes: e.target.value })} />
@@ -644,7 +695,9 @@ export default function MaintenanceOrdersPage() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowFromPlan(false)}>Cancelar</Button>
-            <Button type="submit" disabled={mCreateFromPlan.isPending || !fromPlanForm.planId}>{mCreateFromPlan.isPending ? "Gerando..." : "Gerar OM"}</Button>
+            <Button type="submit" disabled={mCreateFromPlan.isPending || mCreateFromPlanAll.isPending || !fromPlanForm.planId}>
+              {mCreateFromPlan.isPending || mCreateFromPlanAll.isPending ? "Gerando..." : (fromPlanAll ? "Gerar OMs dos itens" : "Gerar OM")}
+            </Button>
           </Modal.Footer>
         </Form>
       </Modal>

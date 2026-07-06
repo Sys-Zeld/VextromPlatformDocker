@@ -63,8 +63,8 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
   return s ? `?${s}` : "";
 }
 
-export function listEquipmentPlans(params: { equipmentId?: number; clientId?: number; active?: boolean | null; search?: string } = {}) {
-  return api<{ plans: SgEquipmentPlan[]; total: number }>(`/sentinelgrid/equipment-plans${qs(params)}`);
+export function listEquipmentPlans(params: { equipmentId?: number; clientId?: number; active?: boolean | null; search?: string; page?: number; pageSize?: number } = {}) {
+  return api<{ plans: SgEquipmentPlan[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/equipment-plans${qs(params)}`);
 }
 
 export function getEquipmentPlan(id: number) {

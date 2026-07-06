@@ -43,7 +43,6 @@ const SENTINELGRID_NAV: NavItem[] = [
   { to: "/sentinelgrid", label: "Início", icon: "space_dashboard", end: true },
   { to: "/sentinelgrid/clients", label: "Clientes", icon: "groups" },
   { to: "/sentinelgrid/sites", label: "Sites", icon: "location_city" },
-  { to: "/sentinelgrid/areas", label: "Áreas", icon: "grid_view" },
   { to: "/sentinelgrid/catalog", label: "Catálogo", icon: "category" },
   { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "precision_manufacturing" },
   { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "assignment_ind" },
@@ -52,6 +51,7 @@ const SENTINELGRID_NAV: NavItem[] = [
   { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
   { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "assignment" },
   { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar_month" },
+  { to: "/sentinelgrid/alerts", label: "Alertas", icon: "notifications_active" },
   { to: "/sentinelgrid/history", label: "Historico", icon: "history" },
   { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "rule" },
   { to: "/sentinelgrid/dashboard", label: "Dashboard", icon: "monitoring" }

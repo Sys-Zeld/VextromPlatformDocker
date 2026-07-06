@@ -22,6 +22,12 @@ function planInvalidError() {
   return err;
 }
 
+function programInvalidError() {
+  const err = new Error("Programa invalido ou inexistente");
+  err.code = "SG_PROGRAM_INVALID";
+  return err;
+}
+
 async function assertEquipmentExists(client, equipmentId) {
   const res = await client.query("SELECT id FROM sg_equipment WHERE id = $1 AND deleted_at IS NULL", [equipmentId]);
   if (!res.rows[0]) throw equipmentInvalidError();
@@ -151,6 +157,67 @@ async function softDeletePlan(id, actor = "") {
   }
 }
 
+// Mapeia intervalo (meses) para a periodicidade do enum (fallback 'personalizada').
+function intervalToPeriodicity(months) {
+  return { 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual", 24: "bienal" }[months] || "personalizada";
+}
+
+function intervalLabel(months) {
+  return months === 1 ? "mensal" : `a cada ${months} meses`;
+}
+
+// Gera, para cada equipamento selecionado, um plano por intervalo (bloco de datas).
+// Cada plano recebe um item por ocorrência. Uma única transação para tudo.
+async function generatePlansForProgram({ programId, equipmentIds, plans, actor = "" }) {
+  const program = (await pool.query(
+    "SELECT id, name, maintenance_type FROM sg_maintenance_programs WHERE id = $1 AND deleted_at IS NULL",
+    [programId]
+  )).rows[0];
+  if (!program) throw programInvalidError();
+
+  const client = await pool.connect();
+  let createdPlans = 0;
+  let createdItems = 0;
+  const planIds = [];
+  try {
+    await client.query("BEGIN");
+    for (const equipmentId of equipmentIds) {
+      await assertEquipmentExists(client, equipmentId);
+      for (const spec of plans) {
+        const periodicity = intervalToPeriodicity(spec.intervalMonths);
+        const planName = `Plano - ${program.name} (${intervalLabel(spec.intervalMonths)})`;
+        const plan = (await client.query(
+          `INSERT INTO sg_equipment_plans
+            (equipment_id, program_id, name, maintenance_type, periodicity, adjustments, active, notes, created_by, updated_by)
+           VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, TRUE, '', $6, $6)
+           RETURNING id`,
+          [equipmentId, program.id, planName, program.maintenance_type, periodicity, actor]
+        )).rows[0];
+        createdPlans += 1;
+        planIds.push(plan.id);
+        let idx = 0;
+        for (const nextDueDate of spec.dates) {
+          await client.query(
+            `INSERT INTO sg_plan_items
+              (plan_id, title, maintenance_type, periodicity, next_due_date, order_index, notes, created_by, updated_by)
+             VALUES ($1, $2, $3, $4, $5, $6, '', $7, $7)`,
+            [plan.id, program.name, program.maintenance_type, periodicity, nextDueDate, idx, actor]
+          );
+          idx += 1;
+          createdItems += 1;
+        }
+      }
+    }
+    await client.query("COMMIT");
+    return { program: program.name, createdPlans, createdItems, planIds };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function assertPlanExists(planId) {
   const res = await pool.query("SELECT id FROM sg_equipment_plans WHERE id = $1 AND deleted_at IS NULL", [planId]);
   if (!res.rows[0]) throw planInvalidError();
@@ -195,6 +262,7 @@ module.exports = {
   createPlan,
   updatePlan,
   softDeletePlan,
+  generatePlansForProgram,
   createPlanItem,
   updatePlanItem,
   softDeletePlanItem

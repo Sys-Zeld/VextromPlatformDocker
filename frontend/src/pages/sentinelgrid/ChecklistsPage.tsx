@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
+import Pager from "../../components/sentinelgrid/Pager";
+
+const PAGE_SIZE = 20;
 import { listEquipmentTypes, listManufacturers, listModels } from "../../api/sentinelgrid/catalog";
 import { MAINTENANCE_TYPE_OPTIONS, SgMaintenanceType, listMaintenancePrograms } from "../../api/sentinelgrid/programs";
 import {
@@ -87,6 +90,7 @@ export default function ChecklistsPage() {
   const [itemEditId, setItemEditId] = useState<number | null>(null);
   const [itemForm, setItemForm] = useState<SgChecklistItemInput>(EMPTY_ITEM);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const params = useMemo(() => ({
     search,
@@ -94,7 +98,11 @@ export default function ChecklistsPage() {
     maintenanceType: filterMaintenanceType
   }), [search, filterType, filterMaintenanceType]);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ["sentinelgrid", "checklists", params], queryFn: () => listChecklists(params) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["sentinelgrid", "checklists", params, page],
+    queryFn: () => listChecklists({ ...params, page, pageSize: PAGE_SIZE }),
+    placeholderData: keepPreviousData
+  });
   const selected = useQuery({
     queryKey: ["sentinelgrid", "checklist", selectedId],
     queryFn: () => getChecklist(selectedId as number),
@@ -176,24 +184,24 @@ export default function ChecklistsPage() {
           <div className="row g-2 align-items-end">
             <div className="col-md-5">
               <Form.Label>Busca</Form.Label>
-              <Form.Control value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nome ou descricao" />
+              <Form.Control value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Nome ou descricao" />
             </div>
             <div className="col-md-3">
               <Form.Label>Tipo de equipamento</Form.Label>
-              <Form.Select value={filterType} onChange={(e) => setFilterType(e.target.value ? Number(e.target.value) : "")}>
+              <Form.Select value={filterType} onChange={(e) => { setFilterType(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
                 <option value="">Todos</option>
                 {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-3">
               <Form.Label>Tipo de manutencao</Form.Label>
-              <Form.Select value={filterMaintenanceType} onChange={(e) => setFilterMaintenanceType(e.target.value)}>
+              <Form.Select value={filterMaintenanceType} onChange={(e) => { setFilterMaintenanceType(e.target.value); setPage(1); }}>
                 <option value="">Todos</option>
                 {MAINTENANCE_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </Form.Select>
             </div>
             <div className="col-md-1 d-grid">
-              <Button variant="outline-secondary" onClick={() => { setSearch(""); setFilterType(""); setFilterMaintenanceType(""); }}>Limpar</Button>
+              <Button variant="outline-secondary" onClick={() => { setSearch(""); setFilterType(""); setFilterMaintenanceType(""); setPage(1); }}>Limpar</Button>
             </div>
           </div>
         </Card.Body>
@@ -235,6 +243,7 @@ export default function ChecklistsPage() {
             </tbody>
           </Table>
         )}
+        {!isLoading && !error && <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />}
       </Card>
 
       <Modal show={showChecklist} onHide={() => setShowChecklist(false)} size="lg">

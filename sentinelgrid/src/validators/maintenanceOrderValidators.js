@@ -58,6 +58,18 @@ const orderFromPlanInputSchema = z.object({
   notes: text(2000)
 });
 
+// Geração em lote de OMs a partir de um ou mais planos (todos os itens).
+const orderFromPlansInputSchema = z.object({
+  planIds: z.array(z.coerce.number().int().positive()).min(1, "Informe ao menos um plano"),
+  checklistId: optionalId,
+  priority: z.string().trim().max(80).optional().default("normal"),
+  scheduledDate: optionalDateTime,
+  technicianId: text(160),
+  clientManagerId: optionalId,
+  notes: text(2000),
+  skipExisting: z.boolean().optional().default(true)
+});
+
 const maintenanceOrderInputSchema = z.object({
   equipmentId: z.coerce.number().int().positive("Equipamento e obrigatorio"),
   planId: optionalId,
@@ -104,14 +116,20 @@ function parseOrderFromPlanInput(body) {
   return orderFromPlanInputSchema.parse(body ?? {});
 }
 
+function parseOrderFromPlansInput(body) {
+  return orderFromPlansInputSchema.parse(body ?? {});
+}
+
 module.exports = {
   maintenanceOrderInputSchema,
   correctiveDetailsSchema,
   orderApprovalInputSchema,
   orderStatusInputSchema,
   orderFromPlanInputSchema,
+  orderFromPlansInputSchema,
   parseMaintenanceOrderInput,
   parseOrderApprovalInput,
   parseOrderStatusInput,
-  parseOrderFromPlanInput
+  parseOrderFromPlanInput,
+  parseOrderFromPlansInput
 };

@@ -13,6 +13,11 @@ export interface Equipment {
   serial_number: string | null;
   tag_number: string | null;
   power: string | null;
+  rated_ac_input_voltage: string | null;
+  rated_ac_output_voltage: string | null;
+  rated_dc_voltage: string | null;
+  input_frequency: string | null;
+  output_frequency: string | null;
   year_of_manufacture: string | null;
   notes: string | null;
 }

@@ -7,6 +7,7 @@ const nullable = (schema) =>
 const clientManagerInputSchema = z.object({
   clientId: z.coerce.number().int().positive("Cliente é obrigatório"),
   siteId: nullable(z.coerce.number().int().positive()),
+  areaId: nullable(z.coerce.number().int().positive()),
   name: z.string().trim().min(1, "Nome é obrigatório").max(200, "Nome muito longo"),
   roleType: z.string().trim().max(120).optional().default(""),
   email: z.string().trim().max(200).optional().default(""),

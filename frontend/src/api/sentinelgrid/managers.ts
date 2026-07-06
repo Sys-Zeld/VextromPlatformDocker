@@ -6,6 +6,8 @@ export interface SgManager {
   client_name?: string;
   site_id: number | null;
   site_name?: string | null;
+  area_id: number | null;
+  area_name?: string | null;
   name: string;
   role_type: string;
   email: string;
@@ -18,6 +20,7 @@ export interface SgManager {
 export interface SgManagerInput {
   clientId: number;
   siteId: number | null;
+  areaId: number | null;
   name: string;
   roleType: string;
   email: string;

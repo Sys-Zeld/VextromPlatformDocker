@@ -1,6 +1,6 @@
 const express = require("express");
 const { parseContractInput } = require("../validators/contractValidators");
-const { toValidationError, isForeignKeyError } = require("./httpErrors");
+const { toValidationError, isForeignKeyError, isUniqueViolation } = require("./httpErrors");
 const repo = require("../repositories/contractsRepository");
 
 function createContractsRouter(deps) {
@@ -11,12 +11,14 @@ function createContractsRouter(deps) {
   const actorOf = (req) => String(req.adminUsername || "");
   const notFound = { error: "Contrato não encontrado", errorCode: "SG_CONTRACT_NOT_FOUND" };
   const invalidClient = { error: "Cliente inválido ou inexistente", errorCode: "SG_CONTRACT_FK" };
+  const dupNumber = { error: "Número de contrato já existe. Gere um novo número.", errorCode: "SG_CONTRACT_DUP_NUMBER" };
 
   const handleWrite = async (fn, res) => {
     try {
       return await fn();
     } catch (err) {
       if (isForeignKeyError(err)) return res.status(400).json(invalidClient);
+      if (isUniqueViolation(err)) return res.status(409).json(dupNumber);
       throw err;
     }
   };

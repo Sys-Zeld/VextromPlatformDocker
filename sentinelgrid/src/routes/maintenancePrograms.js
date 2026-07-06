@@ -1,7 +1,9 @@
 const express = require("express");
-const { parseMaintenanceProgramInput } = require("../validators/maintenanceProgramValidators");
+const { parseMaintenanceProgramInput, parseGeneratePlansInput } = require("../validators/maintenanceProgramValidators");
 const { toValidationError, isForeignKeyError, isUniqueViolation } = require("./httpErrors");
 const repo = require("../repositories/maintenanceProgramsRepository");
+const equipmentRepo = require("../repositories/equipmentRepository");
+const plansRepo = require("../repositories/equipmentPlansRepository");
 
 function createMaintenanceProgramsRouter(deps) {
   const router = express.Router();
@@ -93,6 +95,45 @@ function createMaintenanceProgramsRouter(deps) {
       const ok = await repo.softDeleteProgram(Number(req.params.id), actorOf(req));
       if (!ok) return res.status(404).json(notFound);
       res.status(204).end();
+    })
+  );
+
+  // Equipamentos que casam com o escopo do programa (para a tela "Gerar Planos").
+  router.get(
+    "/:id/scope-equipment",
+    asyncHandler(async (req, res) => {
+      const program = await repo.getProgram(Number(req.params.id));
+      if (!program) return res.status(404).json(notFound);
+      const equipment = await equipmentRepo.listByProgramScope(program);
+      res.json({ equipment, total: equipment.length });
+    })
+  );
+
+  // Gera um plano por equipamento selecionado, com um item por ocorrência (datas).
+  router.post(
+    "/:id/generate-plans",
+    asyncHandler(async (req, res) => {
+      const program = await repo.getProgram(Number(req.params.id));
+      if (!program) return res.status(404).json(notFound);
+      let input;
+      try {
+        input = parseGeneratePlansInput(req.body);
+      } catch (err) {
+        return res.status(400).json(toValidationError(err));
+      }
+      try {
+        const result = await plansRepo.generatePlansForProgram({
+          programId: program.id,
+          equipmentIds: input.equipmentIds,
+          plans: input.plans,
+          actor: actorOf(req)
+        });
+        res.status(201).json(result);
+      } catch (err) {
+        if (err && err.code === "SG_EQUIPMENT_INVALID") return res.status(400).json({ error: "Equipamento invalido ou inexistente", errorCode: "SG_EQUIPMENT_INVALID" });
+        if (isForeignKeyError(err)) return res.status(400).json(invalidRef);
+        throw err;
+      }
     })
   );
 
