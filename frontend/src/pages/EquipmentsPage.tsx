@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
@@ -12,7 +13,9 @@ import {
 } from "../api/equipments";
 import type { Site } from "../api/customers";
 import { listEquipment } from "../api/sentinelgrid/equipment";
-import { mergeNames } from "../utils/suggest";
+import RegistrySuggestField, { RegistrySuggestItem } from "../components/sentinelgrid/RegistrySuggestField";
+import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/RegistrySyncModal";
+import { exportEquipmentToReportService, listSgExportableEquipment } from "../api/sentinelgrid/integration";
 
 const EMPTY: EquipmentInput = {
   customerId: "",
@@ -51,6 +54,15 @@ export default function EquipmentsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<EquipmentInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showImportEq, setShowImportEq] = useState(false);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+
+  // Equipamentos do SentinelGrid disponíveis para trazer ao Service Report (via façade do SG).
+  const sgExportableEq = useQuery({
+    queryKey: ["sentinelgrid", "integration", "sg-exportable-equipment"],
+    queryFn: listSgExportableEquipment,
+    enabled: showImportEq
+  });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["equipments"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -62,6 +74,22 @@ export default function EquipmentsPage() {
     onError
   });
   const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
+  // Traz UM equipamento do SentinelGrid (com cliente + site). Acionado pela caixa de
+  // sugestão da TAG ao escolher um item do outro módulo.
+  const mExportEq = useMutation({
+    mutationFn: (sgEquipmentId: number) => exportEquipmentToReportService(sgEquipmentId),
+    onSuccess: ({ result }) => {
+      setShow(false);
+      setImportInfo(`Equipamento "${result.equipmentTag}" enviado do SentinelGrid (cliente "${result.rsCustomerName}").`);
+      invalidate();
+    },
+    onError
+  });
+  const onTagImportPick = async (it: RegistrySuggestItem) => {
+    if (await confirmDialog(`Importar o equipamento "${it.name}" do SentinelGrid? Isso trará também o cliente e o site dele.`)) {
+      mExportEq.mutate(it.id);
+    }
+  };
 
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
@@ -71,10 +99,18 @@ export default function EquipmentsPage() {
   }
 
   const { equipments = [], customers = [], sites = [] } = data ?? {};
-  const tagOptions = mergeNames(
-    equipments.map((e: Equipment) => e.tag_number),
-    (sgEquip.data?.equipment ?? []).map((e) => e.tag)
-  );
+  // Caixa de sugestão da TAG rotulada por módulo (só itens com TAG). Item do RS só preenche
+  // a TAG; item do SG dispara a importação (traz o equipamento + cliente + site).
+  const tagSuggestItems: RegistrySuggestItem[] = [
+    ...equipments.filter((e: Equipment) => (e.tag_number || "").trim()).map((e: Equipment) => ({ id: e.id, name: e.tag_number as string, module: "rs" as const })),
+    ...(sgEquip.data?.equipment ?? []).filter((e) => (e.tag || "").trim()).map((e) => ({ id: e.id, name: e.tag, module: "sg" as const }))
+  ];
+  const importEqItems: SyncPickItem[] = (sgExportableEq.data?.equipment ?? []).map((e) => ({
+    id: e.id,
+    name: e.tag || `#${e.id}`,
+    subtitle: [e.client_name, e.site_name].filter(Boolean).join(" · "),
+    linked: e.rs_linked
+  }));
   const sitesForCustomer = (customerId: number | "") =>
     // customer_id pode vir como string (bigint do Postgres) — coerção numérica.
     sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
@@ -92,12 +128,15 @@ export default function EquipmentsPage() {
 
   return (
     <>
-      <datalist id="vx-rs-equipment-tag-options">{tagOptions.map((t) => <option key={t} value={t} />)}</datalist>
       <Card>
       <Card.Header className="d-flex justify-content-between align-items-center">
         <span>Equipamentos</span>
-        <Button size="sm" onClick={openNew}>Novo equipamento</Button>
+        <div className="d-flex gap-2">
+          <Button size="sm" variant="outline-primary" onClick={() => setShowImportEq(true)}>Buscar do SentinelGrid</Button>
+          <Button size="sm" onClick={openNew}>Novo equipamento</Button>
+        </div>
       </Card.Header>
+      {importInfo && <Alert variant="success" className="m-3" dismissible onClose={() => setImportInfo(null)}>{importInfo}</Alert>}
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Table striped responsive hover className="mb-0 align-middle">
         <thead>
@@ -116,7 +155,7 @@ export default function EquipmentsPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />
                 </div>
               </td>
             </tr>
@@ -170,7 +209,14 @@ export default function EquipmentsPage() {
               </div>
               <div className="col-md-4">
                 <Form.Label>TAG</Form.Label>
-                <Form.Control list="vx-rs-equipment-tag-options" value={form.tagNumber} onChange={(e) => setForm({ ...form, tagNumber: e.target.value })} />
+                <RegistrySuggestField
+                  currentModule="rs"
+                  value={form.tagNumber}
+                  onChange={(v) => setForm({ ...form, tagNumber: v })}
+                  items={tagSuggestItems}
+                  onImportPick={onTagImportPick}
+                />
+                <Form.Text className="text-muted">Escolha uma TAG do próprio módulo para preencher; do SentinelGrid, importa o equipamento.</Form.Text>
               </div>
               <div className="col-md-4">
                 <Form.Label>Potência</Form.Label>
@@ -193,6 +239,36 @@ export default function EquipmentsPage() {
         </Form>
       </Modal>
       </Card>
+
+      <RegistrySyncModal
+        show={showImportEq}
+        onHide={() => setShowImportEq(false)}
+        showHierarchyOptions={false}
+        multiSelect
+        title="Buscar equipamento do SentinelGrid"
+        description="Traz o equipamento selecionado do SentinelGrid para o Service Report, incluindo o cliente e o site dele. Reimportar atualiza o registro vinculado, sem duplicar."
+        items={importEqItems}
+        loading={sgExportableEq.isLoading}
+        loadError={sgExportableEq.error ? (sgExportableEq.error as Error).message : null}
+        confirmLabel="Importar"
+        onConfirm={async (id) => (await exportEquipmentToReportService(id)).result}
+        onConfirmMany={async (ids) => {
+          let imported = 0;
+          let updated = 0;
+          for (const id of ids) {
+            const wasLinked = importEqItems.find((it) => it.id === id)?.linked;
+            await exportEquipmentToReportService(id);
+            if (wasLinked) updated += 1;
+            else imported += 1;
+          }
+          return `${ids.length} equipamento(s) processado(s): ${imported} importado(s) e ${updated} atualizado(s).`;
+        }}
+        successMessage={(r) => `Equipamento "${r.equipmentTag}" enviado ao Service Report (cliente "${r.rsCustomerName}").`}
+        onDone={() => {
+          invalidate();
+          qc.invalidateQueries({ queryKey: ["sentinelgrid", "integration", "sg-exportable-equipment"] });
+        }}
+      />
     </>
   );
 }

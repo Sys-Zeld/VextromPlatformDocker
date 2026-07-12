@@ -135,14 +135,15 @@ export function updateAlertRule(criticality: string, input: SgAlertRuleInput) {
 }
 
 // Metadados de apresentação (A.7 cores / A.8 prioridades / A.10 status geral).
+// Cores alinhadas à paleta de status da identidade Vextrom.
 export const COLOR_HEX: Record<SgCalendarColor, string> = {
-  verde: "#1a9850",
-  azul: "#3b82f6",
-  amarelo: "#f6c343",
-  laranja: "#f2851b",
-  vermelho: "#d7301f",
-  roxo: "#8b5cf6",
-  cinza: "#9aa0a6"
+  verde: "#3F7D2A",
+  azul: "#0E6BA8",
+  amarelo: "#DFAE18",
+  laranja: "#E6512E",
+  vermelho: "#C93F3F",
+  roxo: "#8B5CF6",
+  cinza: "#9AA1A6"
 };
 
 export const COLOR_LABEL: Record<SgCalendarColor, string> = {
@@ -155,13 +156,14 @@ export const COLOR_LABEL: Record<SgCalendarColor, string> = {
   cinza: "Cancelado / desativado"
 };
 
-// Cores próprias da prioridade (A.8): amarelo → laranja → vermelho claro → vermelho escuro.
+// Cores próprias da prioridade (A.8): escala crescente azul → amarelo → laranja →
+// vermelho → vermelho profundo, ancorada na paleta de status da identidade.
 export const PRIORITY_META: Record<SgAlertPriority, { label: string; hex: string; text: string }> = {
-  informativo: { label: "Informativo", hex: "#3b82f6", text: "#fff" },
-  atencao: { label: "Atenção", hex: "#f6c343", text: "#000" },
-  importante: { label: "Importante", hex: "#f2851b", text: "#fff" },
-  critico: { label: "Crítico", hex: "#ef5350", text: "#fff" },
-  emergencial: { label: "Emergencial", hex: "#b71c1c", text: "#fff" }
+  informativo: { label: "Informativo", hex: "#0E6BA8", text: "#fff" },
+  atencao: { label: "Atenção", hex: "#DFAE18", text: "#1F2529" },
+  importante: { label: "Importante", hex: "#E6512E", text: "#fff" },
+  critico: { label: "Crítico", hex: "#C93F3F", text: "#fff" },
+  emergencial: { label: "Emergencial", hex: "#B71C1C", text: "#fff" }
 };
 
 export const EVENT_KIND_LABEL: Record<string, string> = {

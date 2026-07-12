@@ -6,7 +6,7 @@
 
 :root {
   --vx-sidebar-width: 264px;
-  --vx-sidebar-rail: 76px;
+  --vx-sidebar-rail: 115px;
 
   /* Sidebar: gradiente verde-escuro fixo (contraste premium) */
   --vx-sidebar-bg-1: #16271c;
@@ -19,50 +19,69 @@
 :root[data-theme="darkvextrom"] {
   color-scheme: dark;
 
-  --background: #080d0b;
-  --surface: #101714;
-  --surface-2: #16211c;
-  --surface-3: #1c2b24;
-  --border: #2b3f35;
-  --text: #ecf7f0;
-  --muted-text: #9bb3a6;
+  /* Identidade Vextrom — Dark mode / Mission critical
+     (verde como assinatura visual; superfícies de sala de controle) */
+  --background: #0E1114;
+  --surface: #151A1E;
+  --surface-2: #1F2529;
+  --surface-3: #262D31;
+  --border: #2B3338;
+  --border-strong: #39413D;
+  --text: #E6E8EA;
+  --text-strong: #F4F6F7;
+  --muted-text: #8D9092;
+  --muted-text-2: #5F686D;
 
-  --primary: #39e87d;
-  --primary-hover: #63f59d;
-  --danger: #ff6b7a;
-  --warning: #f5bf4f;
-  --success: #39e87d;
+  --primary: #4F7F2A;
+  --primary-hover: #5E9434;
+  --primary-deep: #2E4F1A;
+  --primary-bright: #8CCB5A;
+  --primary-soft: rgba(79, 127, 42, 0.18);
+  --primary-border: rgba(79, 127, 42, 0.45);
+  --danger: #D94A4A;
+  --warning: #DFAE18;
+  --success: #6FAF3C;
 
-  --section-header-bg: #113c27;
-  --section-header-text: #eafff1;
+  --status-success: #6FAF3C;
+  --status-info: #2F8CC7;
+  --status-warning: #DFAE18;
+  --status-critical: #D94A4A;
+  --status-emergency: #FF5A3D;
+  --status-disabled: #4A5257;
 
-  --input-bg: #0b1210;
-  --input-border: #315044;
-  --input-focus: #39e87d;
-  --input-text: #edf8f1;
-  --input-placeholder: #789187;
+  --section-header-bg: #16341F;
+  --section-header-text: #E4F2D9;
 
-  --toggle-on: #39e87d;
-  --toggle-off: #43584e;
+  --input-bg: #1A2024;
+  --input-border: #2B3338;
+  --input-focus: #5E9434;
+  --input-text: #E6E8EA;
+  --input-placeholder: #6B746F;
 
-  --badge-default-bg: rgba(57, 232, 125, 0.14);
-  --badge-default-text: #baffd2;
+  --toggle-on: #5E9434;
+  --toggle-off: #3A423E;
 
-  --shadow-sm: 0 14px 34px rgba(0, 0, 0, 0.36);
-  --shadow-md: 0 24px 60px rgba(0, 0, 0, 0.48);
-  --surface-rgb: 16, 23, 20;
+  --badge-default-bg: rgba(79, 127, 42, 0.18);
+  --badge-default-text: #8CCB5A;
 
-  --vx-sidebar-bg-1: #06100c;
-  --vx-sidebar-bg-2: #13251c;
-  --vx-sidebar-text: #d4eadc;
-  --vx-sidebar-muted: #7ea28f;
-  --vx-sidebar-active: #ffffff;
+  --shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 22px 54px rgba(0, 0, 0, 0.5);
+  --surface-rgb: 21, 26, 30;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+
+  --vx-sidebar-bg-1: #0A0D0F;
+  --vx-sidebar-bg-2: #0C0F11;
+  --vx-sidebar-text: #C3CDC7;
+  --vx-sidebar-muted: #7C877F;
+  --vx-sidebar-active: #F4F6F7;
 }
 
 /* ---- Mapeamento Bootstrap → tokens Vextrom ---------------------------- */
 :root {
   --bs-primary: var(--primary);
-  --bs-primary-rgb: 95, 167, 58;
+  --bs-primary-rgb: 79, 127, 42;
   --bs-body-bg: var(--background);
   --bs-body-color: var(--text);
   --bs-border-color: var(--border);
@@ -76,16 +95,16 @@
 
 :root[data-theme="darkvextrom"] {
   --bs-primary: var(--primary);
-  --bs-primary-rgb: 57, 232, 125;
+  --bs-primary-rgb: 79, 127, 42;
   --bs-body-bg: var(--background);
   --bs-body-color: var(--text);
   --bs-secondary-color: var(--muted-text);
   --bs-tertiary-bg: var(--surface-2);
   --bs-emphasis-color: #ffffff;
-  --bs-heading-color: var(--text);
+  --bs-heading-color: var(--text-strong);
   --bs-border-color: var(--border);
-  --bs-link-color: #63f59d;
-  --bs-link-hover-color: #b8ffd1;
+  --bs-link-color: #8CCB5A;
+  --bs-link-hover-color: #A9DC83;
 }
 
 body {
@@ -96,8 +115,8 @@ body {
 
 :root[data-theme="darkvextrom"] body {
   background:
-    radial-gradient(circle at 22% -10%, rgba(57, 232, 125, 0.18), transparent 28rem),
-    linear-gradient(135deg, #060a08 0%, #0a100d 38%, #111a16 100%);
+    linear-gradient(90deg, rgba(79, 127, 42, 0.035), transparent 18rem),
+    #0e1114;
 }
 
 /* ---- Shell: sidebar + conteúdo --------------------------------------- */
@@ -120,8 +139,9 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .vx-sidebar {
-  border-right: 1px solid rgba(57, 232, 125, 0.18);
-  box-shadow: 18px 0 52px rgba(0, 0, 0, 0.46);
+  background: linear-gradient(180deg, #0e1114 0%, #0c0f11 100%);
+  border-right: 1px solid #20272b;
+  box-shadow: 12px 0 38px rgba(0, 0, 0, 0.38);
 }
 
 .vx-collapse-btn {
@@ -141,14 +161,21 @@ body {
 .vx-collapse-btn .material-symbols-outlined { font-size: 22px; }
 
 .vx-brand {
-  display: flex;
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  grid-template-areas:
+    "logo text"
+    "toggle .";
   align-items: center;
-  gap: 12px;
+  column-gap: 12px;
+  row-gap: 8px;
   padding: 18px 18px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
-.vx-brand__text { display: flex; flex-direction: column; min-width: 0; }
+.vx-collapse-btn { grid-area: toggle; justify-self: center; }
+.vx-brand__text { grid-area: text; display: flex; flex-direction: column; min-width: 0; }
 .vx-brand__logo {
+  grid-area: logo;
   display: grid;
   place-items: center;
   width: 66px;
@@ -160,18 +187,23 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .vx-brand__logo {
-  background: linear-gradient(145deg, #eafff1, #8fffb8);
-  box-shadow: 0 0 0 1px rgba(57, 232, 125, 0.4), 0 14px 34px rgba(57, 232, 125, 0.18);
+  background: #151a1e;
+  border: 1px solid #2b3338;
+  box-shadow: inset 0 0 0 1px rgba(79, 127, 42, 0.08), 0 12px 24px rgba(0, 0, 0, 0.28);
 }
 .vx-brand__logo img {
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   animation: vx-logo-hue 6s linear infinite;
   will-change: filter;
 }
 @keyframes vx-logo-hue {
   from { filter: hue-rotate(0deg); }
   to { filter: hue-rotate(360deg); }
+}
+:root[data-theme="darkvextrom"] .vx-brand__logo img {
+  animation: none;
+  filter: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .vx-brand__logo img { animation: none; }
@@ -207,20 +239,35 @@ body {
   transition: background 0.15s ease, color 0.15s ease;
   border-left: 3px solid transparent;
 }
-.vx-nav__link .material-symbols-outlined { font-size: 21px; opacity: 0.9; }
+.vx-nav__link .material-symbols-outlined { font-size: 25.2px; opacity: 0.9; }
 .vx-nav__link:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
 }
 .vx-nav__link.active {
-  background: linear-gradient(90deg, rgba(95, 167, 58, 0.28), rgba(95, 167, 58, 0.05));
+  background: linear-gradient(90deg, rgba(79, 127, 42, 0.28), rgba(79, 127, 42, 0.05));
   color: var(--vx-sidebar-active);
   border-left-color: var(--primary);
 }
 
 :root[data-theme="darkvextrom"] .vx-nav__link.active {
-  background: linear-gradient(90deg, rgba(57, 232, 125, 0.24), rgba(57, 232, 125, 0.06));
-  box-shadow: inset 0 0 0 1px rgba(57, 232, 125, 0.12);
+  background: rgba(79, 127, 42, 0.14);
+  border-left-color: var(--primary);
+  box-shadow: inset 0 0 0 1px rgba(79, 127, 42, 0.5);
+  color: #eaf5e2;
+}
+
+:root[data-theme="darkvextrom"] .vx-nav__link:hover {
+  background: #1f2529;
+  color: #ffffff;
+}
+
+:root[data-theme="darkvextrom"] .vx-nav__link .material-symbols-outlined {
+  color: #b0b6b2;
+}
+
+:root[data-theme="darkvextrom"] .vx-nav__link.active .material-symbols-outlined {
+  color: var(--primary-bright);
 }
 .vx-nav__spacer { flex: 1; }
 /* Link "Sistema legado": mesmo tratamento de ícone/alinhamento dos itens de
@@ -248,15 +295,19 @@ body {
 .vx-shell.is-collapsed .vx-sidebar { width: var(--vx-sidebar-rail); }
 .vx-shell.is-collapsed .vx-content { margin-left: var(--vx-sidebar-rail); }
 .vx-shell.is-collapsed .vx-brand {
-  flex-direction: column;
-  gap: 8px;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "logo"
+    "toggle";
+  justify-items: center;
+  row-gap: 8px;
   padding: 16px 8px;
 }
 .vx-shell.is-collapsed .vx-brand__text,
 .vx-shell.is-collapsed .vx-nav__label,
 .vx-shell.is-collapsed .vx-nav__section { display: none; }
 .vx-shell.is-collapsed .vx-brand__logo { width: 54px; height: 54px; }
-.vx-shell.is-collapsed .vx-brand__logo img { width: 40px; height: 40px; }
+.vx-shell.is-collapsed .vx-brand__logo img { width: 48px; height: 48px; }
 .vx-shell.is-collapsed .vx-nav { padding: 12px 10px; }
 .vx-shell.is-collapsed .vx-nav__link {
   justify-content: center;
@@ -281,8 +332,9 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .vx-topbar {
-  background: rgba(9, 14, 12, 0.86);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  background: rgba(14, 17, 20, 0.94);
+  border-bottom-color: #1f2529;
+  box-shadow: none;
 }
 .vx-topbar__title { font-weight: 700; font-size: 1.05rem; margin: 0; color: var(--text); }
 .vx-topbar__crumb { font-size: 0.78rem; color: var(--muted-text); }
@@ -304,9 +356,20 @@ body {
 .vx-main { padding: 28px; flex: 1; }
 
 :root[data-theme="darkvextrom"] .vx-main {
-  background:
-    linear-gradient(180deg, rgba(57, 232, 125, 0.035), transparent 240px),
-    transparent;
+  background: #0e1114;
+}
+
+:root[data-theme="darkvextrom"] .vx-user,
+:root[data-theme="darkvextrom"] .form-select,
+:root[data-theme="darkvextrom"] .form-control {
+  background-color: #1f2529;
+  border-color: #2b3338;
+}
+
+:root[data-theme="darkvextrom"] .vx-user__avatar {
+  background: rgba(79, 127, 42, 0.16);
+  color: var(--primary-bright);
+  box-shadow: inset 0 0 0 1px rgba(79, 127, 42, 0.34);
 }
 
 /* ---- Refinamento de componentes Bootstrap ---------------------------- */
@@ -318,8 +381,18 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .card {
-  background: linear-gradient(180deg, rgba(22, 33, 28, 0.96), rgba(13, 20, 17, 0.98));
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  background: #151a1e;
+  border-color: #2b3338;
+  box-shadow: none;
+}
+
+:root[data-theme="darkvextrom"] .card-header {
+  background: #151a1e;
+  border-bottom-color: #2b3338;
+}
+
+:root[data-theme="darkvextrom"] .card-footer {
+  border-top-color: #2b3338;
 }
 .card-header {
   background: transparent;
@@ -370,33 +443,35 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .btn-primary {
-  --bs-btn-color: #062011;
-  --bs-btn-hover-color: #04170c;
-  --bs-btn-active-color: #04170c;
+  --bs-btn-color: #f4f6f7;
+  --bs-btn-hover-color: #f4f6f7;
+  --bs-btn-active-color: #f4f6f7;
+  box-shadow: 0 0 0 1px rgba(79, 127, 42, 0.26), 0 10px 22px rgba(79, 127, 42, 0.12);
 }
 
 :root[data-theme="darkvextrom"] .btn-outline-primary {
   --bs-btn-color: var(--primary);
-  --bs-btn-hover-color: #04170c;
-  --bs-btn-active-color: #04170c;
+  --bs-btn-hover-color: #f4f6f7;
+  --bs-btn-active-color: #f4f6f7;
+  --bs-btn-border-color: rgba(79, 127, 42, 0.68);
 }
 
 :root[data-theme="darkvextrom"] .btn-outline-secondary {
-  --bs-btn-color: #cfe4d7;
-  --bs-btn-border-color: #425d50;
+  --bs-btn-color: #c7cccf;
+  --bs-btn-border-color: #39413d;
   --bs-btn-hover-color: #ffffff;
-  --bs-btn-hover-bg: #203229;
-  --bs-btn-hover-border-color: #5f8572;
-  --bs-btn-active-bg: #263a30;
-  --bs-btn-active-border-color: #6a907c;
+  --bs-btn-hover-bg: #262d31;
+  --bs-btn-hover-border-color: #5a635e;
+  --bs-btn-active-bg: #2b3338;
+  --bs-btn-active-border-color: #5a635e;
 }
 
 :root[data-theme="darkvextrom"] .btn-outline-danger {
-  --bs-btn-color: #ff95a0;
-  --bs-btn-border-color: rgba(255, 107, 122, 0.55);
-  --bs-btn-hover-bg: #ff6b7a;
-  --bs-btn-hover-border-color: #ff6b7a;
-  --bs-btn-hover-color: #250308;
+  --bs-btn-color: #e88b91;
+  --bs-btn-border-color: rgba(217, 74, 74, 0.55);
+  --bs-btn-hover-bg: #d94a4a;
+  --bs-btn-hover-border-color: #d94a4a;
+  --bs-btn-hover-color: #2a0a0a;
 }
 
 .table {
@@ -411,8 +486,8 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .table {
-  --bs-table-hover-bg: rgba(57, 232, 125, 0.08);
-  --bs-table-striped-bg: rgba(255, 255, 255, 0.025);
+  --bs-table-hover-bg: rgba(79, 127, 42, 0.08);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.018);
   --bs-table-striped-color: var(--text);
 }
 .table > thead th {
@@ -443,13 +518,13 @@ body {
 
 :root[data-theme="darkvextrom"] .form-control:focus,
 :root[data-theme="darkvextrom"] .form-select:focus {
-  background: #0d1713;
-  box-shadow: 0 0 0 0.18rem rgba(57, 232, 125, 0.2), 0 0 24px rgba(57, 232, 125, 0.08);
+  background: #1f2529;
+  box-shadow: 0 0 0 0.16rem rgba(79, 127, 42, 0.2);
 }
 
 :root[data-theme="darkvextrom"] .form-check-input {
-  background-color: #18251f;
-  border-color: #456455;
+  background-color: #1f2529;
+  border-color: #2b3338;
 }
 
 :root[data-theme="darkvextrom"] .form-check-input:checked {
@@ -463,25 +538,66 @@ body {
 :root[data-theme="darkvextrom"] .form-control[readonly],
 :root[data-theme="darkvextrom"] .form-control:read-only,
 :root[data-theme="darkvextrom"] .form-select:disabled {
-  background-color: #1c2b24;
-  border-color: #3a5548;
+  background-color: #151a1e;
+  border-color: #2b3338;
   border-style: dashed;
-  color: #b7ccc0;
+  color: #b8beba;
   opacity: 1;
-  -webkit-text-fill-color: #b7ccc0; /* mantém o texto legível em inputs desabilitados (WebKit) */
+  -webkit-text-fill-color: #b8beba; /* mantém o texto legível em inputs desabilitados (WebKit) */
 }
 :root[data-theme="darkvextrom"] .form-control:disabled::placeholder,
 :root[data-theme="darkvextrom"] .form-control:read-only::placeholder {
   color: #6f887c;
 }
 :root[data-theme="darkvextrom"] .form-check-input:disabled {
-  background-color: #1c2b24;
-  border-color: #3a5548;
+  background-color: #151a1e;
+  border-color: #2b3338;
   opacity: 0.85;
 }
 .form-label { font-weight: 600; font-size: 0.85rem; color: var(--text); margin-bottom: 0.3rem; }
 
 .badge { font-weight: 600; border-radius: 999px; padding: 0.4em 0.7em; }
+
+/* Botão sólido de perigo alinhado à paleta da identidade (exclusões). */
+.btn-danger {
+  --bs-btn-bg: var(--danger);
+  --bs-btn-border-color: var(--danger);
+  --bs-btn-hover-bg: var(--danger);
+  --bs-btn-hover-border-color: var(--danger);
+  --bs-btn-active-bg: var(--danger);
+  --bs-btn-active-border-color: var(--danger);
+  --bs-btn-disabled-bg: var(--danger);
+  --bs-btn-disabled-border-color: var(--danger);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+}
+
+/* Diálogo de confirmação (ConfirmDialog): selo de ícone tematizado. */
+.vx-confirm__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+}
+.vx-confirm__icon .material-symbols-outlined { font-size: 20px; line-height: 1; }
+.vx-confirm__icon--danger {
+  background: rgba(201, 63, 63, 0.14);
+  color: var(--status-critical);
+}
+.vx-confirm__icon--primary {
+  background: rgba(var(--bs-primary-rgb), 0.14);
+  color: var(--primary);
+}
+:root[data-theme="darkvextrom"] .vx-confirm__icon--danger {
+  background: rgba(217, 74, 74, 0.16);
+  color: var(--status-critical);
+}
+:root[data-theme="darkvextrom"] .vx-confirm__icon--primary {
+  color: var(--primary-bright);
+}
 
 .pagination {
   --bs-pagination-color: var(--text);
@@ -529,16 +645,17 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .nav-tabs .nav-link.active {
-  color: #dfffea;
-  background: linear-gradient(180deg, rgba(57, 232, 125, 0.14), rgba(16, 23, 20, 1));
-  border-color: rgba(57, 232, 125, 0.42) rgba(57, 232, 125, 0.22) var(--surface);
+  color: var(--primary-bright);
+  background: #151a1e;
+  border-color: transparent transparent var(--primary-bright);
+  box-shadow: inset 0 -2px 0 var(--primary-bright);
 }
 
 :root[data-theme="darkvextrom"] .dropdown-menu {
   --bs-dropdown-bg: var(--surface);
   --bs-dropdown-color: var(--text);
   --bs-dropdown-link-color: var(--text);
-  --bs-dropdown-link-hover-bg: var(--surface-2);
+  --bs-dropdown-link-hover-bg: #262d31;
   --bs-dropdown-link-hover-color: #ffffff;
   --bs-dropdown-border-color: var(--border);
 }
@@ -548,18 +665,18 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .bg-light {
-  background-color: #1e2c25 !important;
+  background-color: #1f2529 !important;
   color: var(--text) !important;
 }
 
 :root[data-theme="darkvextrom"] .text-dark {
-  color: #06120c !important;
+  color: #0e1114 !important;
 }
 
 :root[data-theme="darkvextrom"] code {
-  color: #8effb6;
-  background: rgba(57, 232, 125, 0.1);
-  border: 1px solid rgba(57, 232, 125, 0.18);
+  color: #8ccb5a;
+  background: rgba(79, 127, 42, 0.1);
+  border: 1px solid rgba(79, 127, 42, 0.18);
   border-radius: 6px;
   padding: 0.1rem 0.32rem;
 }
@@ -569,15 +686,15 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .alert-danger {
-  --bs-alert-color: #ffd9dd;
-  --bs-alert-bg: rgba(255, 107, 122, 0.14);
-  --bs-alert-border-color: rgba(255, 107, 122, 0.34);
+  --bs-alert-color: #f4d6d9;
+  --bs-alert-bg: rgba(217, 74, 74, 0.14);
+  --bs-alert-border-color: rgba(217, 74, 74, 0.34);
 }
 
 :root[data-theme="darkvextrom"] .alert-warning {
   --bs-alert-color: #ffe9ae;
-  --bs-alert-bg: rgba(245, 191, 79, 0.14);
-  --bs-alert-border-color: rgba(245, 191, 79, 0.34);
+  --bs-alert-bg: rgba(223, 174, 24, 0.14);
+  --bs-alert-border-color: rgba(223, 174, 24, 0.34);
 }
 
 :root[data-theme="darkvextrom"] .ql-toolbar.ql-snow,
@@ -586,12 +703,12 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .ql-toolbar.ql-snow {
-  background: #111c17;
+  background: #171d21;
   border-radius: 10px 10px 0 0;
 }
 
 :root[data-theme="darkvextrom"] .ql-container.ql-snow {
-  background: #0c1310;
+  background: #12181c;
   color: var(--text);
   border-radius: 0 0 10px 10px;
 }
@@ -601,16 +718,16 @@ body {
 }
 
 :root[data-theme="darkvextrom"] .ql-snow .ql-stroke {
-  stroke: #c4dece;
+  stroke: #c7cccf;
 }
 
 :root[data-theme="darkvextrom"] .ql-snow .ql-fill,
 :root[data-theme="darkvextrom"] .ql-snow .ql-stroke.ql-fill {
-  fill: #c4dece;
+  fill: #c7cccf;
 }
 
 :root[data-theme="darkvextrom"] .ql-snow .ql-picker {
-  color: #c4dece;
+  color: #c7cccf;
 }
 
 :root[data-theme="darkvextrom"] .ql-snow .ql-picker-options {
@@ -641,8 +758,8 @@ body {
 
 :root[data-theme="darkvextrom"] .vx-kpi {
   background:
-    linear-gradient(145deg, rgba(57, 232, 125, 0.12), rgba(57, 232, 125, 0.02) 42%),
-    linear-gradient(160deg, var(--surface), #0c1411);
+    linear-gradient(145deg, rgba(79, 127, 42, 0.1), rgba(79, 127, 42, 0.02) 42%),
+    linear-gradient(160deg, var(--surface), #12181c);
 }
 .vx-kpi__value { font-size: 2rem; font-weight: 750; color: var(--text); line-height: 1; }
 .vx-kpi__label { font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-text); margin-top: 6px; }
@@ -651,6 +768,7 @@ body {
   display: grid; place-items: center;
   background: rgba(var(--bs-primary-rgb), 0.14); color: var(--primary);
 }
+:root[data-theme="darkvextrom"] .vx-kpi__icon { color: var(--primary-bright); }
 
 /* Ícone do botão de menu (toggle) alinhado ao mesmo tamanho dos itens da nav */
 /* Botoes somente-icone em tabelas: caixa e coluna nao podem comprimir. */
@@ -739,6 +857,7 @@ body {
   font-size: 0.78rem;
   font-weight: 700;
 }
+:root[data-theme="darkvextrom"] .vx-chapter-carousel__index { color: var(--primary-bright); }
 
 .vx-chapter-carousel__title {
   min-width: 0;
@@ -757,15 +876,15 @@ body {
 
 :root[data-theme="darkvextrom"] .vx-chapter-carousel__item {
   background:
-    linear-gradient(145deg, rgba(57, 232, 125, 0.07), rgba(255, 255, 255, 0.02)),
-    #0d1512;
+    linear-gradient(145deg, rgba(79, 127, 42, 0.06), rgba(255, 255, 255, 0.02)),
+    #12181c;
 }
 
 :root[data-theme="darkvextrom"] .vx-chapter-carousel__item.is-active {
   background:
-    linear-gradient(145deg, rgba(57, 232, 125, 0.24), rgba(57, 232, 125, 0.06) 58%),
-    #101b16;
-  box-shadow: 0 0 0 1px rgba(57, 232, 125, 0.22), 0 12px 28px rgba(0, 0, 0, 0.22);
+    linear-gradient(145deg, rgba(79, 127, 42, 0.2), rgba(79, 127, 42, 0.06) 58%),
+    #18201c;
+  box-shadow: 0 0 0 1px rgba(79, 127, 42, 0.22), 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 
 @media (max-width: 575px) {
@@ -817,6 +936,10 @@ body {
   .vx-sidebar.is-open { transform: translateX(0); }
   .vx-content { margin-left: 0; }
   .vx-sidebar-toggle { display: inline-grid; }
+  .vx-brand {
+    grid-template-areas: "logo text";
+    row-gap: 0;
+  }
   .vx-backdrop {
     position: fixed; inset: 0; background: rgba(16, 30, 22, 0.45); z-index: 1029;
   }
@@ -824,10 +947,92 @@ body {
      e o sanduíche fica no topbar, não na sidebar. */
   .vx-shell.is-collapsed .vx-sidebar { width: var(--vx-sidebar-width); }
   .vx-shell.is-collapsed .vx-content { margin-left: 0; }
-  .vx-shell.is-collapsed .vx-brand { flex-direction: row; padding: 18px 18px 16px; }
+  .vx-shell.is-collapsed .vx-brand {
+    grid-template-columns: 66px minmax(0, 1fr);
+    grid-template-areas: "logo text";
+    justify-items: stretch;
+    padding: 18px 18px 16px;
+  }
   .vx-shell.is-collapsed .vx-brand__text,
   .vx-shell.is-collapsed .vx-nav__label,
   .vx-shell.is-collapsed .vx-nav__section { display: revert; }
   .vx-shell.is-collapsed .vx-nav__link { justify-content: flex-start; padding: 10px 14px; gap: 12px; }
   .vx-collapse-btn { display: none; }
 }
+
+/* =========================================================================
+   SentinelGrid — conjunto de ícones SVG (SgIcon)
+   Traço = currentColor (adapta ao tema claro/escuro). Destaque = verde fixo
+   da marca (.sg-i-accent / .sg-i-accent-fill).
+   ========================================================================= */
+:root { --sg-icon-accent: #4F7F2A; }
+:root[data-theme="darkvextrom"] { --sg-icon-accent: #6FAF3C; }
+.sg-icon { display: block; flex-shrink: 0; }
+.sg-icon .sg-i-accent { stroke: var(--sg-icon-accent); }
+.sg-icon .sg-i-accent-fill { fill: var(--sg-icon-accent); stroke: none; }
+/* Variante monocromática: o acento também segue a cor (para botões, onde o ícone
+   deve acompanhar a cor do texto do botão em vez do verde da marca). */
+.sg-icon--mono .sg-i-accent { stroke: currentColor; }
+.sg-icon--mono .sg-i-accent-fill { fill: currentColor; }
+.vx-nav__link .sg-icon { width: 34.8px; height: 34.8px; opacity: 0.92; }
+.vx-nav__link:hover .sg-icon,
+.vx-nav__link.active .sg-icon { opacity: 1; }
+
+/* Marca (logo real, PNG) no hero da Home */
+.sg-home-brand { border-radius: 16px; flex-shrink: 0; }
+
+/* Ícone de contexto no cabeçalho (topbar) */
+.vx-topbar__icon { border-radius: 10px; }
+
+/* Toggle mobile do menu: o app-icon substitui o glifo "menu" (sem moldura de botão) */
+.vx-sidebar-toggle--icon {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.vx-sidebar-toggle--icon:hover { opacity: 0.85; }
+
+/* Home do SentinelGrid — grade de cards de acesso rápido */
+.sg-home-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sg-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.sg-home-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sg-home-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+}
+.sg-home-card__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 14px;
+  background: rgba(79, 127, 42, 0.12);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.sg-home-card__title { font-weight: 600; line-height: 1.15; }
+.sg-home-card__desc { font-size: 0.8rem; color: var(--muted-text); }

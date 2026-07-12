@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -123,7 +124,7 @@ export default function OrdersPage() {
                   <IconAction icon="edit_note" label="Editor (novo)" variant="outline-primary" as={Link} to={`/orders/${o.id}/editor`} />
                   <IconAction icon="open_in_new" label="Editor completo (legado)" variant="outline-secondary" href={`/admin/report-service/orders/${o.id}`} />
                   <IconAction icon="picture_as_pdf" label="Histórico de PDFs" variant="outline-secondary" as={Link} to={`/orders/${o.id}/pdf-history`} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />
                 </div>
               </td>
             </tr>

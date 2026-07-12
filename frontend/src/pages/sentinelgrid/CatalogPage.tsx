@@ -1,9 +1,11 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 import {
   SgLookup,
   SgLookupInput,
@@ -69,7 +71,7 @@ function LookupSection(props: {
             <Form.Control value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           <div className="col-md-2 d-grid">
-            <Button type="submit" disabled={mCreate.isPending || !name.trim()}>Adicionar</Button>
+            <Button type="submit" disabled={mCreate.isPending || !name.trim()} className="d-inline-flex align-items-center gap-1"><SgIcon name="add-circle" size={16} className="sg-icon--mono" />Adicionar</Button>
           </div>
         </Form>
       </Card.Body>
@@ -88,8 +90,8 @@ function LookupSection(props: {
                 <td>{it.notes}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditing({ ...it })} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir "${it.name}"?`)) mDelete.mutate(it.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => setEditing({ ...it })} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir "${it.name}"?`)) mDelete.mutate(it.id); }} />
                   </div>
                 </td>
               </tr>
@@ -181,7 +183,7 @@ function ModelsSection() {
             <Form.Control required value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} />
           </div>
           <div className="col-md-2 d-grid">
-            <Button type="submit" disabled={mCreate.isPending || !novo.manufacturerId || !novo.equipmentTypeId || !novo.name.trim()}>Adicionar</Button>
+            <Button type="submit" disabled={mCreate.isPending || !novo.manufacturerId || !novo.equipmentTypeId || !novo.name.trim()} className="d-inline-flex align-items-center gap-1"><SgIcon name="add-circle" size={16} className="sg-icon--mono" />Adicionar</Button>
           </div>
         </Form>
       </Card.Body>
@@ -201,8 +203,8 @@ function ModelsSection() {
                 <td>{m.equipment_type_name}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(m)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o modelo "${m.name}"?`)) mDelete.mutate(m.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(m)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o modelo "${m.name}"?`)) mDelete.mutate(m.id); }} />
                   </div>
                 </td>
               </tr>

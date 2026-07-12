@@ -1735,15 +1735,29 @@ ${bodyHtml}
     },
 
     async createEquipment(req, res) {
-      const created = await service.createEquipment(mapEquipmentBody(req.body));
-      return res.status(201).json(created);
+      try {
+        const created = await service.createEquipment(mapEquipmentBody(req.body));
+        return res.status(201).json(created);
+      } catch (err) {
+        if (err && err.errorCode === "EQUIPMENT_TAG_DUPLICATE") {
+          return res.status(409).json({ error: err.message, errorCode: err.errorCode });
+        }
+        throw err;
+      }
     },
 
     async updateEquipment(req, res) {
       const id = Number(req.params.id);
-      const updated = await service.updateEquipment(id, mapEquipmentBody(req.body));
+      try {
+        const updated = await service.updateEquipment(id, mapEquipmentBody(req.body));
       if (!updated) return res.status(404).json({ error: "Equipamento não encontrado." });
       return res.json(updated);
+      } catch (err) {
+        if (err && err.errorCode === "EQUIPMENT_TAG_DUPLICATE") {
+          return res.status(409).json({ error: err.message, errorCode: err.errorCode });
+        }
+        throw err;
+      }
     },
 
     async deleteEquipment(req, res) {

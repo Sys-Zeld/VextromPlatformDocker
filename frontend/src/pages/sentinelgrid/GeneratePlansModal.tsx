@@ -86,7 +86,7 @@ function MiniMonth({ year, month0, marks, onToggle, windowStart, windowEnd }: {
                     <span
                       onClick={() => onToggle(key)}
                       title={marked ? "Remover data" : "Incluir data"}
-                      style={{ cursor: "pointer", display: "inline-block", width: 16, height: 16, lineHeight: "16px", borderRadius: "50%", background: marked ? "#3b82f6" : undefined, color: marked ? "#fff" : undefined }}
+                      style={{ cursor: "pointer", display: "inline-block", width: 16, height: 16, lineHeight: "16px", borderRadius: "50%", background: marked ? "#4F7F2A" : undefined, color: marked ? "#fff" : undefined }}
                     >{day}</span>
                   </td>
                 );

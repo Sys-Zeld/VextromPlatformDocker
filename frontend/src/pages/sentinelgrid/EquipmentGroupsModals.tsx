@@ -1,7 +1,9 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../../components/IconAction";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 import {
   SgEquipmentGroup,
   addGroupMembers,
@@ -77,7 +79,7 @@ export function AddToGroupModal({ equipmentIds, siteId, siteName, onHide, onDone
       {!result && (
         <Modal.Footer>
           <Button variant="secondary" onClick={onHide}>Cancelar</Button>
-          <Button onClick={() => save.mutate()} disabled={!canSave}>{save.isPending ? "Salvando…" : "Adicionar"}</Button>
+          <Button onClick={() => save.mutate()} disabled={!canSave} className="d-inline-flex align-items-center gap-1"><SgIcon name="add-circle" size={16} className="sg-icon--mono" />{save.isPending ? "Salvando…" : "Adicionar"}</Button>
         </Modal.Footer>
       )}
     </Modal>
@@ -135,7 +137,7 @@ export function GroupsModal({ clients, onHide }: { clients: { id: number; name: 
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
                         <IconAction icon={openId === g.id ? "expand_less" : "expand_more"} label="Membros" variant="outline-secondary" onClick={() => setOpenId(openId === g.id ? null : g.id)} />
-                        <IconAction icon="delete" label="Excluir grupo" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o grupo "${g.name}"?`)) mDelete.mutate(g.id); }} />
+                        <IconAction icon="trash" label="Excluir grupo" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o grupo "${g.name}"?`)) mDelete.mutate(g.id); }} />
                       </div>
                     </td>
                   </tr>

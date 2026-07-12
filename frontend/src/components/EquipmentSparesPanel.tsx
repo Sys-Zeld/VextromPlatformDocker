@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
@@ -135,7 +136,7 @@ export default function EquipmentSparesPanel() {
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
                         <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditModal({ id: s.id, form: toInput(s) })} />
-                        <IconAction icon="link_off" label="Remover do equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Remover "${s.description}" deste equipamento?`)) mDelete.mutate(s.id); }} />
+                        <IconAction icon="link_off" label="Remover do equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Remover "${s.description}" deste equipamento?`)) mDelete.mutate(s.id); }} />
                       </div>
                     </td>
                   </tr>

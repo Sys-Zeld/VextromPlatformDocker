@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -271,7 +272,7 @@ export default function OrderEditorPage() {
               </Button>
             )}
             {status === "approved" && isSystemAdmin && (
-              <Button size="sm" variant="warning" disabled={mRevalidate.isPending} onClick={() => { if (confirm("Revalidar a OS aprovada? Ela volta para 'valid' e a revisão do relatório é incrementada.")) mRevalidate.mutate(); }}>
+              <Button size="sm" variant="warning" disabled={mRevalidate.isPending} onClick={async () => { if (await confirmDialog("Revalidar a OS aprovada? Ela volta para 'valid' e a revisão do relatório é incrementada.")) mRevalidate.mutate(); }}>
                 {mRevalidate.isPending ? "Revalidando…" : "Revalidar OS"}
               </Button>
             )}
@@ -326,7 +327,7 @@ export default function OrderEditorPage() {
                 <span>Diário de bordo <Badge bg="light" text="dark" className="ms-2">{dailyLogs.length}</Badge></span>
                 {!locked && (
                   <div className="d-flex gap-2">
-                    <Button size="sm" variant="outline-primary" disabled={mConclusion.isPending} onClick={() => { if (confirm("Gerar/atualizar a conclusão geral a partir dos registros via IA?")) mConclusion.mutate(); }}>
+                    <Button size="sm" variant="outline-primary" disabled={mConclusion.isPending} onClick={async () => { if (await confirmDialog("Gerar/atualizar a conclusão geral a partir dos registros via IA?")) mConclusion.mutate(); }}>
                       {mConclusion.isPending ? "Gerando…" : "Gerar conclusão (IA)"}
                     </Button>
                     <Button size="sm" onClick={openNewLog}>Novo registro</Button>
@@ -347,7 +348,7 @@ export default function OrderEditorPage() {
                         {!locked && (
                           <div className="vx-actions justify-content-end">
                             <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditLog(l)} />
-                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteLog.isPending} onClick={() => { if (confirm("Excluir este registro?")) mDeleteLog.mutate(l.id); }} />
+                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteLog.isPending} onClick={async () => { if (await confirmDialog("Excluir este registro?")) mDeleteLog.mutate(l.id); }} />
                           </div>
                         )}
                       </td>
@@ -381,7 +382,7 @@ export default function OrderEditorPage() {
                       <td className="text-end">
                         <div className="vx-actions justify-content-end">
                           {!locked && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(t)} />}
-                          {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este apontamento?")) mDelete.mutate(t.id); }} />}
+                          {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir este apontamento?")) mDelete.mutate(t.id); }} />}
                         </div>
                       </td>
                     </tr>
@@ -458,7 +459,7 @@ export default function OrderEditorPage() {
                         {!locked && (
                           <div className="vx-actions justify-content-end">
                             <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEditCmp(c)} />
-                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCmp.isPending} onClick={() => { if (confirm("Excluir este componente?")) mDeleteCmp.mutate(c.id); }} />
+                            <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCmp.isPending} onClick={async () => { if (await confirmDialog("Excluir este componente?")) mDeleteCmp.mutate(c.id); }} />
                           </div>
                         )}
                       </td>

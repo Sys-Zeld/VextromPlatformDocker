@@ -146,6 +146,12 @@ async function softDeletePlan(id, actor = "") {
           WHERE plan_id = $1 AND deleted_at IS NULL`,
         [id, actor]
       );
+      // Cascata: as ordens geradas a partir deste plano também são excluídas.
+      await client.query(
+        `UPDATE sg_maintenance_orders SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
+          WHERE plan_id = $1 AND deleted_at IS NULL`,
+        [id, actor]
+      );
     }
     await client.query("COMMIT");
     return res.rowCount > 0;

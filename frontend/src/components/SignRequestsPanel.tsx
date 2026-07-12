@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -126,8 +127,8 @@ export default function SignRequestsPanel(props: {
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
                       {!locked && r.status === "pending" && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(r)} />}
-                      {!locked && r.status === "pending" && <Button size="sm" variant="outline-warning" disabled={mCancel.isPending} onClick={() => { if (confirm("Cancelar este link de assinatura?")) mCancel.mutate(r.id); }}>Cancelar</Button>}
-                      {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir esta assinatura eletrônica?")) mDelete.mutate(r.id); }} />}
+                      {!locked && r.status === "pending" && <Button size="sm" variant="outline-warning" disabled={mCancel.isPending} onClick={async () => { if (await confirmDialog("Cancelar este link de assinatura?")) mCancel.mutate(r.id); }}>Cancelar</Button>}
+                      {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir esta assinatura eletrônica?")) mDelete.mutate(r.id); }} />}
                     </div>
                   </td>
                 </tr>
@@ -152,7 +153,7 @@ export default function SignRequestsPanel(props: {
                     <td>{fmtDate(r.updated_at)}</td>
                     <td>{String(r.notes || "").replace(/^RECUSA:\s*/i, "") || "—"}</td>
                     <td className="text-end">
-                      {!locked && <IconAction icon="delete" label="Excluir recusa" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir esta recusa de assinatura?")) mDelete.mutate(r.id); }} />}
+                      {!locked && <IconAction icon="delete" label="Excluir recusa" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir esta recusa de assinatura?")) mDelete.mutate(r.id); }} />}
                     </td>
                   </tr>
                 ))}

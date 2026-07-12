@@ -16,6 +16,7 @@ const { createMaintenanceOrdersRouter } = require("./maintenanceOrders");
 const { createCalendarMapRouter } = require("./calendarMap");
 const { createCalendarAlertRulesRouter } = require("./calendarAlertRules");
 const { createAlertsRouter } = require("./alerts");
+const { createIntegrationRouter } = require("./integration");
 const { createOperationsRouter } = require("./operations");
 const { lookupRepo } = require("../repositories/lookupRepository");
 
@@ -85,6 +86,8 @@ function createSentinelGridV2Router(deps) {
   router.use("/calendar/map", createCalendarMapRouter(deps));
   router.use("/calendar/alert-rules", createCalendarAlertRulesRouter(deps));
   router.use("/alerts", createAlertsRouter(deps));
+  // Troca de cadastros com o Service Report (importar/exportar cliente + hierarquia).
+  router.use("/integration", createIntegrationRouter(deps));
   router.use("/", createOperationsRouter(deps));
 
   return router;

@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
@@ -16,7 +17,9 @@ import {
   updateClient
 } from "../../api/sentinelgrid/clients";
 import { listCustomers } from "../../api/customers";
-import { mergeNames } from "../../utils/suggest";
+import RegistrySyncModal, { SyncPickItem } from "../../components/sentinelgrid/RegistrySyncModal";
+import RegistrySuggestField, { RegistrySuggestItem } from "../../components/sentinelgrid/RegistrySuggestField";
+import { importFromReportService, listRsImportable } from "../../api/sentinelgrid/integration";
 
 const EMPTY: SgClientInput = { name: "", taxId: "", segment: "", status: "ativo", notes: "" };
 
@@ -41,6 +44,23 @@ export default function ClientsPage() {
   const [editing, setEditing] = useState<SgClient | null>(null);
   const [editInput, setEditInput] = useState<SgClientInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importPreselect, setImportPreselect] = useState<number | null>(null);
+  // Seleção múltipla (checkbox) para exclusão em lote. Mantida entre páginas.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // Clientes do Service Report disponíveis para importar (carrega só com o modal aberto).
+  const rsImportable = useQuery({
+    queryKey: ["sentinelgrid", "integration", "rs-importable"],
+    queryFn: listRsImportable,
+    enabled: showImport
+  });
+  const importItems: SyncPickItem[] = (rsImportable.data?.customers ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    subtitle: c.customer_type || undefined,
+    linked: c.sg_linked
+  }));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["sentinelgrid", "clients"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -57,15 +77,45 @@ export default function ClientsPage() {
   });
   const mDelete = useMutation({ mutationFn: deleteClient, onSuccess: invalidate, onError });
 
+  // Exclusão em lote: dispara os DELETEs em paralelo e agrega falhas parciais
+  // (ex.: cliente com sites/equipamentos vinculados que o backend recusa).
+  const mBulkDelete = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deleteClient(id)));
+      const failedIds = ids.filter((_, i) => results[i].status === "rejected");
+      return { failedIds, total: ids.length };
+    },
+    onSuccess: ({ failedIds, total }) => {
+      setSelected(new Set(failedIds)); // mantém selecionados só os que falharam
+      setActionError(
+        failedIds.length
+          ? `${failedIds.length} de ${total} cliente(s) não puderam ser excluídos (verifique sites/equipamentos vinculados).`
+          : null
+      );
+      invalidate();
+    },
+    onError
+  });
+
+  const toggleOne = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const openEdit = (c: SgClient) => { setEditing(c); setEditInput(toInput(c)); };
 
-  // Sugestões de nome cruzando os dois módulos (isolamento mantido: cada API lê seu banco).
+  // Caixa de sugestão cruzando os dois módulos (isolamento mantido: cada API lê seu banco).
+  // Itens rotulados por origem: escolher um do RS dispara a importação; do SG só preenche o nome.
   const sgAll = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest-all"], queryFn: () => listClients({ pageSize: 500 }) });
   const rsCustomers = useQuery({ queryKey: ["report-service", "customers", "suggest"], queryFn: listCustomers });
-  const nameOptions = mergeNames(
-    (sgAll.data?.clients ?? []).map((c) => c.name),
-    (rsCustomers.data?.customers ?? []).map((c) => c.name)
-  );
+  const suggestItems: RegistrySuggestItem[] = [
+    ...(sgAll.data?.clients ?? []).map((c) => ({ id: c.id, name: c.name, module: "sg" as const })),
+    ...(rsCustomers.data?.customers ?? []).map((c) => ({ id: c.id, name: c.name, module: "rs" as const }))
+  ];
+  const openImport = (preselect: number | null) => { setImportPreselect(preselect); setShowImport(true); };
 
   if (isLoading) {
     return <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /> Carregando…</div>;
@@ -76,12 +126,33 @@ export default function ClientsPage() {
 
   const clients = data?.clients ?? [];
 
+  const pageIds = clients.map((c) => c.id);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const someOnPageSelected = pageIds.some((id) => selected.has(id));
+  const toggleAllOnPage = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  const askBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (await confirmDialog(`Excluir ${selected.size} cliente(s) selecionado(s)?\n\nPara cada um, também serão excluídos sites, áreas, equipamentos, contratos, gestores, planos e ordens vinculados.`)) {
+      mBulkDelete.mutate([...selected]);
+    }
+  };
+
   return (
     <div className="d-flex flex-column gap-4">
-      <datalist id="vx-client-name-options">{nameOptions.map((n) => <option key={n} value={n} />)}</datalist>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h2 className="h5 mb-0">SentinelGrid · Clientes</h2>
-        <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
+        <div className="d-flex align-items-center gap-3">
+          <Button size="sm" variant="outline-primary" onClick={() => openImport(null)}>
+            Buscar do Service Report
+          </Button>
+          <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
+        </div>
       </div>
 
       {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
@@ -92,7 +163,14 @@ export default function ClientsPage() {
           <Form className="row g-2 align-items-end" onSubmit={(e) => { e.preventDefault(); mCreate.mutate(); }}>
             <div className="col-md-4">
               <Form.Label>Nome</Form.Label>
-              <Form.Control required list="vx-client-name-options" value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} />
+              <RegistrySuggestField
+                required
+                currentModule="sg"
+                value={novo.name}
+                onChange={(v) => setNovo({ ...novo, name: v })}
+                items={suggestItems}
+                onImportPick={(it) => openImport(it.id)}
+              />
             </div>
             <div className="col-md-3">
               <Form.Label>CNPJ / Identificação fiscal</Form.Label>
@@ -116,8 +194,21 @@ export default function ClientsPage() {
       </Card>
 
       <Card>
-        <Card.Header className="d-flex justify-content-between align-items-center gap-2">
-          <span>Clientes ({data?.total ?? clients.length})</span>
+        <Card.Header className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <div className="d-flex align-items-center gap-3 flex-wrap">
+            <span>Clientes ({data?.total ?? clients.length})</span>
+            {selected.size > 0 && (
+              <div className="d-flex align-items-center gap-2">
+                <Badge bg="secondary">{selected.size} selecionado(s)</Badge>
+                <Button size="sm" variant="outline-danger" disabled={mBulkDelete.isPending} onClick={askBulkDelete}>
+                  {mBulkDelete.isPending ? "Excluindo…" : "Excluir selecionados"}
+                </Button>
+                <Button size="sm" variant="link" className="p-0 text-decoration-none" onClick={() => setSelected(new Set())}>
+                  Limpar seleção
+                </Button>
+              </div>
+            )}
+          </div>
           <Form.Control
             size="sm"
             style={{ maxWidth: 260 }}
@@ -128,20 +219,42 @@ export default function ClientsPage() {
         </Card.Header>
         <Table striped responsive hover className="mb-0">
           <thead>
-            <tr><th>Nome</th><th>CNPJ</th><th>Segmento</th><th>Status</th><th className="text-end">Ações</th></tr>
+            <tr>
+              <th style={{ width: 40 }}>
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  aria-label="Selecionar todos nesta página"
+                  checked={allOnPageSelected}
+                  ref={(el) => { if (el) el.indeterminate = !allOnPageSelected && someOnPageSelected; }}
+                  onChange={toggleAllOnPage}
+                  disabled={clients.length === 0}
+                />
+              </th>
+              <th>Nome</th><th>CNPJ</th><th>Segmento</th><th>Status</th><th className="text-end">Ações</th>
+            </tr>
           </thead>
           <tbody>
-            {clients.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum cliente.</td></tr>}
+            {clients.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhum cliente.</td></tr>}
             {clients.map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className={selected.has(c.id) ? "table-active" : undefined}>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    aria-label={`Selecionar ${c.name}`}
+                    checked={selected.has(c.id)}
+                    onChange={() => toggleOne(c.id)}
+                  />
+                </td>
                 <td>{c.name}</td>
                 <td>{c.tax_id}</td>
                 <td>{c.segment}</td>
                 <td><Badge bg={STATUS_VARIANT[c.status] || "secondary"}>{c.status}</Badge></td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(c)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o cliente "${c.name}"?`)) mDelete.mutate(c.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(c)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o cliente "${c.name}"?\n\nIsso também exclui sites, áreas, equipamentos, contratos, gestores, planos e ordens vinculados a ele.`)) mDelete.mutate(c.id); }} />
                   </div>
                 </td>
               </tr>
@@ -158,7 +271,7 @@ export default function ClientsPage() {
             <Modal.Body className="d-flex flex-column gap-3">
               <Form.Group>
                 <Form.Label>Nome</Form.Label>
-                <Form.Control required list="vx-client-name-options" value={editInput.name} onChange={(e) => setEditInput({ ...editInput, name: e.target.value })} />
+                <Form.Control required value={editInput.name} onChange={(e) => setEditInput({ ...editInput, name: e.target.value })} />
               </Form.Group>
               <Form.Group>
                 <Form.Label>CNPJ / Identificação fiscal</Form.Label>
@@ -188,6 +301,23 @@ export default function ClientsPage() {
           </Form>
         )}
       </Modal>
+
+      <RegistrySyncModal
+        show={showImport}
+        onHide={() => { setShowImport(false); setImportPreselect(null); }}
+        preselectId={importPreselect}
+        title="Buscar cliente do Service Report"
+        description="Importa o cliente selecionado (e, opcionalmente, seus sites e equipamentos) do Service Report para o SentinelGrid. Reimportar o mesmo cliente atualiza o registro vinculado, sem duplicar."
+        items={importItems}
+        loading={rsImportable.isLoading}
+        loadError={rsImportable.error ? (rsImportable.error as Error).message : null}
+        confirmLabel="Importar"
+        onConfirm={async (id, opts) => (await importFromReportService(id, opts)).result}
+        onDone={() => {
+          invalidate();
+          qc.invalidateQueries({ queryKey: ["sentinelgrid", "integration", "rs-importable"] });
+        }}
+      />
     </div>
   );
 }

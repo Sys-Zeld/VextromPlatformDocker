@@ -113,15 +113,82 @@ async function updateProgram(id, input, actor = "") {
   return res.rows[0] || null;
 }
 
+// Soft delete em cascata do programa: exclui os planos que o usam (+itens) e as
+// ordens geradas desses planos. Guarda de pertinência (decisão de produto): um
+// programa é um template que pode ter sido aplicado a equipamentos de mais de um
+// cliente; nesse caso bloqueamos, para não apagar dados de outro cliente sem
+// querer. Retorno estruturado (a rota mapeia para 404 / 409 / 204):
+//   { ok: false, notFound: true }
+//   { ok: false, blocked: true, clientCount, clientNames }
+//   { ok: true, deletedPlans, deletedOrders }
 async function softDeleteProgram(id, actor = "") {
-  const res = await pool.query(
-    `UPDATE sg_maintenance_programs
-        SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
-      WHERE id = $1 AND deleted_at IS NULL
-      RETURNING id`,
-    [id, actor]
-  );
-  return res.rowCount > 0;
+  const conn = await pool.connect();
+  try {
+    await conn.query("BEGIN");
+
+    const exists = await conn.query(
+      "SELECT id FROM sg_maintenance_programs WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+      [id]
+    );
+    if (exists.rowCount === 0) {
+      await conn.query("ROLLBACK");
+      return { ok: false, notFound: true };
+    }
+
+    // Clientes distintos cobertos pelos planos ativos deste programa.
+    const clientsRes = await conn.query(
+      `SELECT DISTINCT e.client_id, c.name
+         FROM sg_equipment_plans p
+         JOIN sg_equipment e ON e.id = p.equipment_id
+         JOIN sg_clients c ON c.id = e.client_id
+        WHERE p.program_id = $1 AND p.deleted_at IS NULL`,
+      [id]
+    );
+    if (clientsRes.rowCount > 1) {
+      await conn.query("ROLLBACK");
+      return {
+        ok: false,
+        blocked: true,
+        clientCount: clientsRes.rowCount,
+        clientNames: clientsRes.rows.map((r) => r.name)
+      };
+    }
+
+    // Ordens geradas dos planos do programa.
+    const ordersRes = await conn.query(
+      `UPDATE sg_maintenance_orders SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
+        WHERE plan_id IN (SELECT id FROM sg_equipment_plans WHERE program_id = $1 AND deleted_at IS NULL)
+          AND deleted_at IS NULL
+        RETURNING id`,
+      [id, actor]
+    );
+    // Itens dos planos do programa.
+    await conn.query(
+      `UPDATE sg_plan_items SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
+        WHERE plan_id IN (SELECT id FROM sg_equipment_plans WHERE program_id = $1 AND deleted_at IS NULL)
+          AND deleted_at IS NULL`,
+      [id, actor]
+    );
+    // Planos vinculados ao programa.
+    const plansRes = await conn.query(
+      `UPDATE sg_equipment_plans SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
+        WHERE program_id = $1 AND deleted_at IS NULL RETURNING id`,
+      [id, actor]
+    );
+    // O próprio programa.
+    await conn.query(
+      "UPDATE sg_maintenance_programs SET deleted_at = NOW(), updated_by = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+      [id, actor]
+    );
+
+    await conn.query("COMMIT");
+    return { ok: true, deletedPlans: plansRes.rowCount, deletedOrders: ordersRes.rowCount };
+  } catch (err) {
+    await conn.query("ROLLBACK");
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 module.exports = { listPrograms, getProgram, createProgram, updateProgram, softDeleteProgram };

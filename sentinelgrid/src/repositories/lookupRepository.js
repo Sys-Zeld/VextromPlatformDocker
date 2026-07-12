@@ -53,7 +53,26 @@ function lookupRepo(table) {
     return res.rowCount > 0;
   }
 
-  return { list, get, create, update, softDelete };
+  // Ensure-or-create por nome (case-insensitive). Usado na importação de cadastros
+  // de outro módulo (RS guarda tipo/fabricante como texto; aqui viram lookup). Nome
+  // vazio → null. Tolera corrida na unicidade re-selecionando após conflito.
+  async function ensureByName(name, actor = "") {
+    const nm = String(name == null ? "" : name).trim();
+    if (!nm) return null;
+    const existing = (
+      await pool.query(`SELECT * FROM ${table} WHERE LOWER(name) = LOWER($1) AND deleted_at IS NULL LIMIT 1`, [nm])
+    ).rows[0];
+    if (existing) return existing;
+    try {
+      return await create({ name: nm, notes: "" }, actor);
+    } catch (_err) {
+      return (
+        await pool.query(`SELECT * FROM ${table} WHERE LOWER(name) = LOWER($1) AND deleted_at IS NULL LIMIT 1`, [nm])
+      ).rows[0] || null;
+    }
+  }
+
+  return { list, get, create, update, softDelete, ensureByName };
 }
 
 module.exports = { lookupRepo };

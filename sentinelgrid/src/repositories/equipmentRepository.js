@@ -18,6 +18,12 @@ function areaInvalidError() {
   return err;
 }
 
+function duplicateTagError(message) {
+  const err = new Error(message);
+  err.code = "SG_EQUIPMENT_DUPLICATE";
+  return err;
+}
+
 async function resolveAreaScope(areaId) {
   const res = await pool.query(
     `SELECT a.id, a.site_id, s.client_id
@@ -26,6 +32,29 @@ async function resolveAreaScope(areaId) {
     [areaId]
   );
   return res.rows[0] || null;
+}
+
+async function findDuplicateTag({ tag, siteId, excludeId = null }) {
+  const cleanTag = String(tag || "").trim();
+  if (!cleanTag) return null;
+  const params = [siteId, cleanTag.toLowerCase()];
+  let where = "site_id = $1 AND LOWER(TRIM(tag)) = $2 AND deleted_at IS NULL";
+  if (excludeId) {
+    params.push(excludeId);
+    where += ` AND id <> $${params.length}`;
+  }
+  const res = await pool.query(
+    `SELECT id, area_id FROM sg_equipment WHERE ${where} LIMIT 1`,
+    params
+  );
+  return res.rows[0] || null;
+}
+
+async function ensureUniqueTagInScope(input, scope, excludeId = null) {
+  const duplicate = await findDuplicateTag({ tag: input.tag, siteId: scope.site_id, excludeId });
+  if (!duplicate) return;
+  const sameArea = Number(duplicate.area_id) === Number(scope.id);
+  throw duplicateTagError(sameArea ? "TAG ja cadastrada nesta area." : "TAG ja cadastrada neste site.");
 }
 
 async function listEquipment({ clientId = null, siteId = null, areaId = null, criticality = "", operationalStatus = "", search = "", limit = 50, offset = 0 } = {}) {
@@ -104,6 +133,7 @@ function writeValues(input) {
 async function createEquipment(input, actor = "") {
   const scope = await resolveAreaScope(input.areaId);
   if (!scope) throw areaInvalidError();
+  await ensureUniqueTagInScope(input, scope);
 
   const cols = ["client_id", "site_id", "area_id", ...WRITE_COLS, "created_by", "updated_by"];
   const values = [scope.client_id, scope.site_id, input.areaId, ...writeValues(input), actor, actor];
@@ -115,6 +145,7 @@ async function createEquipment(input, actor = "") {
 async function updateEquipment(id, input, actor = "") {
   const scope = await resolveAreaScope(input.areaId);
   if (!scope) throw areaInvalidError();
+  await ensureUniqueTagInScope(input, scope, id);
 
   const setCols = ["client_id", "site_id", "area_id", ...WRITE_COLS, "updated_by"];
   const values = [id, scope.client_id, scope.site_id, input.areaId, ...writeValues(input), actor];

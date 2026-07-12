@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -54,7 +55,7 @@ export default function PdfHistoryPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="download" label="Baixar" variant="outline-primary" href={pdfHistoryDownloadUrl(orderId, e.id)} target="_blank" rel="noreferrer" />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este registro de PDF?")) mDelete.mutate(e.id); }} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir este registro de PDF?")) mDelete.mutate(e.id); }} />
                 </div>
               </td>
             </tr>

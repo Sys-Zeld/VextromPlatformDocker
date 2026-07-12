@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { AppTheme, applyTheme, getStoredTheme } from "../theme/applyTheme";
+import SgIcon, { SgIconName, isSgIconName } from "./sentinelgrid/SgIcon";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -39,22 +40,24 @@ const SERVICE_REPORT_NAV: NavItem[] = [
   { to: "/analytics", label: "Analytics", icon: "insights" }
 ];
 
+// SentinelGrid usa o conjunto de ícones SVG próprio (SgIcon); os nomes abaixo são
+// SgIconName, resolvidos em runtime por isSgIconName no render da nav/topbar.
 const SENTINELGRID_NAV: NavItem[] = [
-  { to: "/sentinelgrid", label: "Início", icon: "space_dashboard", end: true },
-  { to: "/sentinelgrid/clients", label: "Clientes", icon: "groups" },
-  { to: "/sentinelgrid/sites", label: "Sites", icon: "location_city" },
-  { to: "/sentinelgrid/catalog", label: "Catálogo", icon: "category" },
-  { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "precision_manufacturing" },
-  { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "assignment_ind" },
-  { to: "/sentinelgrid/programs", label: "Programas", icon: "event_repeat" },
-  { to: "/sentinelgrid/plans", label: "Planos", icon: "fact_check" },
+  { to: "/sentinelgrid", label: "Início", icon: "shield", end: true },
+  { to: "/sentinelgrid/clients", label: "Clientes", icon: "clients" },
+  { to: "/sentinelgrid/sites", label: "Sites", icon: "site" },
+  { to: "/sentinelgrid/catalog", label: "Catálogo", icon: "catalog" },
+  { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "equipment" },
+  { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "contract" },
+  { to: "/sentinelgrid/programs", label: "Programas", icon: "program" },
+  { to: "/sentinelgrid/plans", label: "Planos", icon: "plan" },
   { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
-  { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "assignment" },
-  { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar_month" },
-  { to: "/sentinelgrid/alerts", label: "Alertas", icon: "notifications_active" },
+  { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "orders" },
+  { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar" },
+  { to: "/sentinelgrid/alerts", label: "Alertas", icon: "alerts" },
   { to: "/sentinelgrid/history", label: "Historico", icon: "history" },
-  { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "rule" },
-  { to: "/sentinelgrid/dashboard", label: "Dashboard", icon: "monitoring" }
+  { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "recommendations" },
+  { to: "/sentinelgrid/dashboard", label: "Dashboard", icon: "dashboard" }
 ];
 
 const SERVICE_REPORT_MODULE: ModuleNav = {
@@ -102,6 +105,15 @@ function pageTitle(pathname: string, mod: ModuleNav): string {
   return match?.label ?? mod.fallbackTitle;
 }
 
+// Ícone SVG do item de nav ativo (só SentinelGrid) — usado na topbar e no toggle.
+function activeSgIcon(pathname: string): SgIconName | null {
+  if (!pathname.startsWith("/sentinelgrid")) return null;
+  const match = [...SENTINELGRID_NAV]
+    .filter((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return match && isSgIconName(match.icon) ? match.icon : null;
+}
+
 function readPreferredCollapsed(): boolean {
   if (typeof window !== "undefined" && window.innerWidth < AUTO_COLLAPSE_WIDTH) return true;
   try {
@@ -114,6 +126,7 @@ function readPreferredCollapsed(): boolean {
 export default function Layout() {
   const location = useLocation();
   const mod = resolveModule(location.pathname);
+  const sgIcon = activeSgIcon(location.pathname);
   const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
   const [open, setOpen] = useState(false); // drawer mobile
@@ -173,7 +186,11 @@ export default function Layout() {
               className={({ isActive }) => `vx-nav__link${isActive ? " active" : ""}`}
               onClick={() => setOpen(false)}
             >
-              <span className="material-symbols-outlined">{item.icon}</span>
+              {mod.key === "sentinelgrid" && isSgIconName(item.icon) ? (
+                <SgIcon name={item.icon} size={29} />
+              ) : (
+                <span className="material-symbols-outlined">{item.icon}</span>
+              )}
               <span className="vx-nav__label">{item.label}</span>
             </NavLink>
           ))}
@@ -190,15 +207,23 @@ export default function Layout() {
           <div className="d-flex align-items-center gap-3">
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary vx-sidebar-toggle"
+              className={`vx-sidebar-toggle${mod.key === "sentinelgrid" ? " vx-sidebar-toggle--icon" : " btn btn-sm btn-outline-secondary"}`}
               onClick={() => setOpen((v) => !v)}
               aria-label="Menu"
+              title="Menu"
             >
-              <span className="material-symbols-outlined align-middle">menu</span>
+              {mod.key === "sentinelgrid" ? (
+                <SgIcon name={sgIcon ?? "shield"} size={30} />
+              ) : (
+                <span className="material-symbols-outlined align-middle">menu</span>
+              )}
             </button>
-            <div>
-              <p className="vx-topbar__title">{pageTitle(location.pathname, mod)}</p>
-              <span className="vx-topbar__crumb">{mod.crumb}</span>
+            <div className="d-flex align-items-center gap-2">
+              {sgIcon && <SgIcon name={sgIcon} size={48} className="vx-topbar__icon" />}
+              <div>
+                <p className="vx-topbar__title">{pageTitle(location.pathname, mod)}</p>
+                <span className="vx-topbar__crumb">{mod.crumb}</span>
+              </div>
             </div>
           </div>
           <div className="vx-topbar__controls">

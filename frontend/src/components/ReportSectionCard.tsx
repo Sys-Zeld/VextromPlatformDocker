@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form } from "react-bootstrap";
@@ -89,7 +90,7 @@ export default function ReportSectionCard(props: {
           </div>
           <div className="d-flex gap-2">
             <Button size="sm" variant="outline-primary" disabled={mSave.isPending} onClick={() => mSave.mutate()}>{mSave.isPending ? "Salvando…" : "Salvar capítulo"}</Button>
-            <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este capítulo?")) mDelete.mutate(); }}>Excluir</Button>
+            <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir este capítulo?")) mDelete.mutate(); }}>Excluir</Button>
           </div>
         </Card.Footer>
       )}

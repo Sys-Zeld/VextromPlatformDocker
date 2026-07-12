@@ -1,9 +1,11 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 
 const PAGE_SIZE = 20;
 import { SgClient, listClients } from "../../api/sentinelgrid/clients";
@@ -133,8 +135,8 @@ function ManagersSection({ clients, sites, areas }: { clients: SgClient[]; sites
                 <td className="small">{m.email}{m.phone ? ` · ${m.phone}` : ""}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(m)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o gestor "${m.name}"?`)) mDelete.mutate(m.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(m)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o gestor "${m.name}"?`)) mDelete.mutate(m.id); }} />
                   </div>
                 </td>
               </tr>
@@ -186,7 +188,7 @@ function ContractsSection({ clients }: { clients: SgClient[] }) {
             <option value="">Todos os clientes</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Form.Select>
-          <Button size="sm" onClick={openNew}>+ Novo</Button>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Novo</Button>
         </div>
       </Card.Header>
       {isLoading ? (
@@ -213,8 +215,8 @@ function ContractsSection({ clients }: { clients: SgClient[] }) {
                 </td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(c)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o contrato "${c.name}"?`)) mDelete.mutate(c.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(c)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o contrato "${c.name}"?`)) mDelete.mutate(c.id); }} />
                   </div>
                 </td>
               </tr>

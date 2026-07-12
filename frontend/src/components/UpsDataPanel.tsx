@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Accordion, Alert, Badge, Button, Form, Spinner, Table } from "react-bootstrap";
@@ -65,7 +66,7 @@ export default function UpsDataPanel(props: { orderId: number }) {
                   <tr key={a.id}>
                     <td>{a.location_name || "—"}</td><td>{a.battery_name || "—"}</td><td>{a.model_number || "—"}</td>
                     <td>{a.total_strings || "—"}</td><td>{a.cell_count}</td><td className="small text-muted">{a.nome_arquivo || "—"}</td>
-                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteAlber.isPending} onClick={() => { if (confirm("Excluir esta leitura Alber?")) mDeleteAlber.mutate(a.id); }} />}</td>
+                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteAlber.isPending} onClick={async () => { if (await confirmDialog("Excluir esta leitura Alber?")) mDeleteAlber.mutate(a.id); }} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -85,7 +86,7 @@ export default function UpsDataPanel(props: { orderId: number }) {
                 {upsMeasures.map((u) => (
                   <tr key={u.id}>
                     <td>{u.title || "—"}</td><td><code className="small">@mesuaresUPS={u.seq_id}</code></td><td>{u.sections}</td><td>{u.rows}</td>
-                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteUps.isPending} onClick={() => { if (confirm("Excluir estas medições UPS?")) mDeleteUps.mutate(u.id); }} />}</td>
+                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteUps.isPending} onClick={async () => { if (await confirmDialog("Excluir estas medições UPS?")) mDeleteUps.mutate(u.id); }} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -105,7 +106,7 @@ export default function UpsDataPanel(props: { orderId: number }) {
                 {eventLogs.map((e) => (
                   <tr key={e.id}>
                     <td>{e.title || "—"}</td><td><code className="small">@eventlogUPS={e.seq_id}</code></td><td>{e.sections}</td><td>{e.rows}</td>
-                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteEvt.isPending} onClick={() => { if (confirm("Excluir este event log?")) mDeleteEvt.mutate(e.id); }} />}</td>
+                    <td className="text-end">{!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteEvt.isPending} onClick={async () => { if (await confirmDialog("Excluir este event log?")) mDeleteEvt.mutate(e.id); }} />}</td>
                   </tr>
                 ))}
               </tbody>

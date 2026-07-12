@@ -1,9 +1,11 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 import { formatDate } from "../../utils/format";
 import { listClients } from "../../api/sentinelgrid/clients";
 import { listEquipment, SgEquipment } from "../../api/sentinelgrid/equipment";
@@ -436,7 +438,7 @@ export default function MaintenanceOrdersPage() {
         <div className="d-flex gap-2">
           <Link to="/sentinelgrid/plans" className="btn btn-outline-secondary btn-sm">Planos</Link>
           <Button size="sm" variant="outline-primary" onClick={openFromPlan}>Gerar por plano</Button>
-          <Button size="sm" onClick={openNew}>Nova OM</Button>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Nova OM</Button>
         </div>
       </div>
 
@@ -507,13 +509,13 @@ export default function MaintenanceOrdersPage() {
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
                         <IconAction icon="checklist" label="Executar checklist" variant="outline-success" disabled={!order.checklist_id} onClick={() => openChecklist(order)} />
-                        <IconAction icon="engineering" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
-                        <IconAction icon="published_with_changes" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
+                        <IconAction icon="wrench" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
+                        <IconAction icon="status" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
                         {order.maintenance_type === "preventiva_com_parada" && (
-                          <IconAction icon="check_circle" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
+                          <IconAction icon="check" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
                         )}
-                        <IconAction icon="edit" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
-                        <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
+                        <IconAction icon="pencil" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
+                        <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
                       </div>
                     </td>
                   </tr>

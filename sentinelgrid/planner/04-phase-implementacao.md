@@ -1412,3 +1412,240 @@ pedido explícito e não foi paginado.
 **Migrations/DB:** nenhuma (backend já paginava).
 
 **Como validar (feito):** `npm --prefix frontend run build` ✅ (tsc `--noEmit` + vite build, todos os chunks emitidos). Validação visual no navegador pendente: listar >20 registros em cada tela e conferir os controles + reset ao filtrar.
+
+### 2026-07-06 — Fase 11 (extensão) · Troca de cadastros SG ↔ RS (Cliente → Sites → Equipamentos)
+
+**Status:** ✅ concluída (backend validado por smoke E2E no container; UI compila, aguardando navegador)
+**Contexto/decisão:** evolução da "sugestão cruzada" (que era só datalist de nomes) para
+**importação/exportação real e vinculada** do cadastro entre os módulos, nos **dois sentidos**,
+com **hierarquia completa** (decisões do usuário: cópia vinculada idempotente + Cliente+Sites+
+Equipamentos). **Isolamento preservado (ADR-001/002/005):** o SentinelGrid é o **dono do contrato
+de integração** — consome o RS só pelo contrato de serviço in-process (`serviceReportService`),
+nunca o banco/repo do RS, e escreve apenas nas tabelas `sg_*`; ao exportar, usa o `ensure*ByRef`
+do RS. **Sem migration nova:** dedupe/idempotência reusam `sg_rs_links` (por `rs_id`) no SG e
+`external_source`/`external_id` no RS (Fase 11.1). Assimetrias tratadas: RS não tem "Área" →
+cria/reusa **Área "Geral"** por site; tipo/fabricante/modelo do RS (texto) viram **ensure-or-create**
+no catálogo do SG. Toda a lógica cross-módulo fica num único serviço (`registrySync`), sem novo
+`require` RS→SG (sem risco de ciclo).
+
+**Alterações (Service Report):**
+- `report_service/src/services/serviceReportService.js` — leituras de contrato para integração:
+  `getCustomer`, `listCustomers`, `listSitesByCustomer`, `listEquipmentsByCustomer` (read-only, exportadas).
+
+**Alterações (SentinelGrid — backend):**
+- `sentinelgrid/src/repositories/rsLinksRepository.js` — novo: `getSgIdByRs`/`getRsIdBySg`/`upsertLink` sobre `sg_rs_links`.
+- `sentinelgrid/src/repositories/lookupRepository.js` — `ensureByName` (fabricante/tipo por nome, case-insensitive).
+- `sentinelgrid/src/repositories/equipmentModelsRepository.js` — `ensureModelByName` (modelo por fabricante+nome).
+- `sentinelgrid/src/services/registrySync.js` — novo, núcleo: `importCustomerFromReportService` (RS→SG),
+  `exportClientToReportService` (SG→RS), `listReportServiceImportable`/`listReportServiceExportable` (com flag de vínculo).
+  Helpers `ensureDefaultArea`/`ensureFallbackSite`/`upsertLinked`. Idempotente nos dois sentidos.
+- `sentinelgrid/src/routes/integration.js` — novo router: `GET/POST /report-service/importable|import|exportable|export`.
+- `sentinelgrid/src/routes/apiV2.js` — monta `/integration`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/integration.ts` — client tipado (importable/import/exportable/export + tipos de resultado).
+- `frontend/src/components/sentinelgrid/RegistrySyncModal.tsx` — novo modal genérico (seleção + opções sites/equipamentos + resumo), reusado pelos dois lados.
+- `frontend/src/pages/sentinelgrid/ClientsPage.tsx` — botão **"Buscar do Service Report"** (importa RS→SG).
+- `frontend/src/pages/CustomersPage.tsx` (RS) — botão **"Buscar do SentinelGrid"** (importa SG→RS via façade do SG).
+
+**Migrations/DB:** **nenhuma** (reusa `sg_rs_links` e as colunas `external_*` do RS da Fase 11.1).
+
+**Como validar (feito):** `node --check` em todos os arquivos backend ✅; **smoke E2E no container** ✅
+— cria cliente+site+equipamento no RS, importa p/ SG (área "Geral" + tipo/fabricante/modelo ensure-by-name,
+vínculos criados), **reimport idempotente** (mesmo cliente, sem duplicar equipamento/vínculo),
+**exporta** cliente novo SG→RS (customer com `external_ref` do SG, reexport reusa o mesmo id), listagens
+marcam `sg_linked`/`rs_linked`; cleanup completo. `npm --prefix frontend run build` ✅ (chunk `integration-*.js`).
+App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** validação visual no navegador (SG Clientes → "Buscar do Service Report";
+RS Clientes → "Buscar do SentinelGrid"). Futuro opcional: reaproveitar o mesmo `registrySync` para
+sincronizar em lote (todos os clientes) e estender às telas de Sites/Equipamentos além do Cliente.
+
+### 2026-07-06 — Fase 11 (extensão) · Caixa de sugestão rotulada por módulo no campo Nome
+
+**Status:** ✅ concluída (build/typecheck validado; UI aguardando navegador)
+**Contexto/decisão:** a pedido do usuário, o campo **Nome** do cadastro de Cliente (SG) e Cliente (RS)
+ganha uma **caixa de sugestão (autocomplete)** que lista os cadastros dos **dois módulos**, cada item
+rotulado com a origem — `Service-Report: CLIENTE X` / `SentinelGrid: CLIENTE Y`. **Ação ao escolher
+(decisão do usuário):** item do **próprio módulo** → só preenche o nome; item do **outro módulo** →
+dispara a **importação** (abre o modal de troca já pré-selecionado no item, para confirmar sites/
+equipamentos). O `<datalist>` nativo não serve (não permite rótulo por origem nem ação ao selecionar),
+então foi criado um autocomplete próprio. **Os botões/modal "Buscar do…" foram mantidos** (decisão do
+usuário: os dois caminhos coexistem); a caixa é um atalho que reaproveita o mesmo modal/backend.
+
+**Alterações (frontend):**
+- `frontend/src/components/sentinelgrid/RegistrySuggestField.tsx` — novo autocomplete: filtra por texto,
+  ordena o outro módulo primeiro, rótulo `Módulo: Nome`, badge "importar" nos itens do outro módulo;
+  `pick()` decide entre preencher o nome ou chamar `onImportPick`.
+- `frontend/src/components/sentinelgrid/RegistrySyncModal.tsx` — prop `preselectId` (seleciona o item ao abrir).
+- `frontend/src/pages/sentinelgrid/ClientsPage.tsx` — campo Nome (criação) usa `RegistrySuggestField`
+  (`currentModule="sg"`); itens do RS abrem o modal pré-selecionado; `<datalist>`/`mergeNames` removidos.
+- `frontend/src/pages/CustomersPage.tsx` (RS) — idem com `currentModule="rs"`; itens do SG abrem o modal
+  de exportação pré-selecionado.
+
+**Migrations/DB:** nenhuma (só UI; reusa o backend de troca da entrada anterior).
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck; chunks `ClientsPage`/`CustomersPage`
+recompilados). Validação visual no navegador pendente: digitar no campo Nome mostra a lista rotulada dos
+dois módulos; escolher um item do outro módulo abre o modal de importação já no item escolhido.
+
+### 2026-07-06 — Fase 11 (extensão) · Troca de Equipamento + caixa de sugestão na TAG
+
+**Status:** ✅ concluída (backend validado por smoke E2E no container; build/typecheck OK; UI aguardando navegador)
+**Contexto/decisão:** replica a lógica de troca de cadastro (caixa de sugestão rotulada por módulo +
+importar ao escolher) para **Equipamento**. Importar **um** equipamento **garante o cliente e o site**
+dele (e, no SG, a área "Geral" + catálogo por nome) antes do equipamento — reusa os mesmos "ensure"
+idempotentes (refatorados p/ `ensureSgClientFromRs`/`ensureSgSiteFromRs`/`ensureRs*FromSg`). Como o
+form de equipamento é um **modal**, escolher um item do outro módulo na caixa da TAG **importa direto**
+(confirm + feedback), evitando empilhar modais; o botão de página **"Buscar do…"** abre o modal de lista
+(sem opções de hierarquia — equipamento sempre traz cliente+site). Mantidos os dois caminhos, como no cliente.
+
+**Alterações (Service Report):**
+- `report_service/src/services/serviceReportService.js` — leituras `getSite`, `getEquipment`, `listEquipments`.
+
+**Alterações (SentinelGrid — backend):**
+- `sentinelgrid/src/services/registrySync.js` — refatorado (helpers `ensure*`); novos
+  `importEquipmentFromReportService`/`exportEquipmentToReportService` e listagens
+  `listReportServiceImportableEquipment`/`listReportServiceExportableEquipment`.
+- `sentinelgrid/src/routes/integration.js` — 4 rotas de equipamento (`importable-equipment`/`import-equipment`/
+  `exportable-equipment`/`export-equipment`) + códigos de erro `SG_RS_EQUIPMENT_INVALID`/`SG_EQUIPMENT_INVALID`.
+
+**Alterações (frontend):**
+- `frontend/src/api/sentinelgrid/integration.ts` — tipos + funções de equipamento; `SyncResult` ganha `equipment*`.
+- `frontend/src/components/sentinelgrid/RegistrySyncModal.tsx` — props `showHierarchyOptions` (esconde sites/equip)
+  e `successMessage` (mensagem custom p/ equipamento).
+- `frontend/src/pages/sentinelgrid/EquipmentsPage.tsx` — botão "Buscar do Service Report" + `RegistrySuggestField`
+  na TAG (`currentModule="sg"`; item do RS importa direto); `<datalist>`/`mergeNames` removidos.
+- `frontend/src/pages/EquipmentsPage.tsx` (RS) — botão "Buscar do SentinelGrid" + caixa na TAG (`currentModule="rs"`;
+  item do SG exporta direto).
+
+**Migrations/DB:** nenhuma nova. **Nota de ambiente:** o banco `reportservice` deste ambiente estava **sem** as
+colunas `external_source`/`external_id` (Fase 11.1); reaplicado `node report_service/migrate.js` (idempotente) —
+necessário para a integração funcionar em runtime.
+
+**Como validar (feito):** `node --check` em todos os arquivos backend ✅; **smoke E2E no container** ✅ — importa 1
+equipamento do RS (cria cliente+site+área "Geral"+catálogo ensure-by-name, tag preservada), reimport idempotente
+(sem duplicar), exporta 1 equipamento SG→RS (external_ref + tag), reexport reusa o mesmo id, listagens marcam
+`sg_linked`/`rs_linked`; cleanup completo. `npm --prefix frontend run build` ✅. App reiniciado sobe sem erro.
+
+**Pendências/próximo passo:** validação visual no navegador (Equipamentos SG/RS → caixa da TAG e botão "Buscar do…").
+
+### 2026-07-08 — Transversal (UI) · Ícones de contexto (app-icons) tema-aware
+
+**Status:** ✅ concluída (build/typecheck OK; UI aguardando navegador)
+**Contexto/decisão:** aplicar os app-icons (UPS + símbolo por contexto) que o usuário
+colocou em `frontend/public/img` nas telas correspondentes, mapeados pelo **nome do
+arquivo**. Decisões do usuário: aplicar **nos dois lugares** (cards da Home + cabeçalho/
+topbar de cada página) e usar o mapeamento proposto. Cada ícone tem a arte "clara" (quadrado
+escuro embutido) e, para 4 deles, a variante **`-dark`** (fundo transparente) — a troca é por
+**CSS** sob `:root[data-theme="darkvextrom"]` (único tema escuro), sem estado no React.
+**Cabeçalho via topbar do `Layout`** (uma edição cobre todas as páginas, em vez de mexer em 6
+telas). Mapa arquivo→contexto: `SentinelGrid-icone→Início`, `UPS-Icone-Manut→Equipamentos`,
+`ups-agendamento→Ordens`, `ups-calendario→Calendário`, `ups-checklist→Checklists`,
+`ups-em-manutencao→Programas`, `ups-corretiva→Alertas`.
+
+**Alterações (frontend):**
+- `frontend/public/img/` — renomeado `ups-em-manutenção[-dark].png` → `ups-em-manutencao[-dark].png` (URL com acento dá 404 em prod/Linux).
+- `frontend/src/components/sentinelgrid/SgContextIcon.tsx` — novo: componente tema-aware (`SgContext`, mapa de ícones, `contextForPath(pathname)`), URLs via `import.meta.env.BASE_URL` (`/app/img/...`).
+- `frontend/src/styles/theme.css` — `.sg-ctx-icon*` (swap por tema), `.vx-topbar__icon`, `.sg-home-hero/-grid/-card`.
+- `frontend/src/components/Layout.tsx` — ícone de contexto na topbar ao lado do título (só rotas `/sentinelgrid`).
+- `frontend/src/pages/sentinelgrid/SentinelHomePage.tsx` — hero com a marca + grade de cards de acesso rápido com ícones.
+- `.gitignore` — exceção `!frontend/public/img/*.png` (o `*.png` global ignorava os assets; sem isso, clone/CI limpo ficaria sem os ícones).
+
+**Migrations/DB:** nenhuma.
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck OK); `dist/img/` contém os 11 PNG (servidos em `/app/img/...`); `git add -n` confirma os 11 ícones versionados. Validação visual no navegador pendente: topbar mostra o ícone por página; Home mostra hero + grade; trocar para o tema **DarkVextrom** troca para a arte `-dark` (agendamento/calendário/checklist/em-manutenção).
+
+**Pendências/próximo passo:** validação visual nos 4 temas; opcional: otimizar peso dos PNG (~1 MB cada) e gerar `-dark` para corretiva/marca se quiser transparência no tema escuro.
+
+### 2026-07-08 — Transversal (UI) · Conjunto de ícones SVG (SgIcon) no lugar dos PNG/material-symbols
+
+**Status:** ✅ concluída (build/typecheck OK; folha visual publicada p/ revisão; UI aguardando navegador)
+**Contexto/decisão:** a pedido do usuário (com folha de marca de referência), recriar todo o conjunto
+de ícones do SentinelGrid e **aplicar ao módulo** (menu + topbar + cards). Decisões: **formato SVG na
+interface** (não dá para gerar PNG raster aqui; SVG é o formato certo — nítido, leve, e o traço em
+`currentColor` **adapta ao tema**, resolvendo o contraste que os PNG `-dark` tinham no tema claro);
+**abrangência** = menu lateral + topbar + cards do SentinelGrid (Service Report intacto). Destaque
+verde da marca (`#5fb52e`) fixo via classes `.sg-i-accent`/`.sg-i-accent-fill`. Substitui os glifos
+`material-symbols` (nav) e os app-icons PNG (topbar/cards) do módulo.
+
+**Alterações (frontend):**
+- `frontend/src/components/sentinelgrid/SgIcon.tsx` — novo: 21 ícones SVG (viewBox 24, traço `currentColor` + acento verde), `SgIconName`, `SG_ICON_NAMES`, `isSgIconName`.
+- `frontend/src/components/sentinelgrid/SgContextIcon.tsx` — **removido** (superseded pelos SVG).
+- `frontend/src/components/Layout.tsx` — `SENTINELGRID_NAV.icon` agora são `SgIconName`; render da nav usa `<SgIcon>` no SentinelGrid (material-symbols só no Service Report); `activeSgIcon(pathname)` alimenta topbar e toggle mobile.
+- `frontend/src/pages/sentinelgrid/SentinelHomePage.tsx` — cards usam `<SgIcon>`; hero volta ao logo real (`SentinelGrid-icone.png`).
+- `frontend/src/styles/theme.css` — bloco `.sg-ctx-icon` (PNG) trocado por `.sg-icon` (+ `--sg-icon-accent`, acento verde, opacidade na nav); `.sg-home-card__icon` (chip verde) e `.sg-home-brand`.
+
+**Migrations/DB:** nenhuma. **Assets:** os PNG em `public/img` permanecem (usados só no hero da marca; demais ficam de reserva).
+
+**Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck; bundle principal +~5 kB inline, vs ~1 MB/PNG). Folha visual dos 21 ícones (tema claro/escuro) publicada como Artifact para aprovação. Validação no navegador pendente: menu/topbar/cards do SentinelGrid com o novo traço, adaptando cor por tema.
+
+**Pendências/próximo passo:** aprovação visual do conjunto; ajustar ícones específicos se necessário (ex.: `orders`, `program`, `contract`). Extras (`wrench`/`battery`/`rectifier`/`settings`/`export`/`profile`) já no registry para uso futuro (ex.: tipos de equipamento, config, perfil).
+
+### 2026-07-08 — Service Hub · Card do SentinelGrid usa o logo da marca
+
+**Status:** ✅ concluída (EJS/CSS; sem build; UI aguardando navegador)
+**Contexto/decisão:** trocar o glifo `material-symbols` "bolt" do card do SentinelGrid no Service Hub
+pelo **logo da marca** (`SentinelGrid-icone.png`). O hub é server-rendered (EJS/Express), então o asset
+vai pelo `/public` (sempre servido pelo Express — igual ao logo da sidebar), não pelo `/app` (gated por
+`reactAppEnabled`+auth). O "tile" gradiente/borda do `.module-hub-icon` é removido só para esse card
+(o PNG já traz o próprio fundo).
+
+**Alterações:**
+- `specflow/public/img/SentinelGrid-icone.png` — cópia do logo (servido em `/public/img/`).
+- `views/admin-module-hub.ejs` — card `sentinelgrid` renderiza `<img class="module-hub-icon module-hub-icon--img" src="/public/img/SentinelGrid-icone.png">` em vez do glifo; ternário de ícone dos demais módulos mantido.
+- `specflow/public/css/app.css` — `.module-hub-card--sentinelgrid .module-hub-icon--img` (reset de fundo/borda por tema, `object-fit: cover`).
+- `.gitignore` — exceção `!specflow/public/img/*.png` (versiona o logo apesar do `*.png` global).
+
+**Migrations/DB:** nenhuma. **Como validar:** abrir o Service Hub (`/admin/hub`) e ver o card SentinelGrid com o logo. Sem build; hard-refresh. Se em produção (view cache do EJS ligado), reiniciar o app.
+
+### 2026-07-08 — UI · +14 ícones SVG (ações + calendário/severidade)
+
+**Status:** ✅ concluída (build/typecheck OK; folha visual atualizada; **ainda não fiados nos botões**)
+**Contexto/decisão:** a partir de 2 folhas de referência do usuário, ampliar o `SgIcon` com ícones de
+**ação** e de **calendário/severidade**, na mesma paleta (traço `currentColor` + acento verde). Só
+**criados no registry** por ora; a fiação nos botões de ação das telas (hoje `IconAction`/material) é
+passo separado, a combinar.
+
+**Alterações (frontend):**
+- `frontend/src/components/sentinelgrid/SgIcon.tsx` — +14 nomes/desenhos: `include` (Incluir), `trash` (Excluir), `edit-plan` (Editar Plano), `delete-plan` (Excluir Plano), `add-circle` (Adicionar), `new-doc` (Novo), `groups` (Grupos), `month` (Mês), `year` (Ano), `today` (Hoje), `emergency` (Emergencial), `critical` (Crítico), `important` (Importante), `attention` (Atenção). Total do conjunto: **35**.
+
+**Migrations/DB:** nenhuma. **Como validar:** `npm --prefix frontend run build` ✅ (o `Record<SgIconName>` garante que todos têm desenho). Folha visual (Artifact) atualizada com as seções "Ações" e "Calendário & severidade".
+
+**Pendências/próximo passo:** aprovar/ajustar os desenhos (ex.: `new-doc`/`important`/`critical` são mais interpretativos); depois **fiar nos botões**: Incluir/Novo/Adicionar, Excluir/Excluir Plano, Editar Plano nas telas CRUD; severidade nos badges de Alertas/Calendário; Mês/Ano/Hoje no seletor de período do Mapa.
+
+### 2026-07-08 — UI · Fiação dos ícones SVG (ações, severidade, período) + `pencil`
+
+**Status:** ✅ concluída (build/typecheck OK; UI aguardando navegador)
+**Contexto/decisão:** aplicar os ícones do conjunto nos lugares reais. Adicionado `pencil` (edição
+genérica, 36 no total). Ícones de **botão** usam a variante **`sg-icon--mono`** (acento segue a cor do
+botão, não o verde), enquanto **severidade/menu/topbar** mantêm o acento verde.
+
+**Alterações (frontend):**
+- `frontend/src/components/IconAction.tsx` — **dual-mode**: renderiza `<SgIcon>` quando o `icon` é um nome do conjunto (via `isSgIconName`), senão o glifo material. Não afeta o Service Report (usa chaves material).
+- `frontend/src/components/sentinelgrid/PriorityBadge.tsx` — novo: ícone de severidade + chip colorido (mapa `atencao→attention`, `importante→important`, `critico→critical`, `emergencial→emergency`).
+- `frontend/src/components/sentinelgrid/SgIcon.tsx` — +`pencil`.
+- `frontend/src/styles/theme.css` — `.sg-icon--mono` (acento = currentColor).
+- **Ações (linhas)** — todas as telas SG: `edit→pencil`, `delete→trash`; **Planos**: `edit-plan`/`delete-plan`.
+- **Botões de criar** — `new-doc` em Equipamentos/Checklists/Ordens/Contratos&Gestores/Planos; `add-circle` em Catálogo (fabricante/tipo/modelo) e "Adicionar ao grupo"/modal de grupo; `groups` no botão **Grupos** (Equipamentos).
+- **Severidade** — `PriorityBadge` em `CalendarPage` (linha/OM/card) e `AlertsPage` (legenda + tabela).
+- **Período do Mapa** — `CalendarPage`: ícones `year/month/calendar/today` no seletor ano/mês/semana/dia + `today` no botão "Hoje".
+
+**Migrations/DB:** nenhuma. **Como validar (feito):** `npm --prefix frontend run build` ✅ (typecheck limpo). Folha visual (Artifact) atualizada (36 ícones). Validação no navegador pendente: linhas com pencil/trash, Planos com edit-plan/delete-plan, botões Novo/Adicionar/Grupos, badges de severidade em Alertas/Calendário e o seletor de período.
+
+**Pendências/próximo passo:** validação visual; refinar desenhos se necessário. `include` fica de reserva (não fiado — os "criar" usaram `new-doc`/`add-circle`).
+
+### 2026-07-08 — UI · Remoção dos ícones material antigos dos botões de ação SG
+
+**Status:** ✅ concluída (build/typecheck OK)
+**Contexto/decisão:** as linhas de ação ainda misturavam ícones novos (pencil/trash/checklist) com
+glifos **material antigos** (`engineering`, `calendar_month`, `published_with_changes`, `check_circle`,
+`save`, `playlist_add_check`). Convertidos para o novo conjunto SVG. Adicionados 3 ícones
+(`check`, `status`, `save` — total **39**); nomes distintos dos usados pelo Service Report (sem colisão
+no `IconAction` dual-mode).
+
+**Alterações (frontend):**
+- `frontend/src/components/sentinelgrid/SgIcon.tsx` — +`check` (aprovar), +`status` (alterar status/refresh), +`save` (salvar).
+- Conversões de `icon=`: `calendar_month→calendar` (ProgramsPage · Gerar planos); `engineering→wrench`, `published_with_changes→status`, `check_circle→check`, `save`→SVG (MaintenanceOrdersPage); `published_with_changes→status` (RecommendationsPage); `playlist_add_check→checklist` (ChecklistsPage). `checklist` já era do conjunto.
+
+**Migrations/DB:** nenhuma. **Como validar (feito):** `grep` confirma **0** glifos material em `icon=` nas telas SG; `npm --prefix frontend run build` ✅. Folha visual (Artifact) atualizada (39).

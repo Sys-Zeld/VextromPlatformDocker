@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Tab, Table, Tabs } from "react-bootstrap";
@@ -109,8 +110,8 @@ function SiteAreasManager({ siteId }: { siteId: number }) {
                 <td>{a.classification}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => startEdit(a)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a área "${a.name}"?`)) mDelete.mutate(a.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => startEdit(a)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a área "${a.name}"?`)) mDelete.mutate(a.id); }} />
                   </div>
                 </td>
               </tr>
@@ -278,8 +279,8 @@ export default function SitesPage() {
                 <td>{s.location}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o site "${s.name}"?`)) mDelete.mutate(s.id); }} />
+                    <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />
+                    <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o site "${s.name}"?`)) mDelete.mutate(s.id); }} />
                   </div>
                 </td>
               </tr>

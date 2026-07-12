@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
-import { EVENT_KIND_LABEL, PRIORITY_META, SgAlertPriority } from "../../api/sentinelgrid/calendarMap";
+import { EVENT_KIND_LABEL, SgAlertPriority } from "../../api/sentinelgrid/calendarMap";
 import { getAlertAck, listAlerts, resetAlertAck } from "../../api/sentinelgrid/alerts";
+import PriorityBadge from "../../components/sentinelgrid/PriorityBadge";
 import { equipmentLabel, formatDate } from "../../utils/format";
 
 const PRIORITY_ORDER: SgAlertPriority[] = ["emergencial", "critico", "importante", "atencao"];
@@ -54,7 +55,7 @@ export default function AlertsPage() {
           <span className="fw-medium">Total: {data?.total ?? 0}</span>
           {PRIORITY_ORDER.map((p) => (
             <span key={p} className="d-flex align-items-center gap-1 small">
-              <span className="badge" style={{ background: PRIORITY_META[p].hex, color: PRIORITY_META[p].text }}>{PRIORITY_META[p].label}</span>
+              <PriorityBadge priority={p} />
               {byPriority[p] ?? 0}
             </span>
           ))}
@@ -75,7 +76,7 @@ export default function AlertsPage() {
               {alerts.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum alerta no momento. 🎉</td></tr>}
               {alerts.map((e, i) => (
                 <tr key={`${e.ref_table}-${e.ref_id}-${i}`}>
-                  <td><span className="badge" style={{ background: PRIORITY_META[e.priority].hex, color: PRIORITY_META[e.priority].text }}>{PRIORITY_META[e.priority].label}</span></td>
+                  <td><PriorityBadge priority={e.priority} /></td>
                   <td className="small">{EVENT_KIND_LABEL[e.event_kind] || e.event_kind}</td>
                   <td className="fw-medium">{equipmentLabel(e.equipment_tag, e.client_name)}</td>
                   <td className="small text-muted">{e.client_name} / {e.site_name || "-"} / {e.area_name || "-"}</td>

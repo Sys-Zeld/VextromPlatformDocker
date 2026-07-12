@@ -1,4 +1,5 @@
 import { Button, OverlayTrigger, Tooltip } from "react-bootstrap";
+import SgIcon, { isSgIconName } from "./sentinelgrid/SgIcon";
 
 type IconActionProps = { icon: string; label: string } & Record<string, unknown>;
 
@@ -21,7 +22,11 @@ export default function IconAction({ icon, label, ...rest }: IconActionProps) {
   return (
     <OverlayTrigger placement="top" overlay={<Tooltip>{label}</Tooltip>}>
       <Button size="sm" className="vx-icon-btn" aria-label={label} title={label} {...rest}>
-        <span className="material-symbols-outlined" aria-hidden="true">{materialIcon}</span>
+        {isSgIconName(icon) ? (
+          <SgIcon name={icon} size={18} className="sg-icon--mono" />
+        ) : (
+          <span className="material-symbols-outlined" aria-hidden="true">{materialIcon}</span>
+        )}
       </Button>
     </OverlayTrigger>
   );

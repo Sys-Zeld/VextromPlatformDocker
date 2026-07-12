@@ -1,4 +1,9 @@
 node_modules
+**/node_modules
+.npm-cache
+.claude
+.codex
+.agents
 .git
 .env
 .env.prod
@@ -8,3 +13,4 @@ docker/nginx/certs/
 npm-debug.log*
 .postman
 postman
+frontend/dist

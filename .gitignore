@@ -50,6 +50,10 @@ backups/
 !report_service/templates/email/*.html
 !frontend/index.html
 !frontend/**/*.html
+# Ícones de contexto do SentinelGrid (assets de UI versionados, apesar do *.png global)
+!frontend/public/img/*.png
+# Logo do SentinelGrid servido pelo Express no Service Hub (EJS)
+!specflow/public/img/*.png
 
 # Frontend (SPA React) — build artifacts já cobertos por dist/ e node_modules/
 frontend/dist/

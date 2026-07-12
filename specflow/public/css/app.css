@@ -44,77 +44,119 @@
   --badge-default-bg: #dce9f7;
   --badge-default-text: #406486;
 
+  /* Status funcionais (identidade Vextrom — modo normal) */
+  --status-success: #3F7D2A;
+  --status-info: #0E6BA8;
+  --status-warning: #DFAE18;
+  --status-critical: #C93F3F;
+  --status-emergency: #E6512E;
+  --status-disabled: #9AA1A6;
+
   --surface-rgb: 255, 255, 255;
   --app-font-family: "Inter", "Segoe UI", Tahoma, sans-serif;
   --bs-body-font-family: var(--app-font-family);
 }
 
 :root[data-theme="vextrom"] {
-  --background: #f2f6f3;
-  --surface: #fbfdfb;
-  --surface-2: #eef4f0;
-  --border: #c6d2ca;
-  --text: #2e4236;
-  --muted-text: #5c6f63;
+  /* Identidade Vextrom — Normal mode (limpo, técnico, corporativo) */
+  --background: #F4F6F7;
+  --surface: #FFFFFF;
+  --surface-2: #F8FAFA;
+  --surface-3: #EFF3F4;
+  --border: #DDE2E5;
+  --border-strong: #C8CDD0;
+  --text: #1F2529;
+  --text-strong: #0E1114;
+  --muted-text: #5F686D;
+  --muted-text-2: #8D9092;
 
-  --primary: #5fa73a;
-  --primary-hover: #4e9031;
-  --danger: #cf5a5a;
-  --warning: #d4a33a;
-  --success: #5fa73a;
+  --primary: #4F7F2A;
+  --primary-hover: #3F6721;
+  --primary-deep: #2E4F1A;
+  --primary-bright: #8CCB5A;
+  --primary-soft: #EDF5E8;
+  --primary-border: #BFD8AA;
 
-  --section-header-bg: #6aa447;
-  --section-header-text: #f3f9f1;
+  --danger: #C93F3F;
+  --warning: #DFAE18;
+  --success: #3F7D2A;
 
-  --input-bg: #f7fbf8;
-  --input-border: #b9c9be;
-  --input-focus: #7fc35c;
-  --input-text: #2f473a;
-  --input-placeholder: #7d9387;
+  --status-success: #3F7D2A;
+  --status-info: #0E6BA8;
+  --status-warning: #DFAE18;
+  --status-critical: #C93F3F;
+  --status-emergency: #E6512E;
+  --status-disabled: #9AA1A6;
 
-  --toggle-on: #5fa73a;
-  --toggle-off: #b8c8bd;
+  --section-header-bg: #3F6721;
+  --section-header-text: #F3F9F1;
 
-  --badge-default-bg: #dcebdc;
-  --badge-default-text: #335e3a;
+  --input-bg: #FFFFFF;
+  --input-border: #C8CDD0;
+  --input-focus: #4F7F2A;
+  --input-text: #1F2529;
+  --input-placeholder: #8D9092;
 
-  --shadow-sm: 0 8px 16px rgba(33, 56, 42, 0.1);
-  --shadow-md: 0 14px 24px rgba(33, 56, 42, 0.14);
-  --surface-rgb: 251, 253, 251;
+  --toggle-on: #4F7F2A;
+  --toggle-off: #C8CDD0;
+
+  --badge-default-bg: #EDF5E8;
+  --badge-default-text: #2E4F1A;
+
+  --shadow-sm: 0 8px 16px rgba(24, 34, 20, 0.08);
+  --shadow-md: 0 14px 24px rgba(24, 34, 20, 0.12);
+  --surface-rgb: 255, 255, 255;
 }
 
 :root[data-theme="xvextrom"] {
-  --background: #f4f8f4;
-  --surface: #fcfefd;
-  --surface-2: #eff6f1;
-  --border: #c4d6c8;
-  --text: #2a4437;
-  --muted-text: #617b6d;
+  /* Identidade Vextrom — Normal mode (variante levemente mais fria) */
+  --background: #F4F6F7;
+  --surface: #FFFFFF;
+  --surface-2: #F6F9F9;
+  --surface-3: #EEF3F3;
+  --border: #DDE2E5;
+  --border-strong: #C8CDD0;
+  --text: #1F2529;
+  --text-strong: #0E1114;
+  --muted-text: #5F686D;
+  --muted-text-2: #8D9092;
 
-  --primary: #6baa4b;
-  --primary-hover: #5b973f;
-  --danger: #c35a5a;
-  --warning: #c69735;
-  --success: #5f9f42;
+  --primary: #4F7F2A;
+  --primary-hover: #3F6721;
+  --primary-deep: #2E4F1A;
+  --primary-bright: #8CCB5A;
+  --primary-soft: #EDF5E8;
+  --primary-border: #BFD8AA;
 
-  --section-header-bg: #5e9f41;
-  --section-header-text: #f2faee;
+  --danger: #C93F3F;
+  --warning: #DFAE18;
+  --success: #3F7D2A;
 
-  --input-bg: #fbfefb;
-  --input-border: #b7cdbb;
-  --input-focus: #84be62;
-  --input-text: #2d483b;
-  --input-placeholder: #7d9487;
+  --status-success: #3F7D2A;
+  --status-info: #0E6BA8;
+  --status-warning: #DFAE18;
+  --status-critical: #C93F3F;
+  --status-emergency: #E6512E;
+  --status-disabled: #9AA1A6;
 
-  --toggle-on: #6baa4b;
-  --toggle-off: #b7c9bc;
+  --section-header-bg: #2E4F1A;
+  --section-header-text: #F2FAEE;
 
-  --badge-default-bg: #e1f0e2;
-  --badge-default-text: #355f3d;
+  --input-bg: #FFFFFF;
+  --input-border: #C8CDD0;
+  --input-focus: #4F7F2A;
+  --input-text: #1F2529;
+  --input-placeholder: #8D9092;
 
-  --shadow-sm: 0 8px 16px rgba(28, 59, 39, 0.1);
-  --shadow-md: 0 14px 26px rgba(28, 59, 39, 0.14);
-  --surface-rgb: 252, 254, 253;
+  --toggle-on: #4F7F2A;
+  --toggle-off: #C8CDD0;
+
+  --badge-default-bg: #E1F0E2;
+  --badge-default-text: #2E4F1A;
+
+  --shadow-sm: 0 8px 16px rgba(24, 34, 20, 0.09);
+  --shadow-md: 0 14px 26px rgba(24, 34, 20, 0.13);
+  --surface-rgb: 255, 255, 255;
 }
 
 :root[data-font="inter"] {
@@ -148,8 +190,8 @@ body.app-shell {
   font-family: var(--app-font-family);
   color: var(--text);
   background:
-    radial-gradient(circle at 12% 8%, rgba(111, 143, 174, 0.16) 0, transparent 38%),
-    radial-gradient(circle at 88% 2%, rgba(95, 167, 58, 0.12) 0, transparent 32%),
+    radial-gradient(circle at 12% 8%, rgba(111, 143, 174, 0.14) 0, transparent 38%),
+    radial-gradient(circle at 88% 2%, rgba(79, 127, 42, 0.10) 0, transparent 32%),
     linear-gradient(180deg, var(--background) 0%, var(--background) 100%);
 }
 
@@ -161,15 +203,15 @@ body.app-shell {
 
 :root[data-theme="vextrom"] body.app-shell {
   background:
-    radial-gradient(circle at 8% 0%, rgba(95, 167, 58, 0.2) 0, transparent 28%),
-    linear-gradient(180deg, #f5f7f6 0%, #e7ece9 100%);
+    radial-gradient(circle at 8% 0%, rgba(79, 127, 42, 0.14) 0, transparent 28%),
+    linear-gradient(180deg, #F6F8F8 0%, #ECEFF1 100%);
 }
 
 :root[data-theme="xvextrom"] body.app-shell {
   background:
-    radial-gradient(circle at 10% 2%, rgba(107, 170, 75, 0.18) 0, transparent 30%),
-    radial-gradient(circle at 88% 0%, rgba(139, 193, 100, 0.1) 0, transparent 24%),
-    linear-gradient(180deg, #f4f8f4 0%, #e8f0e9 100%);
+    radial-gradient(circle at 10% 2%, rgba(79, 127, 42, 0.12) 0, transparent 30%),
+    radial-gradient(circle at 88% 0%, rgba(140, 203, 90, 0.08) 0, transparent 24%),
+    linear-gradient(180deg, #F5F8F7 0%, #EBF0EC 100%);
 }
 
 
@@ -588,7 +630,7 @@ body.app-shell {
 
 :root[data-theme="xvextrom"] .accordion-button {
   color: #f5fbf3;
-  background: linear-gradient(180deg, #7ebb5a 0%, #5fa73a 58%, #4b8f2f 100%);
+  background: linear-gradient(180deg, #5B8F33 0%, #4F7F2A 58%, #3F6721 100%);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
 
@@ -636,14 +678,14 @@ body.app-shell {
 
 :root[data-theme="vextrom"] .btn-primary,
 :root[data-theme="vextrom"] .btn-success {
-  background: linear-gradient(180deg, #78bb48 0%, #5fa73a 100%);
-  border-color: #5a9c37;
+  background: linear-gradient(180deg, #588A31 0%, #4F7F2A 100%);
+  border-color: #3F6721;
 }
 
 :root[data-theme="xvextrom"] .btn-primary,
 :root[data-theme="xvextrom"] .btn-success {
-  background: linear-gradient(180deg, #7ebb59 0%, #6baa4b 100%);
-  border-color: #619e45;
+  background: linear-gradient(180deg, #588A31 0%, #4F7F2A 100%);
+  border-color: #3F6721;
 }
 
 .btn-primary:hover,
@@ -1350,14 +1392,14 @@ code {
 
 :root[data-theme="vextrom"] .module-hub-card .module-hub-icon {
   color: #eef5ea;
-  background: linear-gradient(180deg, #6fa743 0%, #4d7e2d 100%);
-  border-color: #5d8f3d;
+  background: linear-gradient(180deg, #588A31 0%, #3F6721 100%);
+  border-color: #4F7F2A;
 }
 
 :root[data-theme="xvextrom"] .module-hub-card .module-hub-icon {
   color: #f2f8ef;
-  background: linear-gradient(180deg, #7ebb59 0%, #5d9e3d 100%);
-  border-color: #6aa64d;
+  background: linear-gradient(180deg, #588A31 0%, #3F6721 100%);
+  border-color: #4F7F2A;
 }
 
 :root[data-theme="soft"] .module-hub-card--module-spec .module-hub-icon {
@@ -1394,6 +1436,22 @@ code {
   color: #fff8ee;
   background: linear-gradient(180deg, #c09152 0%, #9a6f39 100%);
   border-color: #ad8047;
+}
+
+/* SentinelGrid: usa o logo (imagem) no lugar do glifo. Remove o "tile" gradiente/
+   borda (o PNG já traz seu próprio fundo). Seletores por tema para vencer as
+   regras de gradiente acima (mesma especificidade, definidas depois). */
+.module-hub-card--sentinelgrid .module-hub-icon--img,
+:root[data-theme="soft"] .module-hub-card--sentinelgrid .module-hub-icon--img,
+:root[data-theme="vextrom"] .module-hub-card--sentinelgrid .module-hub-icon--img,
+:root[data-theme="xvextrom"] .module-hub-card--sentinelgrid .module-hub-icon--img,
+:root[data-theme="darkvextrom"] .module-hub-card--sentinelgrid .module-hub-icon--img {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  overflow: hidden;
+  object-fit: cover;
 }
 
 @media (max-width: 1024px) {

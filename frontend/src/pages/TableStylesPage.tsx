@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Card, Spinner, Table } from "react-bootstrap";
@@ -42,7 +43,7 @@ export default function TableStylesPage() {
                     label="Restaurar padrão"
                     variant="outline-secondary"
                     disabled={!t.hasCustomStyle || mReset.isPending}
-                    onClick={() => { if (confirm(`Restaurar o estilo padrão de "${t.label}"?`)) mReset.mutate(t.key); }}
+                    onClick={async () => { if (await confirmDialog(`Restaurar o estilo padrão de "${t.label}"?`)) mReset.mutate(t.key); }}
                   />
                 </div>
               </td>

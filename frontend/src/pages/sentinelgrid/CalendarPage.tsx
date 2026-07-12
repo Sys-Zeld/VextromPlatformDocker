@@ -27,6 +27,15 @@ import {
 import { ackAlerts, getAlertAck, listAlerts } from "../../api/sentinelgrid/alerts";
 import { sendOrderToReportService } from "../../api/sentinelgrid/maintenanceOrders";
 import { equipmentLabel, formatDate } from "../../utils/format";
+import SgIcon, { SgIconName } from "../../components/sentinelgrid/SgIcon";
+import PriorityBadge from "../../components/sentinelgrid/PriorityBadge";
+
+const VIEW_ICON: Record<"ano" | "mes" | "semana" | "dia", SgIconName> = {
+  ano: "year",
+  mes: "month",
+  semana: "calendar",
+  dia: "today"
+};
 
 const CRIT_LABEL: Record<string, string> = Object.fromEntries(CRITICALITY.map((c) => [c.value, c.label]));
 
@@ -252,7 +261,7 @@ function DayView({ events, conflicts, onSelect }: { events: SgMapEvent[]; confli
               <td className="small">{e.client_name} / {e.site_name || "-"}</td>
               <td className="small">{e.event_kind}{e.alert_level ? ` · ${e.alert_level}` : ""}</td>
               <td className="small">{e.status}</td>
-              <td><span className="badge" style={{ background: PRIORITY_META[e.priority].hex, color: PRIORITY_META[e.priority].text }}>{PRIORITY_META[e.priority].label}</span></td>
+              <td><PriorityBadge priority={e.priority} /></td>
               <td className="small text-muted">{e.action_needed}</td>
             </tr>
           ))}
@@ -299,7 +308,7 @@ function EventCard({ e, conflict, onHide }: { e: SgMapEvent; conflict: boolean; 
         <Row k="Tipo" v={e.event_kind} />
         <Row k="Status" v={e.status} />
         <Row k="Criticidade" v={e.criticality} />
-        <Row k="Prioridade" v={<span className="badge" style={{ background: PRIORITY_META[e.priority].hex, color: PRIORITY_META[e.priority].text }}>{PRIORITY_META[e.priority].label}</span>} />
+        <Row k="Prioridade" v={<PriorityBadge priority={e.priority} />} />
         <Row k="Vencimento" v={e.alert_level ? `${e.alert_level} (${e.days_to_due}d)` : "—"} />
         <Row k="Responsável" v={e.responsible || "—"} />
         <Row k="Ação recomendada" v={e.action_needed} />
@@ -498,7 +507,9 @@ export default function CalendarPage() {
             <div className="small text-muted mb-1">Período</div>
             <ButtonGroup size="sm">
               {(["ano", "mes", "semana", "dia"] as View[]).map((v) => (
-                <Button key={v} variant={view === v ? "primary" : "outline-primary"} onClick={() => setView(v)} className="text-capitalize">{v}</Button>
+                <Button key={v} variant={view === v ? "primary" : "outline-primary"} onClick={() => setView(v)} className="text-capitalize d-inline-flex align-items-center gap-1">
+                  <SgIcon name={VIEW_ICON[v]} size={15} className="sg-icon--mono" />{v}
+                </Button>
               ))}
             </ButtonGroup>
           </div>
@@ -509,7 +520,7 @@ export default function CalendarPage() {
               <Button variant="outline-secondary" disabled style={{ minWidth: 140 }}>{rangeLabel(view, anchor)}</Button>
               <Button variant="outline-secondary" onClick={() => setAnchor((a) => step(view, a, 1))}>›</Button>
             </ButtonGroup>
-            <Button size="sm" variant="link" className="ms-1" onClick={() => setAnchor(new Date())}>Hoje</Button>
+            <Button size="sm" variant="link" className="ms-1 d-inline-flex align-items-center gap-1" onClick={() => setAnchor(new Date())}><SgIcon name="today" size={15} className="sg-icon--mono" />Hoje</Button>
           </div>
           <div>
             <div className="small text-muted mb-1">Modo</div>
@@ -668,7 +679,7 @@ export default function CalendarPage() {
           <div className="d-flex flex-column" style={{ maxHeight: 320, overflowY: "auto" }}>
             {alertItems.slice(0, 10).map((e, i) => (
               <div key={i} className="d-flex align-items-center gap-2 small border-bottom py-1">
-                <span className="badge" style={{ background: PRIORITY_META[e.priority].hex, color: PRIORITY_META[e.priority].text }}>{PRIORITY_META[e.priority].label}</span>
+                <PriorityBadge priority={e.priority} />
                 <span className="fw-medium">{equipmentLabel(e.equipment_tag, e.client_name)}</span>
                 <span className="text-muted text-truncate">{EVENT_KIND_LABEL[e.event_kind] || e.event_kind}</span>
                 <span className="ms-auto text-nowrap">{formatDate(e.event_date)}</span>

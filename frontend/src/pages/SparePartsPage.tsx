@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Tab, Table, Tabs } from "react-bootstrap";
@@ -134,7 +135,7 @@ export default function SparePartsPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }} />
                 </div>
               </td>
             </tr>

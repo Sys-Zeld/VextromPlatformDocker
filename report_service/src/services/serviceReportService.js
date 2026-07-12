@@ -55,6 +55,20 @@ function sanitizeText(value) {
   return String(value || "").trim();
 }
 
+function equipmentDuplicateError() {
+  const err = new Error("TAG ja cadastrada neste site.");
+  err.statusCode = 409;
+  err.errorCode = "EQUIPMENT_TAG_DUPLICATE";
+  return err;
+}
+
+async function ensureEquipmentTagUnique(siteId, tagNumber, excludeId = null) {
+  const tag = sanitizeText(tagNumber);
+  if (!tag) return;
+  const duplicate = await repo.findEquipmentBySiteTag(repo.toInt(siteId), tag, excludeId);
+  if (duplicate) throw equipmentDuplicateError();
+}
+
 function normalizeComponentCategory(value) {
   const normalized = sanitizeText(value).toLowerCase();
   const allowed = (COMPONENT_CATEGORIES || [])
@@ -226,7 +240,7 @@ async function createEquipment(input = {}) {
     err.statusCode = 422;
     throw err;
   }
-  return repo.createEquipment({
+  const payload = {
     customerId: repo.toInt(input.customerId),
     siteId: repo.toInt(input.siteId),
     type,
@@ -245,7 +259,9 @@ async function createEquipment(input = {}) {
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
     notes: sanitizeText(input.notes)
-  });
+  };
+  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
+  return repo.createEquipment(payload);
 }
 
 async function updateEquipment(id, input = {}) {
@@ -256,7 +272,7 @@ async function updateEquipment(id, input = {}) {
     throw err;
   }
   const pick = (value, fallback) => (value === undefined ? fallback : value);
-  return repo.updateEquipment(id, {
+  const payload = {
     customerId: repo.toInt(pick(input.customerId, existing.customer_id)),
     siteId: repo.toInt(pick(input.siteId, existing.site_id)),
     type: sanitizeText(pick(input.type, existing.type)),
@@ -275,7 +291,9 @@ async function updateEquipment(id, input = {}) {
     manufacturer: sanitizeText(pick(input.manufacturer, existing.manufacturer)),
     modelFamily: sanitizeText(pick(input.modelFamily, existing.model_family)),
     notes: sanitizeText(pick(input.notes, existing.notes))
-  });
+  };
+  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber, id);
+  return repo.updateEquipment(id, payload);
 }
 
 async function deleteEquipment(id) {
@@ -699,6 +717,40 @@ async function linkOrderEquipment(orderId, equipmentId, notes = "") {
   return repo.attachEquipmentToOrder(oid, eid, sanitizeText(notes));
 }
 
+// Leituras de contrato para integração inter-módulos (consumidas in-process por
+// outro módulo, ex.: SentinelGrid). Expõem o registro do RS sem acesso ao repo/DB
+// pelo consumidor (ADR-005: integração por contrato de serviço, read-only).
+async function getCustomer(id) {
+  return repo.getCustomerById(repo.toInt(id));
+}
+
+async function listCustomers() {
+  return repo.listCustomers();
+}
+
+async function getSite(id) {
+  return repo.getSiteById(repo.toInt(id));
+}
+
+async function getEquipment(id) {
+  return repo.getEquipmentById(repo.toInt(id));
+}
+
+async function listSitesByCustomer(customerId) {
+  return repo.listSites({ customerId: repo.toInt(customerId) });
+}
+
+async function listEquipments() {
+  return repo.listEquipments();
+}
+
+async function listEquipmentsByCustomer(customerId) {
+  const cid = repo.toInt(customerId);
+  if (!cid) return [];
+  const all = await repo.listEquipments();
+  return all.filter((e) => Number(e.customer_id) === cid);
+}
+
 async function ensureEquipmentByRef(input = {}) {
   const externalSource = sanitizeText(input.externalSource);
   const externalId = sanitizeText(input.externalId);
@@ -712,7 +764,7 @@ async function ensureEquipmentByRef(input = {}) {
     err.statusCode = 422;
     throw err;
   }
-  const equipment = await repo.createEquipment({
+  const payload = {
     customerId: repo.toInt(input.customerId),
     siteId: repo.toInt(input.siteId),
     type,
@@ -733,7 +785,9 @@ async function ensureEquipmentByRef(input = {}) {
     notes: sanitizeText(input.notes),
     externalSource,
     externalId
-  });
+  };
+  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
+  const equipment = await repo.createEquipment(payload);
   return { equipment, created: true };
 }
 
@@ -748,6 +802,13 @@ module.exports = {
   ensureCustomerByRef,
   ensureSiteByRef,
   ensureEquipmentByRef,
+  getCustomer,
+  getSite,
+  getEquipment,
+  listCustomers,
+  listEquipments,
+  listSitesByCustomer,
+  listEquipmentsByCustomer,
   linkOrderEquipment,
   updateEquipment,
   deleteEquipment,

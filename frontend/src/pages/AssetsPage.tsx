@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -100,7 +101,7 @@ export default function AssetsPage() {
                   <div className="vx-actions justify-content-end">
                     <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })} />
                     <IconAction icon="handyman" label="Ferramentas" variant="outline-primary" as={Link} to={`/assets/technicians/${t.id}/tools`} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mTechDelete.isPending} onClick={() => { if (confirm(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mTechDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }} />
                   </div>
                 </td>
               </tr>
@@ -126,7 +127,7 @@ export default function AssetsPage() {
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setInstrModal({ id: i.id, form: instrToInput(i) })} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mInstrDelete.isPending} onClick={() => { if (confirm(`Excluir o instrumento "${i.name}"?`)) mInstrDelete.mutate(i.id); }} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mInstrDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o instrumento "${i.name}"?`)) mInstrDelete.mutate(i.id); }} />
                   </div>
                 </td>
               </tr>

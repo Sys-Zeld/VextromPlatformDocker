@@ -19,6 +19,9 @@ function createEquipmentRouter(deps) {
       return await fn();
     } catch (err) {
       if (err && err.code === "SG_AREA_INVALID") return res.status(400).json(invalidArea);
+      if (err && err.code === "SG_EQUIPMENT_DUPLICATE") {
+        return res.status(409).json({ error: err.message, errorCode: "SG_EQUIPMENT_DUPLICATE" });
+      }
       if (isForeignKeyError(err)) return res.status(400).json(invalidRef);
       throw err;
     }

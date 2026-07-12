@@ -49,15 +49,104 @@ async function updateClient(id, input, actor = "") {
   return res.rows[0] || null;
 }
 
+// Soft delete em cascata de TODA a árvore do cliente, numa única transação.
+// Regra de pertinência (decisão de produto): excluir um cliente remove sites,
+// áreas, equipamentos, contratos, gestores, planos (+itens) e ordens dele, além
+// dos programas vinculados a contratos DESTE cliente. Programas globais (sem
+// contrato) são preservados por serem templates reutilizáveis. Como todo o app
+// usa soft delete (deleted_at) e as FKs são ON DELETE RESTRICT, marcamos
+// deleted_at em vez de apagar fisicamente — reversível e sem violar FKs.
 async function softDeleteClient(id, actor = "") {
-  const res = await pool.query(
-    `UPDATE sg_clients
-        SET deleted_at = NOW(), updated_by = $2, updated_at = NOW()
-      WHERE id = $1 AND deleted_at IS NULL
-      RETURNING id`,
-    [id, actor]
-  );
-  return res.rowCount > 0;
+  const conn = await pool.connect();
+  try {
+    await conn.query("BEGIN");
+
+    const exists = await conn.query(
+      "SELECT id FROM sg_clients WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+      [id]
+    );
+    if (exists.rowCount === 0) {
+      await conn.query("ROLLBACK");
+      return false;
+    }
+
+    // Ordens do cliente.
+    await conn.query(
+      "UPDATE sg_maintenance_orders SET deleted_at = NOW() WHERE client_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    // Recomendações dos equipamentos do cliente.
+    await conn.query(
+      `UPDATE sg_recommendations SET deleted_at = NOW()
+        WHERE equipment_id IN (SELECT id FROM sg_equipment WHERE client_id = $1) AND deleted_at IS NULL`,
+      [id]
+    );
+    // Itens de plano e planos dos equipamentos do cliente.
+    await conn.query(
+      `UPDATE sg_plan_items SET deleted_at = NOW()
+        WHERE plan_id IN (
+          SELECT p.id FROM sg_equipment_plans p
+          JOIN sg_equipment e ON e.id = p.equipment_id
+          WHERE e.client_id = $1
+        ) AND deleted_at IS NULL`,
+      [id]
+    );
+    await conn.query(
+      `UPDATE sg_equipment_plans SET deleted_at = NOW()
+        WHERE equipment_id IN (SELECT id FROM sg_equipment WHERE client_id = $1) AND deleted_at IS NULL`,
+      [id]
+    );
+    // Grupos de equipamentos dos sites do cliente.
+    await conn.query(
+      `UPDATE sg_equipment_groups SET deleted_at = NOW()
+        WHERE site_id IN (SELECT id FROM sg_sites WHERE client_id = $1) AND deleted_at IS NULL`,
+      [id]
+    );
+    // Equipamentos do cliente.
+    await conn.query(
+      "UPDATE sg_equipment SET deleted_at = NOW() WHERE client_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    // Programas vinculados a contratos do cliente (globais, sem contrato, preservados).
+    await conn.query(
+      `UPDATE sg_maintenance_programs SET deleted_at = NOW()
+        WHERE contract_id IN (SELECT id FROM sg_contracts WHERE client_id = $1) AND deleted_at IS NULL`,
+      [id]
+    );
+    // Contratos do cliente.
+    await conn.query(
+      "UPDATE sg_contracts SET deleted_at = NOW() WHERE client_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    // Áreas dos sites do cliente e os próprios sites.
+    await conn.query(
+      `UPDATE sg_areas SET deleted_at = NOW()
+        WHERE site_id IN (SELECT id FROM sg_sites WHERE client_id = $1) AND deleted_at IS NULL`,
+      [id]
+    );
+    await conn.query(
+      "UPDATE sg_sites SET deleted_at = NOW() WHERE client_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    // Gestores do cliente.
+    await conn.query(
+      "UPDATE sg_client_managers SET deleted_at = NOW() WHERE client_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    // Por fim, o próprio cliente.
+    await conn.query(
+      "UPDATE sg_clients SET deleted_at = NOW(), updated_by = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+      [id, actor]
+    );
+
+    await conn.query("COMMIT");
+    return true;
+  } catch (err) {
+    await conn.query("ROLLBACK");
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 module.exports = { listClients, getClient, createClient, updateClient, softDeleteClient };

@@ -17,7 +17,8 @@ import {
 } from "recharts";
 import { getAnalytics } from "../api/analytics";
 
-const PIE_COLORS = ["#6c757d", "#0dcaf0", "#0d6efd", "#ffc107", "#198754", "#212529", "#dc3545"];
+// Paleta categórica ancorada na identidade Vextrom (verde da marca + status).
+const PIE_COLORS = ["#4F7F2A", "#0E6BA8", "#DFAE18", "#C93F3F", "#8B5CF6", "#5F686D", "#E6512E"];
 
 function Kpi({ label, value, icon }: { label: string; value: number | string; icon: string }) {
   return (
@@ -103,8 +104,8 @@ export default function AnalyticsPage() {
                   <YAxis allowDecimals={false} />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="Abertas" stroke="#0d6efd" strokeWidth={2} />
-                  <Line type="monotone" dataKey="Fechadas" stroke="#198754" strokeWidth={2} />
+                  <Line type="monotone" dataKey="Abertas" stroke="#0E6BA8" strokeWidth={2} />
+                  <Line type="monotone" dataKey="Fechadas" stroke="#3F7D2A" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </Card.Body>
@@ -123,7 +124,7 @@ export default function AnalyticsPage() {
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="name" width={120} />
                   <Tooltip />
-                  <Bar dataKey="horas" fill="#0dcaf0" />
+                  <Bar dataKey="horas" fill="#0E6BA8" />
                 </BarChart>
               </ResponsiveContainer>
             </Card.Body>
@@ -139,7 +140,7 @@ export default function AnalyticsPage() {
                   <XAxis dataKey="name" hide />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="OS" fill="#6610f2" />
+                  <Bar dataKey="OS" fill="#4F7F2A" />
                 </BarChart>
               </ResponsiveContainer>
             </Card.Body>

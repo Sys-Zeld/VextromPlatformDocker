@@ -1,9 +1,11 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 
 const PAGE_SIZE = 20;
 import { listClients } from "../../api/sentinelgrid/clients";
@@ -118,7 +120,7 @@ export default function PlansPage() {
         </div>
         <div className="d-flex gap-2">
           <Link to="/sentinelgrid/programs" className="btn btn-outline-secondary btn-sm">Programas</Link>
-          <Button size="sm" onClick={openNew}>Novo plano</Button>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Novo plano</Button>
         </div>
       </div>
 
@@ -171,8 +173,8 @@ export default function PlansPage() {
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
-                      <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o plano "${p.name}"?`)) mDelete.mutate(p.id); }} />
+                      <IconAction icon="edit-plan" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
+                      <IconAction icon="delete-plan" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o plano "${p.name}"?\n\nIsso também exclui as ordens geradas a partir dele.`)) mDelete.mutate(p.id); }} />
                     </div>
                   </td>
                 </tr>

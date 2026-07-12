@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Pagination, Table } from "react-bootstrap";
@@ -142,7 +143,7 @@ export default function ImagesPanel(props: { orderId: number; images: ReportImag
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     <Button size="sm" variant="outline-secondary" onClick={() => setPreview({ imageId: img.refId, src, caption: img.caption || "", rotation })}>Ver</Button>
-                    {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir esta imagem do banco de tags?")) mDelete.mutate(img.refId); }} />}
+                    {!locked && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir esta imagem do banco de tags?")) mDelete.mutate(img.refId); }} />}
                   </div>
                 </td>
               </tr>

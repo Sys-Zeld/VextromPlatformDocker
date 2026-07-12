@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -82,7 +83,7 @@ export default function TechnicianToolsPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(t)} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir "${t.item}"?`)) mDelete.mutate(t.id); }} />
+                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir "${t.item}"?`)) mDelete.mutate(t.id); }} />
                 </div>
               </td>
             </tr>

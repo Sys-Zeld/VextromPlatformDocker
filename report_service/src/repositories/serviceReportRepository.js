@@ -433,6 +433,22 @@ async function getEquipmentById(id) {
   return result.rows[0] || null;
 }
 
+async function findEquipmentBySiteTag(siteId, tagNumber, excludeId = null) {
+  const cleanTag = String(tagNumber || "").trim();
+  if (!cleanTag) return null;
+  const params = [siteId, cleanTag.toLowerCase()];
+  let where = "site_id = $1 AND LOWER(TRIM(tag_number)) = $2";
+  if (excludeId) {
+    params.push(excludeId);
+    where += ` AND id <> $${params.length}`;
+  }
+  const result = await db.query(
+    `SELECT * FROM service_report_equipments WHERE ${where} LIMIT 1`,
+    params
+  );
+  return result.rows[0] || null;
+}
+
 async function createEquipment(payload) {
   const result = await db.query(
     `
@@ -3539,6 +3555,7 @@ module.exports = {
   getEquipmentById,
   getEquipmentByExternalRef,
   createEquipment,
+  findEquipmentBySiteTag,
   updateEquipment,
   deleteEquipment,
   listSpareParts,

@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Accordion, Alert, Badge, Button, Card, Form, Spinner, Table } from "react-bootstrap";
@@ -88,7 +89,7 @@ function MeasurementTableCard(props: { orderId: number; measurement: Measurement
       </Card.Body>
       {!locked && (
         <Card.Footer className="d-flex justify-content-end gap-2 bg-transparent border-0 px-0">
-          <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir esta tabela de ensaios?")) mDelete.mutate(); }}>Excluir</Button>
+          <Button size="sm" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir esta tabela de ensaios?")) mDelete.mutate(); }}>Excluir</Button>
           <Button size="sm" variant="outline-primary" disabled={mSave.isPending} onClick={() => mSave.mutate()}>{mSave.isPending ? "Salvando…" : "Salvar tabela"}</Button>
         </Card.Footer>
       )}

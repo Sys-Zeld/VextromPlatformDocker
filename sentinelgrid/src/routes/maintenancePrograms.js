@@ -92,8 +92,17 @@ function createMaintenanceProgramsRouter(deps) {
   router.delete(
     "/:id",
     asyncHandler(async (req, res) => {
-      const ok = await repo.softDeleteProgram(Number(req.params.id), actorOf(req));
-      if (!ok) return res.status(404).json(notFound);
+      const result = await repo.softDeleteProgram(Number(req.params.id), actorOf(req));
+      if (result.notFound) return res.status(404).json(notFound);
+      if (result.blocked) {
+        return res.status(409).json({
+          error: `Programa usado por equipamentos de ${result.clientCount} clientes (${result.clientNames.join(", ")}). ` +
+            "Exclua os planos por cliente antes de remover o programa.",
+          errorCode: "SG_PROGRAM_CROSS_CLIENT",
+          clientCount: result.clientCount,
+          clientNames: result.clientNames
+        });
+      }
       res.status(204).end();
     })
   );

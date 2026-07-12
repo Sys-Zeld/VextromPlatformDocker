@@ -1,9 +1,11 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import Pager from "../../components/sentinelgrid/Pager";
 import IconAction from "../../components/IconAction";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 import { listClients } from "../../api/sentinelgrid/clients";
 import { listSites } from "../../api/sentinelgrid/sites";
 import { listAreas } from "../../api/sentinelgrid/areas";
@@ -22,7 +24,9 @@ import {
 } from "../../api/sentinelgrid/equipment";
 import { AddToGroupModal, GroupsModal } from "./EquipmentGroupsModals";
 import { listEquipments } from "../../api/equipments";
-import { mergeNames } from "../../utils/suggest";
+import RegistrySuggestField, { RegistrySuggestItem } from "../../components/sentinelgrid/RegistrySuggestField";
+import RegistrySyncModal, { SyncPickItem } from "../../components/sentinelgrid/RegistrySyncModal";
+import { importEquipmentFromReportService, listRsImportableEquipment } from "../../api/sentinelgrid/integration";
 
 interface FormState extends SgEquipmentInput {
   clientId: number;
@@ -86,6 +90,15 @@ export default function EquipmentsPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showImportEq, setShowImportEq] = useState(false);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+
+  // Equipamentos do Service Report disponíveis para importar (carrega só com o modal aberto).
+  const rsImportableEq = useQuery({
+    queryKey: ["sentinelgrid", "integration", "rs-importable-equipment"],
+    queryFn: listRsImportableEquipment,
+    enabled: showImportEq
+  });
 
   // Seleção para agrupamento.
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -100,6 +113,41 @@ export default function EquipmentsPage() {
     onError
   });
   const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
+  // Exclusão em lote: dispara os DELETEs em paralelo e agrega falhas parciais
+  // (ex.: equipamento com OS/planos/manutenções vinculados que o backend recusa).
+  const mBulkDelete = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deleteEquipment(id)));
+      const failedIds = ids.filter((_, i) => results[i].status === "rejected");
+      return { failedIds, total: ids.length };
+    },
+    onSuccess: ({ failedIds, total }) => {
+      setSelected(new Set(failedIds)); // mantém selecionados só os que falharam
+      setActionError(
+        failedIds.length
+          ? `${failedIds.length} de ${total} equipamento(s) não puderam ser excluídos (verifique OS/planos/manutenções vinculados).`
+          : null
+      );
+      invalidate();
+    },
+    onError
+  });
+  // Importa UM equipamento do RS (traz cliente + site). Acionado pela caixa de sugestão
+  // da TAG ao escolher um item do outro módulo.
+  const mImportEq = useMutation({
+    mutationFn: (rsEquipmentId: number) => importEquipmentFromReportService(rsEquipmentId),
+    onSuccess: ({ result }) => {
+      setForm(null); setEditingId(null);
+      setImportInfo(`Equipamento "${result.equipmentTag}" ${result.equipmentReused ? "atualizado" : "importado"} do Service Report (cliente "${result.clientName}").`);
+      invalidate();
+    },
+    onError
+  });
+  const onTagImportPick = async (it: RegistrySuggestItem) => {
+    if (await confirmDialog(`Importar o equipamento "${it.name}" do Service Report? Isso trará também o cliente e o site dele.`)) {
+      mImportEq.mutate(it.id);
+    }
+  };
 
   const clients = clientsQuery.data?.clients ?? [];
   const sites = sitesQuery.data?.sites ?? [];
@@ -113,10 +161,18 @@ export default function EquipmentsPage() {
   const selClientId = form?.clientId || 0;
   const selClientName = selClientId ? (clients.find((c) => Number(c.id) === selClientId)?.name || "") : "";
   const selClientKey = selClientName.trim().toLowerCase();
-  const tagOptions = mergeNames(
-    (sgAllEquip.data?.equipment ?? []).filter((e) => !selClientId || Number(e.client_id) === selClientId).map((e) => e.tag),
-    (rsEquip.data?.equipments ?? []).filter((e) => !selClientKey || String(e.customer_name || "").trim().toLowerCase() === selClientKey).map((e) => e.tag_number)
-  );
+  // Caixa de sugestão da TAG rotulada por módulo (só itens com TAG). Item do SG completa
+  // o cadastro (applyTagMatch); item do RS dispara a importação (onTagImportPick).
+  const tagSuggestItems: RegistrySuggestItem[] = [
+    ...(sgAllEquip.data?.equipment ?? []).filter((e) => (e.tag || "").trim()).map((e) => ({ id: e.id, name: e.tag, module: "sg" as const })),
+    ...(rsEquip.data?.equipments ?? []).filter((e) => (e.tag_number || "").trim()).map((e) => ({ id: e.id, name: e.tag_number as string, module: "rs" as const }))
+  ];
+  const importEqItems: SyncPickItem[] = (rsImportableEq.data?.equipment ?? []).map((e) => ({
+    id: e.id,
+    name: e.tag || `#${e.id}`,
+    subtitle: [e.customer_name, e.site_name].filter(Boolean).join(" · "),
+    linked: e.sg_linked
+  }));
 
   const sitesForClient = useMemo(() => (form ? sites.filter((s) => Number(s.client_id) === form.clientId) : []), [sites, form]);
   const areasForSite = useMemo(() => (form ? areas.filter((a) => Number(a.site_id) === form.siteId) : []), [areas, form]);
@@ -183,19 +239,26 @@ export default function EquipmentsPage() {
   const toggleSel = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allOnPage = equipment.length > 0 && equipment.every((e) => selected.has(e.id));
   const toggleAll = () => setSelected((s) => { const n = new Set(s); if (allOnPage) equipment.forEach((e) => n.delete(e.id)); else equipment.forEach((e) => n.add(e.id)); return n; });
+  const askBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (await confirmDialog(`Excluir ${selected.size} equipamento(s) selecionado(s)? Esta ação não pode ser desfeita.`)) {
+      mBulkDelete.mutate([...selected]);
+    }
+  };
 
   return (
     <div className="d-flex flex-column gap-4">
-      <datalist id="vx-equipment-tag-options">{tagOptions.map((t) => <option key={t} value={t} />)}</datalist>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h2 className="h5 mb-0">SentinelGrid · Equipamentos</h2>
         <div className="d-flex align-items-center gap-2">
           <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
-          <Button size="sm" variant="outline-secondary" onClick={() => setShowGroups(true)}>Grupos</Button>
-          <Button size="sm" onClick={openNew}>+ Novo equipamento</Button>
+          <Button size="sm" variant="outline-primary" onClick={() => setShowImportEq(true)}>Buscar do Service Report</Button>
+          <Button size="sm" variant="outline-secondary" onClick={() => setShowGroups(true)} className="d-inline-flex align-items-center gap-1"><SgIcon name="groups" size={16} className="sg-icon--mono" />Grupos</Button>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Novo equipamento</Button>
         </div>
       </div>
 
+      {importInfo && <Alert variant="success" dismissible onClose={() => setImportInfo(null)}>{importInfo}</Alert>}
       {actionError && !form && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
 
       <Card>
@@ -220,8 +283,11 @@ export default function EquipmentsPage() {
         {selected.size > 0 && (
           <Card.Body className="py-2 border-top d-flex align-items-center gap-2 flex-wrap">
             <span className="small fw-medium">{selected.size} selecionado(s)</span>
-            <Button size="sm" onClick={() => setShowAddToGroup(true)} disabled={!sameSite}>Adicionar ao grupo</Button>
+            <Button size="sm" onClick={() => setShowAddToGroup(true)} disabled={!sameSite} className="d-inline-flex align-items-center gap-1"><SgIcon name="add-circle" size={16} className="sg-icon--mono" />Adicionar ao grupo</Button>
             {!sameSite && <span className="small text-warning">Selecione equipamentos do mesmo site.</span>}
+            <Button size="sm" variant="outline-danger" disabled={mBulkDelete.isPending} onClick={askBulkDelete}>
+              {mBulkDelete.isPending ? "Excluindo…" : "Excluir selecionados"}
+            </Button>
             <Button size="sm" variant="link" className="p-0" onClick={() => setSelected(new Set())}>Limpar seleção</Button>
           </Card.Body>
         )}
@@ -248,8 +314,8 @@ export default function EquipmentsPage() {
                   <td><Badge bg={sm.variant}>{sm.label}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
-                      <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
+                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
+                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
                     </div>
                   </td>
                 </tr>
@@ -296,8 +362,14 @@ export default function EquipmentsPage() {
               <div className="row g-3">
                 <div className="col-md-3">
                   <Form.Label>TAG</Form.Label>
-                  <Form.Control list="vx-equipment-tag-options" value={form.tag} onChange={(e) => { const v = e.target.value; patch({ tag: v }); applyTagMatch(v); }} />
-                  <Form.Text className="text-muted">Escolha uma TAG existente para completar os dados.</Form.Text>
+                  <RegistrySuggestField
+                    currentModule="sg"
+                    value={form.tag}
+                    onChange={(v) => { patch({ tag: v }); applyTagMatch(v); }}
+                    items={tagSuggestItems}
+                    onImportPick={onTagImportPick}
+                  />
+                  <Form.Text className="text-muted">Escolha uma TAG do próprio módulo para completar os dados; do outro módulo, importa o equipamento.</Form.Text>
                 </div>
                 <div className="col-md-3">
                   <Form.Label>Nº de série</Form.Label>
@@ -380,6 +452,35 @@ export default function EquipmentsPage() {
         />
       )}
       {showGroups && <GroupsModal clients={clients} onHide={() => setShowGroups(false)} />}
+
+      <RegistrySyncModal
+        show={showImportEq}
+        onHide={() => setShowImportEq(false)}
+        showHierarchyOptions={false}
+        multiSelect
+        title="Buscar equipamento do Service Report"
+        description="Importa o equipamento selecionado do Service Report para o SentinelGrid, trazendo junto o cliente e o site dele. Reimportar atualiza o registro vinculado, sem duplicar."
+        items={importEqItems}
+        loading={rsImportableEq.isLoading}
+        loadError={rsImportableEq.error ? (rsImportableEq.error as Error).message : null}
+        confirmLabel="Importar"
+        onConfirm={async (id) => (await importEquipmentFromReportService(id)).result}
+        onConfirmMany={async (ids) => {
+          let imported = 0;
+          let updated = 0;
+          for (const id of ids) {
+            const { result } = await importEquipmentFromReportService(id);
+            if (result.equipmentReused) updated += 1;
+            else imported += 1;
+          }
+          return `${ids.length} equipamento(s) processado(s): ${imported} importado(s) e ${updated} atualizado(s).`;
+        }}
+        successMessage={(r) => `Equipamento "${r.equipmentTag}" ${r.equipmentReused ? "atualizado" : "importado"} (cliente "${r.clientName}").`}
+        onDone={() => {
+          invalidate();
+          qc.invalidateQueries({ queryKey: ["sentinelgrid", "integration", "rs-importable-equipment"] });
+        }}
+      />
     </div>
   );
 }

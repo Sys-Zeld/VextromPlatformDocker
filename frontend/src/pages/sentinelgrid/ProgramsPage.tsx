@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/ConfirmDialog";
 import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
@@ -180,9 +181,9 @@ export default function ProgramsPage() {
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="calendar_month" label="Gerar planos" variant="outline-primary" disabled={!p.active} onClick={() => setGenProgram(p)} />
-                      <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
-                      <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm(`Excluir o programa "${p.name}"?`)) mDelete.mutate(p.id); }} />
+                      <IconAction icon="calendar" label="Gerar planos" variant="outline-primary" disabled={!p.active} onClick={() => setGenProgram(p)} />
+                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
+                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o programa "${p.name}"?\n\nIsso também exclui os planos vinculados e as ordens geradas a partir deles. Se o programa for usado por equipamentos de mais de um cliente, a exclusão é bloqueada.`)) mDelete.mutate(p.id); }} />
                     </div>
                   </td>
                 </tr>

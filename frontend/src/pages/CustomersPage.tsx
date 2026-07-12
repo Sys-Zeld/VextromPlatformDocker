@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
@@ -17,7 +18,9 @@ import {
   updateSite
 } from "../api/customers";
 import { listClients } from "../api/sentinelgrid/clients";
-import { mergeNames } from "../utils/suggest";
+import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/RegistrySyncModal";
+import RegistrySuggestField, { RegistrySuggestItem } from "../components/sentinelgrid/RegistrySuggestField";
+import { exportToReportService, listSgExportable } from "../api/sentinelgrid/integration";
 
 const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", notes: "" };
 const EMPTY_SITE: SiteInput = {
@@ -41,6 +44,23 @@ export default function CustomersPage() {
   const [newSite, setNewSite] = useState<SiteInput>(EMPTY_SITE);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importPreselect, setImportPreselect] = useState<number | null>(null);
+  const openImport = (preselect: number | null) => { setImportPreselect(preselect); setShowImport(true); };
+
+  // Clientes do SentinelGrid disponíveis para importar no Service Report (via façade do SG,
+  // dono do contrato de integração). Carrega só com o modal aberto.
+  const sgExportable = useQuery({
+    queryKey: ["sentinelgrid", "integration", "sg-exportable"],
+    queryFn: listSgExportable,
+    enabled: showImport
+  });
+  const importItems: SyncPickItem[] = (sgExportable.data?.clients ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    subtitle: c.tax_id || undefined,
+    linked: c.rs_linked
+  }));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["customers"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -88,15 +108,21 @@ export default function CustomersPage() {
   const customers = data?.customers ?? [];
   const sites = data?.sites ?? [];
 
-  const nameOptions = mergeNames(
-    customers.map((c) => c.name),
-    (sgClients.data?.clients ?? []).map((c) => c.name)
-  );
+  // Itens da caixa de sugestão rotulados por origem: RS (este módulo) só preenche o nome;
+  // SG dispara a importação para o Service Report (via façade do SentinelGrid).
+  const suggestItems: RegistrySuggestItem[] = [
+    ...customers.map((c) => ({ id: c.id, name: c.name, module: "rs" as const })),
+    ...(sgClients.data?.clients ?? []).map((c) => ({ id: c.id, name: c.name, module: "sg" as const }))
+  ];
 
   return (
     <div className="d-flex flex-column gap-4">
-      <datalist id="vx-customer-name-options">{nameOptions.map((n) => <option key={n} value={n} />)}</datalist>
-      <h2 className="h5 mb-0">Clientes &amp; Sites</h2>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 className="h5 mb-0">Clientes &amp; Sites</h2>
+        <Button size="sm" variant="outline-primary" onClick={() => openImport(null)}>
+          Buscar do SentinelGrid
+        </Button>
+      </div>
       {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
 
       {/* ---- Clientes ---- */}
@@ -109,11 +135,13 @@ export default function CustomersPage() {
           >
             <div className="col-md-4">
               <Form.Label>Nome</Form.Label>
-              <Form.Control
+              <RegistrySuggestField
                 required
-                list="vx-customer-name-options"
+                currentModule="rs"
                 value={newCustomer.name}
-                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                onChange={(v) => setNewCustomer({ ...newCustomer, name: v })}
+                items={suggestItems}
+                onImportPick={(it) => openImport(it.id)}
               />
             </div>
             <div className="col-md-3">
@@ -151,7 +179,7 @@ export default function CustomersPage() {
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingCustomer(c)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCustomer.isPending} onClick={() => { if (confirm(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCustomer.isPending} onClick={async () => { if (await confirmDialog(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }} />
                   </div>
                 </td>
               </tr>
@@ -211,7 +239,7 @@ export default function CustomersPage() {
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingSite(s)} />
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteSite.isPending} onClick={() => { if (confirm(`Excluir o site "${s.site_name}"?`)) mDeleteSite.mutate(s.id); }} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteSite.isPending} onClick={async () => { if (await confirmDialog(`Excluir o site "${s.site_name}"?`)) mDeleteSite.mutate(s.id); }} />
                   </div>
                 </td>
               </tr>
@@ -230,7 +258,6 @@ export default function CustomersPage() {
                 <Form.Label>Nome</Form.Label>
                 <Form.Control
                   required
-                  list="vx-customer-name-options"
                   value={editingCustomer.name}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
                 />
@@ -296,6 +323,23 @@ export default function CustomersPage() {
           </Form>
         )}
       </Modal>
+
+      <RegistrySyncModal
+        show={showImport}
+        onHide={() => { setShowImport(false); setImportPreselect(null); }}
+        preselectId={importPreselect}
+        title="Buscar cliente do SentinelGrid"
+        description="Traz o cliente selecionado (e, opcionalmente, seus sites e equipamentos) do SentinelGrid para o Service Report. Reimportar o mesmo cliente atualiza o registro vinculado, sem duplicar."
+        items={importItems}
+        loading={sgExportable.isLoading}
+        loadError={sgExportable.error ? (sgExportable.error as Error).message : null}
+        confirmLabel="Importar"
+        onConfirm={async (id, opts) => (await exportToReportService(id, opts)).result}
+        onDone={() => {
+          invalidate();
+          qc.invalidateQueries({ queryKey: ["sentinelgrid", "integration", "sg-exportable"] });
+        }}
+      />
     </div>
   );
 }

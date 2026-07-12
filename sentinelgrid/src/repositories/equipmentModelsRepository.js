@@ -76,4 +76,30 @@ async function softDeleteModel(id, actor = "") {
   return res.rowCount > 0;
 }
 
-module.exports = { listModels, getModel, createModel, updateModel, softDeleteModel };
+// Ensure-or-create de modelo por (fabricante, nome). Requer fabricante e tipo (FKs
+// NOT NULL); sem eles ou sem nome → null. Usado na importação vinda do Service Report.
+async function ensureModelByName(manufacturerId, equipmentTypeId, name, actor = "") {
+  const nm = String(name == null ? "" : name).trim();
+  if (!nm || !manufacturerId || !equipmentTypeId) return null;
+  const existing = (
+    await pool.query(
+      `SELECT * FROM sg_equipment_models
+        WHERE manufacturer_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL LIMIT 1`,
+      [manufacturerId, nm]
+    )
+  ).rows[0];
+  if (existing) return existing;
+  try {
+    return await createModel({ manufacturerId, equipmentTypeId, name: nm, notes: "" }, actor);
+  } catch (_err) {
+    return (
+      await pool.query(
+        `SELECT * FROM sg_equipment_models
+          WHERE manufacturer_id = $1 AND LOWER(name) = LOWER($2) AND deleted_at IS NULL LIMIT 1`,
+        [manufacturerId, nm]
+      )
+    ).rows[0] || null;
+  }
+}
+
+module.exports = { listModels, getModel, createModel, updateModel, softDeleteModel, ensureModelByName };

@@ -1,3 +1,4 @@
+import { confirmDialog } from "./ConfirmDialog";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Spinner, Table } from "react-bootstrap";
@@ -105,7 +106,7 @@ export default function AttachmentsPanel(props: { orderId: number }) {
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     <a className="btn btn-outline-secondary btn-sm" href={attachmentDownloadUrl(orderId, a.id)}>Baixar</a>
-                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={() => { if (confirm("Excluir este arquivo? Ação irreversível.")) mDelete.mutate(a.id); }} />
+                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog("Excluir este arquivo? Ação irreversível.")) mDelete.mutate(a.id); }} />
                   </div>
                 </td>
               </tr>

@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { Spinner } from "react-bootstrap";
 import Layout from "./components/Layout";
+import ConfirmHost from "./components/ConfirmDialog";
 
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 const OrderEditorPage = lazy(() => import("./pages/OrderEditorPage"));
@@ -44,7 +45,9 @@ function RouteFallback() {
 // Migracao do modulo Report Service para React, coexistindo com o legado (/admin/...).
 export default function App() {
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <>
+      <ConfirmHost />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<OrdersPage />} />
@@ -78,6 +81,7 @@ export default function App() {
           <Route path="*" element={<p className="text-muted">Pagina nao encontrada (SPA).</p>} />
         </Route>
       </Routes>
-    </Suspense>
+      </Suspense>
+    </>
   );
 }
