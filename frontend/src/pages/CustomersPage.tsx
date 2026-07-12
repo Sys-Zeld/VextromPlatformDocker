@@ -36,7 +36,7 @@ const EMPTY_SITE: SiteInput = {
 export default function CustomersPage() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["customers"], queryFn: listCustomers });
-  // Sugestões de nome cruzando os módulos (SG lê seu banco; RS lê o seu — isolamento mantido).
+  // Na tela do Service Report, a sugestão exibe somente clientes do outro módulo.
   const sgClients = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest"], queryFn: () => listClients({ pageSize: 500 }) });
 
   const [newCustomer, setNewCustomer] = useState<CustomerInput>(EMPTY_CUSTOMER);
@@ -108,12 +108,12 @@ export default function CustomersPage() {
   const customers = data?.customers ?? [];
   const sites = data?.sites ?? [];
 
-  // Itens da caixa de sugestão rotulados por origem: RS (este módulo) só preenche o nome;
-  // SG dispara a importação para o Service Report (via façade do SentinelGrid).
-  const suggestItems: RegistrySuggestItem[] = [
-    ...customers.map((c) => ({ id: c.id, name: c.name, module: "rs" as const })),
-    ...(sgClients.data?.clients ?? []).map((c) => ({ id: c.id, name: c.name, module: "sg" as const }))
-  ];
+  // Escolher uma sugestão do SentinelGrid dispara a importação para o Service Report.
+  const suggestItems: RegistrySuggestItem[] = (sgClients.data?.clients ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    module: "sg" as const
+  }));
 
   return (
     <div className="d-flex flex-column gap-4">

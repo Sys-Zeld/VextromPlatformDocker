@@ -107,14 +107,13 @@ export default function ClientsPage() {
 
   const openEdit = (c: SgClient) => { setEditing(c); setEditInput(toInput(c)); };
 
-  // Caixa de sugestão cruzando os dois módulos (isolamento mantido: cada API lê seu banco).
-  // Itens rotulados por origem: escolher um do RS dispara a importação; do SG só preenche o nome.
-  const sgAll = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest-all"], queryFn: () => listClients({ pageSize: 500 }) });
+  // Na tela do SentinelGrid, a sugestão exibe somente clientes do outro módulo.
   const rsCustomers = useQuery({ queryKey: ["report-service", "customers", "suggest"], queryFn: listCustomers });
-  const suggestItems: RegistrySuggestItem[] = [
-    ...(sgAll.data?.clients ?? []).map((c) => ({ id: c.id, name: c.name, module: "sg" as const })),
-    ...(rsCustomers.data?.customers ?? []).map((c) => ({ id: c.id, name: c.name, module: "rs" as const }))
-  ];
+  const suggestItems: RegistrySuggestItem[] = (rsCustomers.data?.customers ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    module: "rs" as const
+  }));
   const openImport = (preselect: number | null) => { setImportPreselect(preselect); setShowImport(true); };
 
   if (isLoading) {

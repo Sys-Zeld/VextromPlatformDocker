@@ -24,6 +24,7 @@ Hub com selo "Em desenvolvimento"** (ver [03](03-integracao-plataforma.md)).
 | 03 | [Integração com a Plataforma](03-integracao-plataforma.md) | Service Hub, toggle de ambiente, `package.json`, migrations, scripts e roteamento SPA. |
 | 04 | [Phase de Implementação (log vivo)](04-phase-implementacao.md) | **Contexto de memória de implementação:** registro cronológico de toda modificação/decisão feita. Atualizar a cada fatia. |
 | 05 | [Decisões Arquiteturais (ADRs)](05-decisoes-arquiteturais.md) | Registro imutável das decisões de arquitetura (isolamento total, infra compartilhada, migrations versionadas, terminologia OM≠OS, MVP…). |
+| 06 | [Modelo Conceitual e Fluxo](06-modelo-conceitual.md) | **Esboço de apresentação:** o fluxo Programa → Plano → Ordem com o Equipamento no eixo, os dois portões da OM e o ciclo operacional. Versão visual em [`modelSentinelGrid.html`](modelSentinelGrid.html). |
 
 ## Documento-fonte de regras de negócio
 
