@@ -8,7 +8,9 @@ const BASE_FROM = `FROM sg_maintenance_programs p
   LEFT JOIN sg_clients c ON c.id = ct.client_id`;
 
 const SELECT_COLS = `p.*, t.name AS equipment_type_name, m.name AS manufacturer_name,
-  mo.name AS model_name, ct.name AS contract_name, c.name AS contract_client_name,
+  mo.name AS model_name, ct.name AS contract_name, ct.client_id AS contract_client_id, c.name AS contract_client_name,
+  COALESCE((SELECT array_agg(cl.id ORDER BY cl.name) FROM sg_checklists cl WHERE cl.program_id = p.id AND cl.deleted_at IS NULL), '{}') AS checklist_ids,
+  COALESCE((SELECT array_agg(cl.name ORDER BY cl.name) FROM sg_checklists cl WHERE cl.program_id = p.id AND cl.deleted_at IS NULL), '{}') AS checklist_names,
   to_char(ct.valid_from, 'YYYY-MM-DD') AS contract_valid_from,
   to_char(ct.valid_to, 'YYYY-MM-DD') AS contract_valid_to`;
 
@@ -96,7 +98,7 @@ async function createProgram(input, actor = "") {
      RETURNING *`,
     [...values(input), actor]
   );
-  return res.rows[0];
+  return getProgram(res.rows[0].id);
 }
 
 async function updateProgram(id, input, actor = "") {
@@ -109,6 +111,60 @@ async function updateProgram(id, input, actor = "") {
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
     [id, ...values(input), actor]
+  );
+  return res.rows[0] ? getProgram(id) : null;
+}
+
+async function setProgramChecklists(id, checklistIds, actor = "") {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const exists = await client.query("SELECT id FROM sg_maintenance_programs WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id]);
+    if (!exists.rowCount) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const ids = [...new Set(checklistIds.map(Number))];
+    if (ids.length) {
+      const available = await client.query(
+        `SELECT id FROM sg_checklists
+          WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL AND (program_id IS NULL OR program_id = $2)`,
+        [ids, id]
+      );
+      if (available.rowCount !== ids.length) throw Object.assign(new Error("Checklist indisponivel"), { code: "SG_CHECKLIST_INVALID" });
+    }
+    await client.query(
+      `UPDATE sg_checklists SET program_id = NULL, updated_by = $2, updated_at = NOW()
+        WHERE program_id = $1 AND deleted_at IS NULL`,
+      [id, actor]
+    );
+    if (ids.length) {
+      await client.query(
+        `UPDATE sg_checklists SET program_id = $1, updated_by = $3, updated_at = NOW()
+          WHERE id = ANY($2::bigint[]) AND deleted_at IS NULL`,
+        [id, ids, actor]
+      );
+    }
+    await client.query("COMMIT");
+    return getProgram(id);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function updateProgramDocument(id, kind, file, actor = "") {
+  const prefix = kind === "manual" ? "manual" : "nameplate";
+  const res = await pool.query(
+    `UPDATE sg_maintenance_programs SET
+       ${prefix}_stored_name = $2, ${prefix}_original_name = $3,
+       ${prefix}_mime_type = $4, ${prefix}_file_size = $5,
+       updated_by = $6, updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING *`,
+    [id, file.storedName, file.originalName, file.mimeType, file.fileSize, actor]
   );
   return res.rows[0] || null;
 }
@@ -175,6 +231,11 @@ async function softDeleteProgram(id, actor = "") {
         WHERE program_id = $1 AND deleted_at IS NULL RETURNING id`,
       [id, actor]
     );
+    await conn.query(
+      `UPDATE sg_checklists SET program_id = NULL, updated_by = $2, updated_at = NOW()
+        WHERE program_id = $1 AND deleted_at IS NULL`,
+      [id, actor]
+    );
     // O próprio programa.
     await conn.query(
       "UPDATE sg_maintenance_programs SET deleted_at = NOW(), updated_by = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
@@ -191,4 +252,4 @@ async function softDeleteProgram(id, actor = "") {
   }
 }
 
-module.exports = { listPrograms, getProgram, createProgram, updateProgram, softDeleteProgram };
+module.exports = { listPrograms, getProgram, createProgram, updateProgram, setProgramChecklists, updateProgramDocument, softDeleteProgram };

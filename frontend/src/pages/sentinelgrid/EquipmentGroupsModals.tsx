@@ -136,8 +136,8 @@ export function GroupsModal({ clients, onHide }: { clients: { id: number; name: 
                     <td><Badge bg="secondary">{g.member_count}</Badge></td>
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
-                        <IconAction icon={openId === g.id ? "expand_less" : "expand_more"} label="Membros" variant="outline-secondary" onClick={() => setOpenId(openId === g.id ? null : g.id)} />
-                        <IconAction icon="trash" label="Excluir grupo" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o grupo "${g.name}"?`)) mDelete.mutate(g.id); }} />
+                        <IconAction icon={openId === g.id ? "expand_less_action" : "expand_more_action"} label="Exibir membros" variant="outline-secondary" onClick={() => setOpenId(openId === g.id ? null : g.id)} />
+                        <IconAction icon="delete_record" label="Excluir grupo" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o grupo "${g.name}"?`)) mDelete.mutate(g.id); }} />
                       </div>
                     </td>
                   </tr>

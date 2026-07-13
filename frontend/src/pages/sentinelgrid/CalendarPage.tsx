@@ -11,7 +11,6 @@ import { MAINTENANCE_TYPE_OPTIONS } from "../../api/sentinelgrid/programs";
 import {
   COLOR_HEX,
   COLOR_LABEL,
-  EVENT_KIND_LABEL,
   GENERAL_STATUS_META,
   PRIORITY_META,
   MapFilters,
@@ -22,9 +21,9 @@ import {
   getMapSummary,
   listAlertRules,
   listMapEvents,
+  moveCalendarEvents,
   updateAlertRule
 } from "../../api/sentinelgrid/calendarMap";
-import { ackAlerts, getAlertAck, listAlerts } from "../../api/sentinelgrid/alerts";
 import { sendOrderToReportService } from "../../api/sentinelgrid/maintenanceOrders";
 import { equipmentLabel, formatDate } from "../../utils/format";
 import SgIcon, { SgIconName } from "../../components/sentinelgrid/SgIcon";
@@ -86,6 +85,25 @@ function step(view: View, anchor: Date, dir: number): Date {
 // Conflito de agenda (A.6): 2+ atividades de manutenção no mesmo equipamento/dia.
 const MAINT_KINDS = new Set(["planejada_sem_parada", "planejada_com_parada", "om_manutencao", "corretiva_aberta", "aprovacao_pendente"]);
 const conflictKey = (e: SgMapEvent) => `${e.equipment_id}|${e.event_date}`;
+const MOVABLE_TABLES = new Set(["sg_calendar_entries", "sg_maintenance_orders", "sg_recommendations"]);
+const MOVABLE_ORDER_KINDS = new Set(["om_manutencao", "corretiva_aberta", "aprovacao_pendente"]);
+type CalendarDrag = { sourceDate: string; items: Array<{ refTable: string; refId: number }> };
+const isMovable = (e: SgMapEvent) => MOVABLE_TABLES.has(e.ref_table) &&
+  (e.ref_table !== "sg_maintenance_orders" || MOVABLE_ORDER_KINDS.has(e.event_kind));
+const dragPayload = (events: SgMapEvent[]): CalendarDrag => ({
+  sourceDate: events[0]?.event_date || "",
+  items: Array.from(new Map(events.filter(isMovable).map((e) => [`${e.ref_table}:${e.ref_id}`, { refTable: e.ref_table, refId: e.ref_id }])).values())
+});
+const beginDrag = (ev: React.DragEvent, events: SgMapEvent[]) => {
+  const payload = dragPayload(events);
+  if (!payload.items.length) return ev.preventDefault();
+  ev.dataTransfer.effectAllowed = "move";
+  ev.dataTransfer.setData("application/x-sentinel-calendar", JSON.stringify(payload));
+};
+const receiveDrag = (ev: React.DragEvent): CalendarDrag | null => {
+  try { return JSON.parse(ev.dataTransfer.getData("application/x-sentinel-calendar")) as CalendarDrag; }
+  catch { return null; }
+};
 function buildConflicts(events: SgMapEvent[]): Set<string> {
   const count = new Map<string, number>();
   for (const e of events) if (MAINT_KINDS.has(e.event_kind)) count.set(conflictKey(e), (count.get(conflictKey(e)) || 0) + 1);
@@ -120,10 +138,12 @@ function Chip({ e, conflict, onClick }: { e: SgMapEvent; conflict: boolean; onCl
   return (
     <span
       onClick={onClick}
+      draggable={isMovable(e)}
+      onDragStart={(ev) => beginDrag(ev, [e])}
       title={chipTitle(e)}
       style={{
         background: COLOR_HEX[e.color], color: "#fff", borderRadius: 4, padding: "1px 6px", fontSize: 11,
-        whiteSpace: "nowrap", cursor: "pointer", border: conflict ? "2px solid #111" : "none"
+        whiteSpace: "nowrap", cursor: isMovable(e) ? "grab" : "pointer", border: conflict ? "2px solid #111" : "none"
       }}
     >
       {conflict && "⚠ "}{equipmentLabel(e.equipment_tag, e.client_name) || e.title}
@@ -175,7 +195,8 @@ function AnnualView({ year, events }: { year: number; events: SgMapEvent[] }) {
   );
 }
 
-function MonthView({ anchor, events, conflicts, onSelect }: { anchor: Date; events: SgMapEvent[]; conflicts: Set<string>; onSelect: (e: SgMapEvent) => void }) {
+function MonthView({ anchor, events, conflicts, onSelect, onMove }: { anchor: Date; events: SgMapEvent[]; conflicts: Set<string>; onSelect: (e: SgMapEvent) => void; onMove: (drag: CalendarDrag, targetDate: string) => void }) {
+  const [dropDate, setDropDate] = useState<string | null>(null);
   const byDay = useMemo(() => {
     const map = new Map<string, SgMapEvent[]>();
     for (const e of events) { const k = e.event_date; if (!map.has(k)) map.set(k, []); map.get(k)!.push(e); }
@@ -204,10 +225,19 @@ function MonthView({ anchor, events, conflicts, onSelect }: { anchor: Date; even
                 const evs = byDay.get(iso(day)) || [];
                 const top = evs.length ? highestPriority(evs) : null;
                 return (
-                  <td key={iso(day)} style={{ height: 90, verticalAlign: "top", opacity: inMonth ? 1 : 0.4, background: top ? `${PRIORITY_META[top].hex}22` : undefined }}>
+                  <td
+                    key={iso(day)}
+                    onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDropDate(iso(day)); }}
+                    onDragLeave={() => setDropDate(null)}
+                    onDrop={(ev) => { ev.preventDefault(); setDropDate(null); const drag = receiveDrag(ev); if (drag) onMove(drag, iso(day)); }}
+                    style={{ height: 90, verticalAlign: "top", opacity: inMonth ? 1 : 0.4, background: dropDate === iso(day) ? "rgba(63,125,42,.25)" : (top ? `${PRIORITY_META[top].hex}22` : undefined), outline: dropDate === iso(day) ? "2px dashed var(--primary)" : undefined }}
+                  >
                     <div className="d-flex justify-content-between align-items-center">
                       <span className="small text-muted">{day.getDate()}</span>
-                      {evs.length > 0 && <Badge bg="secondary" pill>{evs.length}</Badge>}
+                      <div className="d-flex align-items-center gap-1">
+                        {evs.some(isMovable) && <span draggable onDragStart={(ev) => beginDrag(ev, evs)} title="Arrastar todos os itens editáveis deste dia" style={{ cursor: "grab", fontSize: 13 }}>↕</span>}
+                        {evs.length > 0 && <Badge bg="secondary" pill>{evs.length}</Badge>}
+                      </div>
                     </div>
                     <div className="d-flex flex-wrap gap-1 mt-1">
                       {evs.slice(0, 3).map((e, i) => <Chip key={i} e={e} conflict={conflicts.has(conflictKey(e))} onClick={() => onSelect(e)} />)}
@@ -224,7 +254,8 @@ function MonthView({ anchor, events, conflicts, onSelect }: { anchor: Date; even
   );
 }
 
-function WeekView({ anchor, events, conflicts, onSelect }: { anchor: Date; events: SgMapEvent[]; conflicts: Set<string>; onSelect: (e: SgMapEvent) => void }) {
+function WeekView({ anchor, events, conflicts, onSelect, onMove }: { anchor: Date; events: SgMapEvent[]; conflicts: Set<string>; onSelect: (e: SgMapEvent) => void; onMove: (drag: CalendarDrag, targetDate: string) => void }) {
+  const [dropDate, setDropDate] = useState<string | null>(null);
   const s = startOfWeek(anchor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(s, i));
   return (
@@ -233,8 +264,17 @@ function WeekView({ anchor, events, conflicts, onSelect }: { anchor: Date; event
         {days.map((day) => {
           const evs = events.filter((e) => e.event_date === iso(day));
           return (
-            <div key={iso(day)} className="col border p-2" style={{ minHeight: 160 }}>
-              <div className="small fw-medium mb-2">{WEEKDAYS[(day.getDay() + 6) % 7]} {ddmm(day)}</div>
+            <div
+              key={iso(day)} className="col border p-2"
+              onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDropDate(iso(day)); }}
+              onDragLeave={() => setDropDate(null)}
+              onDrop={(ev) => { ev.preventDefault(); setDropDate(null); const drag = receiveDrag(ev); if (drag) onMove(drag, iso(day)); }}
+              style={{ minHeight: 160, background: dropDate === iso(day) ? "rgba(63,125,42,.25)" : undefined, outline: dropDate === iso(day) ? "2px dashed var(--primary)" : undefined }}
+            >
+              <div className="small fw-medium mb-2 d-flex justify-content-between">
+                <span>{WEEKDAYS[(day.getDay() + 6) % 7]} {ddmm(day)}</span>
+                {evs.some(isMovable) && <span draggable onDragStart={(ev) => beginDrag(ev, evs)} title="Arrastar todos os itens editáveis deste dia" style={{ cursor: "grab" }}>↕</span>}
+              </div>
               <div className="d-flex flex-column gap-1">
                 {evs.length === 0 && <span className="small text-muted">—</span>}
                 {evs.map((e, i) => <Chip key={i} e={e} conflict={conflicts.has(conflictKey(e))} onClick={() => onSelect(e)} />)}
@@ -422,12 +462,15 @@ function Legend() {
 }
 
 export default function CalendarPage() {
+  const qc = useQueryClient();
   const [view, setView] = useState<View>("mes");
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [mode, setMode] = useState<Mode>("cliente");
   const [showFilters, setShowFilters] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [selected, setSelected] = useState<SgMapEvent | null>(null);
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   // Filtros (A.11).
   const [clientId, setClientId] = useState<number | "">("");
@@ -471,22 +514,29 @@ export default function CalendarPage() {
   const eventsQuery = useQuery({ queryKey: ["sentinelgrid", "map-events", filters], queryFn: () => listMapEvents(filters) });
   const summaryQuery = useQuery({ queryKey: ["sentinelgrid", "map-summary", filters], queryFn: () => getMapSummary(filters) });
 
-  // Alertas de manutenção: popup ao abrir o calendário (some por 24h via Redis).
-  const qcAlerts = useQueryClient();
-  const [alertDismissed, setAlertDismissed] = useState(false);
-  const alertsQuery = useQuery({ queryKey: ["sentinelgrid", "alerts"], queryFn: () => listAlerts() });
-  const ackQuery = useQuery({ queryKey: ["sentinelgrid", "alerts", "ack"], queryFn: getAlertAck });
-  const ackMutation = useMutation({
-    mutationFn: ackAlerts,
-    onSuccess: () => { setAlertDismissed(true); qcAlerts.invalidateQueries({ queryKey: ["sentinelgrid", "alerts", "ack"] }); }
-  });
-  const alertItems = alertsQuery.data?.alerts || [];
-  const showAlertPopup = !alertDismissed && !!ackQuery.data && !ackQuery.data.acknowledged && (alertsQuery.data?.total ?? 0) > 0;
-
   const events = eventsQuery.data?.events || [];
   const summary = summaryQuery.data;
   const conflicts = useMemo(() => buildConflicts(events), [events]);
   const equipList = (equipment.data?.equipment || []).filter((e) => (clientId === "" || Number(e.client_id) === clientId) && (siteId === "" || Number(e.site_id) === siteId));
+
+  const moveMutation = useMutation({
+    mutationFn: ({ drag, targetDate }: { drag: CalendarDrag; targetDate: string }) => moveCalendarEvents({
+      sourceDate: drag.sourceDate, targetDate, items: drag.items
+    }),
+    onSuccess: (result) => {
+      setMoveError(null);
+      setMoveMessage(result.moved ? `${result.moved} item(ns) reagendado(s).` : "Os itens já estavam nessa data.");
+      qc.invalidateQueries({ queryKey: ["sentinelgrid", "map-events"] });
+      qc.invalidateQueries({ queryKey: ["sentinelgrid", "map-summary"] });
+      qc.invalidateQueries({ queryKey: ["sentinelgrid", "alerts"] });
+      qc.invalidateQueries({ queryKey: ["sentinelgrid", "maintenance-orders"] });
+    },
+    onError: (error) => { setMoveMessage(null); setMoveError((error as Error).message); }
+  });
+  const onMove = (drag: CalendarDrag, targetDate: string) => {
+    if (!drag.items.length || drag.sourceDate === targetDate || moveMutation.isPending) return;
+    moveMutation.mutate({ drag, targetDate });
+  };
 
   const onClient = (v: string) => { setClientId(v ? Number(v) : ""); setSiteId(""); setAreaId(""); setEquipmentId(""); };
   const onSite = (v: string) => { setSiteId(v ? Number(v) : ""); setAreaId(""); setEquipmentId(""); };
@@ -500,6 +550,9 @@ export default function CalendarPage() {
         </div>
         <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
       </div>
+
+      {moveMessage && <Alert variant="success" dismissible onClose={() => setMoveMessage(null)} className="mb-0">{moveMessage}</Alert>}
+      {moveError && <Alert variant="danger" dismissible onClose={() => setMoveError(null)} className="mb-0">{moveError}</Alert>}
 
       <Card>
         <Card.Body className="d-flex flex-wrap gap-3 align-items-end">
@@ -634,8 +687,8 @@ export default function CalendarPage() {
       ) : (
         <>
           {view === "ano" && <AnnualView year={anchor.getFullYear()} events={events} />}
-          {view === "mes" && <MonthView anchor={anchor} events={events} conflicts={conflicts} onSelect={setSelected} />}
-          {view === "semana" && <WeekView anchor={anchor} events={events} conflicts={conflicts} onSelect={setSelected} />}
+          {view === "mes" && <MonthView anchor={anchor} events={events} conflicts={conflicts} onSelect={setSelected} onMove={onMove} />}
+          {view === "semana" && <WeekView anchor={anchor} events={events} conflicts={conflicts} onSelect={setSelected} onMove={onMove} />}
           {view === "dia" && <DayView events={events} conflicts={conflicts} onSelect={setSelected} />}
         </>
       )}
@@ -670,31 +723,6 @@ export default function CalendarPage() {
       {selected && <EventCard e={selected} conflict={conflicts.has(conflictKey(selected))} onHide={() => setSelected(null)} />}
       {showRules && <AlertRulesModal onHide={() => setShowRules(false)} />}
 
-      <Modal show={showAlertPopup} onHide={() => setAlertDismissed(true)}>
-        <Modal.Header closeButton>
-          <Modal.Title className="h6 mb-0">⚠ Alertas de manutenção ({alertsQuery.data?.total ?? 0})</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p className="small text-muted mb-2">Ordens e pendências que requerem atenção:</p>
-          <div className="d-flex flex-column" style={{ maxHeight: 320, overflowY: "auto" }}>
-            {alertItems.slice(0, 10).map((e, i) => (
-              <div key={i} className="d-flex align-items-center gap-2 small border-bottom py-1">
-                <PriorityBadge priority={e.priority} />
-                <span className="fw-medium">{equipmentLabel(e.equipment_tag, e.client_name)}</span>
-                <span className="text-muted text-truncate">{EVENT_KIND_LABEL[e.event_kind] || e.event_kind}</span>
-                <span className="ms-auto text-nowrap">{formatDate(e.event_date)}</span>
-              </div>
-            ))}
-            {alertItems.length > 10 && <div className="small text-muted mt-1">+{alertItems.length - 10} outros…</div>}
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Link to="/sentinelgrid/alerts" className="btn btn-sm btn-outline-primary" onClick={() => setAlertDismissed(true)}>Ver todos</Link>
-          <Button size="sm" onClick={() => ackMutation.mutate()} disabled={ackMutation.isPending}>
-            {ackMutation.isPending ? "…" : "Ciente (não avisar por 24h)"}
-          </Button>
-        </Modal.Footer>
-      </Modal>
     </div>
   );
 }

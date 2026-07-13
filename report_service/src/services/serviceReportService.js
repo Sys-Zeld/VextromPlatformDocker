@@ -648,12 +648,21 @@ async function deleteOrderFull(orderId) {
 // (que ficam com external_source/id vazios).
 // ---------------------------------------------------------------------------
 
+async function attachSentinelGridLink(entityType, row, rawSentinelgridId) {
+  const sentinelgridId = repo.toInt(rawSentinelgridId);
+  if (!row || !sentinelgridId) return row;
+  return (await repo.setSentinelGridLink(entityType, row.id, sentinelgridId)) || row;
+}
+
 async function ensureCustomerByRef(input = {}) {
   const externalSource = sanitizeText(input.externalSource);
   const externalId = sanitizeText(input.externalId);
   if (externalSource && externalId) {
     const existing = await repo.getCustomerByExternalRef(externalSource, externalId);
-    if (existing) return { customer: existing, created: false };
+    if (existing) {
+      const customer = await attachSentinelGridLink("client", existing, input.sentinelgridId);
+      return { customer, created: false };
+    }
   }
   const name = sanitizeText(input.name);
   if (!name) {
@@ -668,7 +677,7 @@ async function ensureCustomerByRef(input = {}) {
     externalSource,
     externalId
   });
-  return { customer, created: true };
+  return { customer: await attachSentinelGridLink("client", customer, input.sentinelgridId), created: true };
 }
 
 async function ensureSiteByRef(input = {}) {
@@ -676,7 +685,10 @@ async function ensureSiteByRef(input = {}) {
   const externalId = sanitizeText(input.externalId);
   if (externalSource && externalId) {
     const existing = await repo.getSiteByExternalRef(externalSource, externalId);
-    if (existing) return { site: existing, created: false };
+    if (existing) {
+      const site = await attachSentinelGridLink("site", existing, input.sentinelgridId);
+      return { site, created: false };
+    }
   }
   const customerId = repo.toInt(input.customerId);
   if (!customerId) {
@@ -701,7 +713,7 @@ async function ensureSiteByRef(input = {}) {
     externalSource,
     externalId
   });
-  return { site, created: true };
+  return { site: await attachSentinelGridLink("site", site, input.sentinelgridId), created: true };
 }
 
 // Vincula um equipamento a uma OS (contrato de serviço para integração; idempotente
@@ -717,9 +729,8 @@ async function linkOrderEquipment(orderId, equipmentId, notes = "") {
   return repo.attachEquipmentToOrder(oid, eid, sanitizeText(notes));
 }
 
-// Leituras de contrato para integração inter-módulos (consumidas in-process por
-// outro módulo, ex.: SentinelGrid). Expõem o registro do RS sem acesso ao repo/DB
-// pelo consumidor (ADR-005: integração por contrato de serviço, read-only).
+// Contrato de integração inter-módulos (consumido in-process pelo SentinelGrid).
+// Expõe leituras e a gravação restrita da FK externa, sem dar acesso ao repo/DB.
 async function getCustomer(id) {
   return repo.getCustomerById(repo.toInt(id));
 }
@@ -734,6 +745,21 @@ async function getSite(id) {
 
 async function getEquipment(id) {
   return repo.getEquipmentById(repo.toInt(id));
+}
+
+async function linkSentinelGridEntity(entityType, serviceReportId, sentinelgridId) {
+  if (!["client", "site", "equipment"].includes(entityType)) {
+    const err = new Error("Tipo de entidade de integração inválido.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const linked = await repo.setSentinelGridLink(entityType, serviceReportId, sentinelgridId);
+  if (!linked) {
+    const err = new Error("Registro do Service Report inexistente para o vínculo.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return linked;
 }
 
 async function listSitesByCustomer(customerId) {
@@ -756,7 +782,10 @@ async function ensureEquipmentByRef(input = {}) {
   const externalId = sanitizeText(input.externalId);
   if (externalSource && externalId) {
     const existing = await repo.getEquipmentByExternalRef(externalSource, externalId);
-    if (existing) return { equipment: existing, created: false };
+    if (existing) {
+      const equipment = await attachSentinelGridLink("equipment", existing, input.sentinelgridId);
+      return { equipment, created: false };
+    }
   }
   const type = sanitizeText(input.type);
   if (!type) {
@@ -788,8 +817,24 @@ async function ensureEquipmentByRef(input = {}) {
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
   const equipment = await repo.createEquipment(payload);
-  return { equipment, created: true };
+  return { equipment: await attachSentinelGridLink("equipment", equipment, input.sentinelgridId), created: true };
 }
+
+async function listGlobalTechnicians() { return repo.listGlobalTechnicians(); }
+async function getGlobalTechnician(id) { return repo.getGlobalTechnicianById(repo.toInt(id)); }
+async function createGlobalTechnician(input = {}) {
+  const name = sanitizeText(input.name);
+  if (!name) { const err = new Error("Nome do tecnico e obrigatorio."); err.statusCode = 422; throw err; }
+  return repo.createGlobalTechnician({
+    name, role: sanitizeText(input.role), company: sanitizeText(input.company),
+    email: sanitizeText(input.email), phone: sanitizeText(input.phone), isLead: Boolean(input.isLead)
+  });
+}
+async function linkTechnicianToOrder(orderId, technicianId) {
+  return repo.linkTechnicianToOrder(repo.toInt(orderId), repo.toInt(technicianId));
+}
+async function getReportById(id) { return repo.getReportById(repo.toInt(id)); }
+async function getReportByOrderId(orderId) { return repo.getReportByOrderId(repo.toInt(orderId)); }
 
 module.exports = {
   ORDER_STATUSES,
@@ -802,6 +847,12 @@ module.exports = {
   ensureCustomerByRef,
   ensureSiteByRef,
   ensureEquipmentByRef,
+  listGlobalTechnicians,
+  getGlobalTechnician,
+  createGlobalTechnician,
+  linkTechnicianToOrder,
+  getReportById,
+  getReportByOrderId,
   getCustomer,
   getSite,
   getEquipment,
@@ -809,6 +860,7 @@ module.exports = {
   listEquipments,
   listSitesByCustomer,
   listEquipmentsByCustomer,
+  linkSentinelGridEntity,
   linkOrderEquipment,
   updateEquipment,
   deleteEquipment,

@@ -18,6 +18,7 @@ import {
   createEquipment,
   criticalityMeta,
   deleteEquipment,
+  equipmentQrCodeUrl,
   listEquipment,
   statusMeta,
   updateEquipment
@@ -92,6 +93,7 @@ export default function EquipmentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showImportEq, setShowImportEq] = useState(false);
   const [importInfo, setImportInfo] = useState<string | null>(null);
+  const [qrEquipment, setQrEquipment] = useState<SgEquipment | null>(null);
 
   // Equipamentos do Service Report disponíveis para importar (carrega só com o modal aberto).
   const rsImportableEq = useQuery({
@@ -109,7 +111,11 @@ export default function EquipmentsPage() {
   const onError = (e: unknown) => setActionError((e as Error).message);
   const mSave = useMutation({
     mutationFn: () => (editingId ? updateEquipment(editingId, toInput(form!)) : createEquipment(toInput(form!))),
-    onSuccess: () => { setForm(null); setEditingId(null); setActionError(null); invalidate(); },
+    onSuccess: (saved) => {
+      const created = !editingId;
+      setForm(null); setEditingId(null); setActionError(null); invalidate();
+      if (created) setQrEquipment(saved);
+    },
     onError
   });
   const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
@@ -314,8 +320,9 @@ export default function EquipmentsPage() {
                   <td><Badge bg={sm.variant}>{sm.label}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
-                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
+                      <IconAction icon="qr_code_2" label="QR Code" variant="outline-primary" onClick={() => setQrEquipment(e)} />
+                      <IconAction icon="edit_record" label="Editar equipamento" variant="outline-secondary" onClick={() => openEdit(e)} />
+                      <IconAction icon="delete_record" label="Excluir equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
                     </div>
                   </td>
                 </tr>
@@ -440,6 +447,31 @@ export default function EquipmentsPage() {
             </Modal.Footer>
           </Form>
         )}
+      </Modal>
+
+      <Modal show={!!qrEquipment} onHide={() => setQrEquipment(null)} centered>
+        <Modal.Header closeButton><Modal.Title>QR Code do equipamento</Modal.Title></Modal.Header>
+        <Modal.Body className="text-center">
+          {qrEquipment && (
+            <>
+              <img
+                src={equipmentQrCodeUrl(qrEquipment.id)}
+                alt={`QR Code do equipamento ${qrEquipment.tag || qrEquipment.id}`}
+                className="img-fluid bg-white rounded border p-2"
+                style={{ width: 340, maxWidth: "100%" }}
+              />
+              <div className="mt-3 fw-semibold">{qrEquipment.tag || `Equipamento #${qrEquipment.id}`}</div>
+              <div className="small text-muted">Série: {qrEquipment.serial_number || "Não informada"}</div>
+              <div className="small text-muted">{[qrEquipment.client_name, qrEquipment.site_name, qrEquipment.area_name].filter(Boolean).join(" / ")}</div>
+              <p className="small text-muted mt-2 mb-0">O QR Code contém TAG, número de série, cliente, site e área.</p>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setQrEquipment(null)}>Fechar</Button>
+          {qrEquipment && <a className="btn btn-outline-primary" href={equipmentQrCodeUrl(qrEquipment.id)} download={`qr-${qrEquipment.tag || qrEquipment.id}.svg`}>Baixar SVG</a>}
+          {qrEquipment && <Button onClick={() => window.open(equipmentQrCodeUrl(qrEquipment.id), "_blank", "noopener,noreferrer")}>Abrir para imprimir</Button>}
+        </Modal.Footer>
       </Modal>
 
       {showAddToGroup && sameSite && selSiteId > 0 && (

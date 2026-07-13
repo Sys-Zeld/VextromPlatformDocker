@@ -1,4 +1,8 @@
 const express = require("express");
+const crypto = require("crypto");
+const fs = require("fs");
+const fsp = require("fs/promises");
+const path = require("path");
 const { toValidationError, isForeignKeyError } = require("./httpErrors");
 const repo = require("../repositories/operationsRepository");
 const {
@@ -21,6 +25,7 @@ function createOperationsRouter(deps) {
   const invalidOrder = { error: "Ordem de manutencao invalida ou inexistente", errorCode: "SG_ORDER_INVALID" };
   const invalidEquipment = { error: "Equipamento invalido ou inexistente", errorCode: "SG_EQUIPMENT_INVALID" };
   const invalidRef = { error: "Referencia invalida", errorCode: "SG_OPERATION_FK" };
+  const reportsDir = path.join(process.cwd(), "dados", "sentinelgrid", "order-reports");
 
   const handleWrite = async (fn, res) => {
     try {
@@ -61,6 +66,37 @@ function createOperationsRouter(deps) {
     const report = await handleWrite(() => repo.createReport(input, actorOf(req)), res);
     if (res.headersSent) return;
     res.status(201).json({ report });
+  }));
+
+  router.post("/reports/upload/:orderId", express.raw({ type: () => true, limit: "25mb" }), asyncHandler(async (req, res) => {
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const mimeType = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
+    const originalName = path.basename(decodeURIComponent(String(req.headers["x-file-name"] || "relatorio.pdf"))).replace(/[^a-zA-Z0-9._\- ]/g, "").slice(0, 180);
+    const title = decodeURIComponent(String(req.headers["x-report-title"] || path.parse(originalName).name || "Relatorio tecnico")).slice(0, 240);
+    const valid = buffer.length > 0 && buffer.length <= 25 * 1024 * 1024 && mimeType === "application/pdf" && path.extname(originalName).toLowerCase() === ".pdf" && buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+    if (!valid) return res.status(400).json({ error: "Envie um PDF valido de ate 25 MB.", errorCode: "SG_REPORT_FILE_INVALID" });
+    await fsp.mkdir(reportsDir, { recursive: true });
+    const storedName = `report-${Number(req.params.orderId)}-${crypto.randomUUID()}.pdf`;
+    await fsp.writeFile(path.join(reportsDir, storedName), buffer, { flag: "wx" });
+    try {
+      const report = await handleWrite(() => repo.createReport({
+        orderId: Number(req.params.orderId), reportCode: "", title, issuedAt: null, technician: "",
+        reportType: "pdf", fileRef: storedName, externalLink: "", externalId: "", notes: `Arquivo: ${originalName}`
+      }, actorOf(req)), res);
+      if (res.headersSent) { await fsp.unlink(path.join(reportsDir, storedName)).catch(() => {}); return; }
+      res.status(201).json({ report });
+    } catch (err) { await fsp.unlink(path.join(reportsDir, storedName)).catch(() => {}); throw err; }
+  }));
+
+  router.get("/reports/:id/file", asyncHandler(async (req, res) => {
+    const report = await repo.getReportById(Number(req.params.id));
+    if (!report || !report.file_ref) return res.status(404).json({ error: "Arquivo de relatorio nao encontrado." });
+    const filePath = path.join(reportsDir, path.basename(report.file_ref));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Arquivo de relatorio nao encontrado." });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(report.title || "relatorio.pdf")}.pdf`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    fs.createReadStream(filePath).pipe(res);
   }));
 
   router.get("/attachments", asyncHandler(async (req, res) => {

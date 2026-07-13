@@ -33,7 +33,7 @@ async function assertEquipmentExists(client, equipmentId) {
   if (!res.rows[0]) throw equipmentInvalidError();
 }
 
-async function listPlans({ equipmentId = null, clientId = null, active = null, search = "", limit = 100, offset = 0 } = {}) {
+async function listPlans({ equipmentId = null, clientId = null, programId = null, active = null, search = "", limit = 100, offset = 0 } = {}) {
   const params = [];
   let where = "p.deleted_at IS NULL";
   const add = (cond, val) => {
@@ -42,6 +42,7 @@ async function listPlans({ equipmentId = null, clientId = null, active = null, s
   };
   if (equipmentId) add("p.equipment_id = $?", equipmentId);
   if (clientId) add("e.client_id = $?", clientId);
+  if (programId) add("p.program_id = $?", programId);
   if (active !== null && active !== undefined) add("p.active = $?", active);
   if (search) {
     params.push(`%${String(search).toLowerCase()}%`);

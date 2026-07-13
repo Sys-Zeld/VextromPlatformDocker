@@ -249,6 +249,36 @@ body {
   color: var(--vx-sidebar-active);
   border-left-color: var(--primary);
 }
+.vx-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vx-nav-group__toggle {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+}
+.vx-nav-group__toggle.is-parent-active {
+  color: var(--vx-sidebar-active);
+  background: rgba(79, 127, 42, 0.09);
+}
+.vx-nav-group__chevron {
+  margin-left: auto;
+  font-size: 19px !important;
+}
+.vx-nav-group__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 18px;
+}
+.vx-nav__link--child {
+  padding: 8px 12px;
+  font-size: 0.84rem;
+}
 
 :root[data-theme="darkvextrom"] .vx-nav__link.active {
   background: rgba(79, 127, 42, 0.14);
@@ -316,6 +346,8 @@ body {
   gap: 0;
 }
 .vx-shell.is-collapsed .vx-nav__link--muted { border-radius: 10px; }
+.vx-shell.is-collapsed .vx-nav-group__children,
+.vx-shell.is-collapsed .vx-nav-group__chevron { display: none; }
 
 .vx-topbar {
   position: sticky;
@@ -502,6 +534,392 @@ body {
 }
 .table > tbody td { padding-top: 13px; padding-bottom: 13px; vertical-align: middle; }
 .table > :not(caption) > * > * { border-bottom-color: var(--border); }
+
+/* Programas -> planos: hierarquia expansível com superfícies legíveis em todos os temas. */
+.sg-program-row,
+.sg-plan-row {
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.sg-program-row.is-expanded > *,
+.sg-plan-row.is-expanded > * {
+  --bs-table-bg-state: var(--primary-soft);
+  box-shadow: inset 0 -1px 0 var(--primary-border);
+}
+.sg-program-cascade-row > td,
+.sg-plan-cascade-row > td {
+  background: var(--surface-2) !important;
+  border-bottom: 1px solid var(--border-strong) !important;
+}
+.sg-program-cascade,
+.sg-plan-cascade {
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+}
+.sg-program-cascade__table,
+.sg-plan-cascade__table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.sg-program-cascade__table > thead > tr > th,
+.sg-plan-cascade__table > thead > tr > th {
+  background: var(--surface-3);
+  color: var(--muted-text);
+  border-bottom-color: var(--border-strong);
+}
+
+:root[data-theme="darkvextrom"] .sg-program-row.is-expanded > *,
+:root[data-theme="darkvextrom"] .sg-plan-row.is-expanded > * {
+  --bs-table-bg-state: rgba(79, 127, 42, 0.16);
+  color: var(--text-strong);
+}
+:root[data-theme="darkvextrom"] .sg-program-cascade-row > td,
+:root[data-theme="darkvextrom"] .sg-plan-cascade-row > td {
+  background: #101519 !important;
+}
+:root[data-theme="darkvextrom"] .sg-program-cascade,
+:root[data-theme="darkvextrom"] .sg-plan-cascade {
+  background: linear-gradient(90deg, rgba(79, 127, 42, 0.08), transparent 18rem);
+  border-left-color: var(--primary-bright);
+}
+:root[data-theme="darkvextrom"] .sg-program-cascade__table,
+:root[data-theme="darkvextrom"] .sg-plan-cascade__table {
+  --bs-table-bg: #151a1e;
+  --bs-table-color: #e6e8ea;
+  --bs-table-hover-bg: #222a2e;
+  --bs-table-hover-color: #f4f6f7;
+  border-color: #39413d;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+:root[data-theme="darkvextrom"] .sg-program-cascade__table > thead > tr > th,
+:root[data-theme="darkvextrom"] .sg-plan-cascade__table > thead > tr > th {
+  background: #1f2529;
+  color: #aeb6b1;
+  border-bottom-color: #39413d;
+}
+
+/* Aviso persistente de manutenção no canto inferior esquerdo do conteúdo. */
+.sg-maintenance-alert-popup {
+  position: fixed;
+  left: calc(var(--vx-sidebar-width) + 18px);
+  bottom: 18px;
+  z-index: 1080;
+  width: min(420px, calc(100vw - var(--vx-sidebar-width) - 36px));
+  padding: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--primary-border);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.vx-shell.is-collapsed .sg-maintenance-alert-popup {
+  left: calc(var(--vx-sidebar-rail) + 18px);
+  width: min(420px, calc(100vw - var(--vx-sidebar-rail) - 36px));
+}
+.sg-maintenance-alert-popup__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.sg-maintenance-alert-popup.is-dragging {
+  cursor: grabbing;
+  opacity: 0.96;
+  box-shadow: 0 26px 62px rgba(0, 0, 0, 0.42);
+}
+.sg-maintenance-alert-popup.is-dragging .sg-maintenance-alert-popup__header { cursor: grabbing; }
+.sg-maintenance-alert-popup__drag-icon {
+  color: var(--muted-text);
+  font-size: 0.9rem;
+  letter-spacing: -0.28rem;
+  transform: rotate(90deg);
+}
+.sg-maintenance-alert-popup__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  color: #201500;
+  background: var(--warning);
+  border-radius: 999px;
+  font-weight: 750;
+}
+.sg-maintenance-alert-popup__list {
+  max-height: 285px;
+  overflow-y: auto;
+  margin: 10px 0 12px;
+}
+.sg-maintenance-alert-popup__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.sg-maintenance-alert-popup__item .min-w-0 { min-width: 0; }
+.sg-maintenance-alert-popup__item.is-clickable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 140ms ease, padding 140ms ease;
+}
+.sg-maintenance-alert-popup__item.is-clickable:hover,
+.sg-maintenance-alert-popup__item.is-clickable:focus-visible {
+  padding-left: 8px;
+  padding-right: 8px;
+  background: var(--primary-soft);
+  outline: 1px solid var(--primary-border);
+}
+:root[data-theme="darkvextrom"] .sg-maintenance-alert-popup {
+  background: #151a1e;
+  border-color: #39413d;
+  border-left-color: var(--warning);
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(223, 174, 24, 0.1);
+}
+
+@media (max-width: 767.98px) {
+  .sg-maintenance-alert-popup,
+  .vx-shell.is-collapsed .sg-maintenance-alert-popup {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+}
+
+/* Cronograma: matriz anual com cartões inspirados em boards de planejamento. */
+.sg-schedule-scroll { overflow: auto; }
+.sg-schedule-page--standalone {
+  min-height: 100vh;
+  padding: 18px;
+  background: var(--bg);
+}
+.sg-schedule-page--standalone .sg-schedule-sheet-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.sg-schedule-page--standalone .sg-schedule-scroll {
+  height: calc(100vh - 104px);
+}
+.sg-schedule-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.sg-schedule-filters > .sg-schedule-filter {
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+.sg-schedule-filters > .sg-schedule-filter--period,
+.sg-schedule-filters > .sg-schedule-filter--group {
+  grid-column: span 2;
+}
+.sg-schedule-filters .btn-group { min-width: 0; }
+.sg-schedule-filters .btn-group .btn {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+  .sg-schedule-page--standalone { padding: 12px; }
+  .sg-schedule-page--standalone .sg-schedule-scroll { height: calc(100vh - 132px); }
+  .sg-schedule-filters { grid-template-columns: minmax(0, 1fr); }
+  .sg-schedule-filters > .sg-schedule-filter,
+  .sg-schedule-filters > .sg-schedule-filter--period,
+  .sg-schedule-filters > .sg-schedule-filter--date,
+  .sg-schedule-filters > .sg-schedule-filter--group,
+  .sg-schedule-filters > .sg-schedule-filter--equipment {
+    grid-column: auto;
+    width: 100%;
+  }
+}
+.sg-schedule-sheet {
+  width: 100%;
+  min-width: 1840px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text);
+  background: var(--surface);
+}
+.sg-schedule-sheet--month { min-width: 1120px; }
+.sg-schedule-sheet--month th:not(.sg-schedule-sheet__identity),
+.sg-schedule-sheet--month td { width: 176px; min-width: 176px; }
+.sg-schedule-sheet--day { min-width: 3400px; }
+.sg-schedule-sheet--day th:not(.sg-schedule-sheet__identity),
+.sg-schedule-sheet--day td { width: 102px; min-width: 102px; }
+.sg-schedule-sheet th,
+.sg-schedule-sheet td {
+  width: 132px;
+  min-width: 132px;
+  padding: 8px;
+  vertical-align: top;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.sg-schedule-sheet thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 11px 8px;
+  text-align: center;
+  color: var(--muted-text);
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sg-schedule-sheet .sg-schedule-sheet__identity {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 240px;
+  min-width: 240px;
+  background: var(--surface-2);
+  text-align: left;
+}
+.sg-schedule-sheet tbody .sg-schedule-sheet__identity span,
+.sg-schedule-sheet tbody .sg-schedule-sheet__identity small { display: block; }
+.sg-schedule-sheet tbody .sg-schedule-sheet__identity small { margin-top: 3px; color: var(--muted-text); font-weight: 400; }
+.sg-schedule-sheet tbody tr:nth-child(even) td { background: rgba(var(--bs-primary-rgb), 0.025); }
+.sg-schedule-task {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+  width: 100%;
+  margin-bottom: 5px;
+  padding: 6px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status-info);
+  border-radius: 7px;
+  text-align: left;
+  font: inherit;
+  font-size: 0.69rem;
+  line-height: 1.25;
+}
+.sg-schedule-task__date { color: var(--muted-text); font-weight: 750; }
+.sg-schedule-task__title { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.sg-schedule-task--emergencial { border-left-color: var(--status-emergency); }
+.sg-schedule-task--critico { border-left-color: var(--status-critical); }
+.sg-schedule-task--importante { border-left-color: var(--status-warning); }
+.sg-schedule-task--atencao { border-left-color: var(--primary-bright); }
+.sg-schedule-task.is-clickable { cursor: pointer; }
+.sg-schedule-task.is-clickable:hover,
+.sg-schedule-task.is-clickable:focus-visible { background: var(--primary-soft); outline: 1px solid var(--primary-border); }
+
+/* Agenda técnica: cada dia do intervalo fica realmente ocupado pelo cartão da OM. */
+.sg-tech-agenda-day {
+  padding: 6px !important;
+  position: relative;
+  overflow: visible;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sg-tech-agenda-day.has-work { background: rgba(79, 127, 42, 0.025); }
+.sg-tech-agenda-day:has(.sg-tech-agenda-task[draggable="true"]):hover {
+  background: rgba(79, 127, 42, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(79, 127, 42, 0.28);
+}
+.sg-tech-agenda-day__number {
+  margin-bottom: 5px;
+  color: var(--muted-text);
+  font-size: 0.75rem;
+}
+.sg-tech-agenda-day__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  min-height: 44px;
+  overflow: visible;
+}
+.sg-tech-agenda-task {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) minmax(0, 0.9fr);
+  align-items: center;
+  gap: 7px;
+  width: calc(var(--sg-agenda-span, 1) * 100% + (var(--sg-agenda-span, 1) - 1) * 13px);
+  min-width: 0;
+  min-height: 44px;
+  position: relative;
+  z-index: 4;
+  padding: 6px 9px;
+  border: 1px solid #668d3d;
+  border-radius: 8px;
+  background: #fbfff7;
+  color: #356715;
+  font: inherit;
+  font-size: 0.73rem;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(31, 54, 19, 0.08);
+}
+.sg-tech-agenda-task[draggable="true"] { cursor: grab; }
+.sg-tech-agenda-task[draggable="true"]:active { cursor: grabbing; }
+.sg-tech-agenda-task:hover,
+.sg-tech-agenda-task:focus-visible {
+  background: #f2faeb;
+  border-color: #3f7d2a;
+  outline: 2px solid rgba(63, 125, 42, 0.18);
+}
+.sg-tech-agenda-task__icon { color: #315e69; }
+.sg-tech-agenda-task__order,
+.sg-tech-agenda-task__technician {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sg-tech-agenda-task__order { font-weight: 750; }
+.sg-tech-agenda-task__technician { color: #40751f; }
+:root[data-theme="darkvextrom"] .sg-tech-agenda-day.has-work { background: rgba(113, 174, 69, 0.035); }
+:root[data-theme="darkvextrom"] .sg-tech-agenda-task {
+  border-color: #567c38;
+  background: #19221a;
+  color: #b5df91;
+  box-shadow: none;
+}
+:root[data-theme="darkvextrom"] .sg-tech-agenda-task:hover,
+:root[data-theme="darkvextrom"] .sg-tech-agenda-task:focus-visible { background: #213021; }
+:root[data-theme="darkvextrom"] .sg-tech-agenda-task__technician { color: #9fca7e; }
+:root[data-theme="darkvextrom"] .sg-schedule-sheet { background: #151a1e; }
+:root[data-theme="darkvextrom"] .sg-schedule-sheet thead th,
+:root[data-theme="darkvextrom"] .sg-schedule-sheet .sg-schedule-sheet__identity { background: #1f2529; }
+:root[data-theme="darkvextrom"] .sg-schedule-task { background: #20272b; border-color: #39413d; }
+
+@media print {
+  @page { size: landscape; margin: 7mm; }
+  .vx-sidebar, .vx-topbar, .sg-maintenance-alert-popup, .sg-no-print { display: none !important; }
+  .vx-content { margin-left: 0 !important; }
+  .vx-main { padding: 0 !important; max-width: none !important; }
+  body, .vx-shell, .vx-content, .vx-main { background: #fff !important; color: #111 !important; }
+  .sg-schedule-page { display: block !important; }
+  .sg-schedule-print-header { margin-bottom: 4mm; }
+  .sg-schedule-print-header .text-muted { color: #444 !important; }
+  .sg-schedule-sheet-card { border: 0 !important; box-shadow: none !important; }
+  .sg-schedule-scroll { overflow: visible !important; }
+  .sg-schedule-sheet { min-width: 0; color: #111; background: #fff; font-size: 7px; }
+  .sg-schedule-sheet th, .sg-schedule-sheet td { width: auto; min-width: 0; padding: 2px; border-color: #aaa; }
+  .sg-schedule-sheet .sg-schedule-sheet__identity { position: static; width: 30mm; min-width: 30mm; background: #eee !important; }
+  .sg-schedule-sheet thead th { position: static; background: #eee !important; color: #222; }
+  .sg-schedule-task { grid-template-columns: 12px 1fr; margin-bottom: 2px; padding: 2px; color: #111; background: #fff !important; font-size: 6px; break-inside: avoid; }
+  .sg-schedule-task__date, .sg-schedule-sheet tbody .sg-schedule-sheet__identity small { color: #333 !important; }
+}
 
 .form-control, .form-select {
   background: var(--input-bg);

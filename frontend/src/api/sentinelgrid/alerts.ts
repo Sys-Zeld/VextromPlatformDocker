@@ -12,6 +12,11 @@ export interface AckState {
   until: number | null;
 }
 
+export interface AlertPopupPosition {
+  left: number | null;
+  top: number | null;
+}
+
 function qs(params: Record<string, number | undefined>): string {
   const q = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
@@ -35,4 +40,15 @@ export function ackAlerts() {
 // Reset — limpa o "ciente" (o popup volta a aparecer).
 export function resetAlertAck() {
   return api<AckState>("/sentinelgrid/alerts/ack", { method: "DELETE" });
+}
+
+export function getAlertPopupPosition() {
+  return api<AlertPopupPosition>("/sentinelgrid/alerts/popup-position");
+}
+
+export function saveAlertPopupPosition(position: { left: number; top: number }) {
+  return api<{ left: number; top: number }>("/sentinelgrid/alerts/popup-position", {
+    method: "PUT",
+    body: JSON.stringify(position)
+  });
 }

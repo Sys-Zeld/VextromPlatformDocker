@@ -2,6 +2,10 @@ const express = require("express");
 const { parseChecklistInput, parseChecklistItemInput } = require("../validators/checklistValidators");
 const { toValidationError, isForeignKeyError, isUniqueViolation } = require("./httpErrors");
 const repo = require("../repositories/checklistsRepository");
+const { extractChecklistFromPdf } = require("../services/checklistAi");
+
+const AI_PDF_MAX_BYTES = 10 * 1024 * 1024;
+const AI_MAX_ITEMS = 500;
 
 function createChecklistsRouter(deps) {
   const router = express.Router();
@@ -48,6 +52,46 @@ function createChecklistsRouter(deps) {
     })
   );
 
+  router.post(
+    "/ai/import-pdf",
+    asyncHandler(async (req, res) => {
+      const fileName = String(req.body && req.body.fileName || "checklist.pdf").trim().slice(0, 240);
+      const mimeType = String(req.body && req.body.mimeType || "").trim().toLowerCase();
+      const rawBase64 = String(req.body && req.body.fileBase64 || "").trim().replace(/^data:application\/pdf;base64,/i, "");
+      if (mimeType !== "application/pdf" || !fileName.toLowerCase().endsWith(".pdf") || !rawBase64) {
+        return res.status(422).json({ error: "Selecione um arquivo PDF valido.", errorCode: "SG_CHECKLIST_AI_PDF_INVALID" });
+      }
+      if (rawBase64.length > Math.ceil(AI_PDF_MAX_BYTES * 4 / 3) + 16) {
+        return res.status(413).json({ error: "O PDF deve ter no maximo 10 MB.", errorCode: "SG_CHECKLIST_AI_PDF_TOO_LARGE" });
+      }
+      let fileBuffer;
+      try { fileBuffer = Buffer.from(rawBase64, "base64"); } catch (_err) { fileBuffer = Buffer.alloc(0); }
+      if (!fileBuffer.length || fileBuffer.length > AI_PDF_MAX_BYTES || fileBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        return res.status(422).json({ error: "O conteudo enviado nao e um PDF valido.", errorCode: "SG_CHECKLIST_AI_PDF_INVALID" });
+      }
+      try {
+        const draft = await extractChecklistFromPdf({
+          fileBuffer,
+          fileName,
+          userInstructions: String(req.body && req.body.instructions || "").trim().slice(0, 4000)
+        });
+        if (draft.items.length > AI_MAX_ITEMS) {
+          return res.status(422).json({
+            error: `O documento gerou mais de ${AI_MAX_ITEMS} campos. Divida o PDF em partes menores.`,
+            errorCode: "SG_CHECKLIST_ITEMS_LIMIT"
+          });
+        }
+        return res.json({ draft });
+      } catch (err) {
+        const status = [422, 429, 500, 502, 503, 504].includes(Number(err && err.statusCode)) ? Number(err.statusCode) : 502;
+        return res.status(status).json({
+          error: err && err.message ? err.message : "Nao foi possivel analisar o PDF com IA.",
+          errorCode: "SG_CHECKLIST_AI_FAILED"
+        });
+      }
+    })
+  );
+
   router.get(
     "/:id",
     asyncHandler(async (req, res) => {
@@ -61,12 +105,23 @@ function createChecklistsRouter(deps) {
     "/",
     asyncHandler(async (req, res) => {
       let input;
+      let items = [];
       try {
         input = parseChecklistInput(req.body);
+        const rawItems = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+        if (rawItems.length > AI_MAX_ITEMS) {
+          return res.status(422).json({ error: `O checklist pode ter no maximo ${AI_MAX_ITEMS} itens.`, errorCode: "SG_CHECKLIST_ITEMS_LIMIT" });
+        }
+        items = rawItems.map(parseChecklistItemInput);
       } catch (err) {
         return res.status(400).json(toValidationError(err));
       }
-      const checklist = await handleWrite(() => repo.createChecklist(input, actorOf(req)), res);
+      const checklist = await handleWrite(
+        () => items.length
+          ? repo.createChecklistWithItems(input, items, actorOf(req))
+          : repo.createChecklist(input, actorOf(req)),
+        res
+      );
       if (res.headersSent) return;
       res.status(201).json({ checklist });
     })

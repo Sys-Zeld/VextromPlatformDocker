@@ -1,6 +1,7 @@
 const pool = require("../db");
 const { classifyEvent, eventGeneralStatus, worstStatus } = require("../services/calendarClassifier");
 const { GENERAL_STATUS } = require("../constants");
+const { validateTechnicianSchedule } = require("../services/technicianScheduleValidator");
 
 // Fase 10 · Fatia 10.1 — Motor de agregação do Mapa Calendário de Manutenção.
 // READ-ONLY: não cria tabela de eventos; apenas agrega/normaliza o que já existe
@@ -202,6 +203,61 @@ async function listMapEvents(filters = {}) {
   return (await pool.query(sql, params)).rows.map(classifyEvent);
 }
 
+async function moveCalendarEvents(items, sourceDate, targetDate, actor = "") {
+  const unique = Array.from(new Map(items.map((item) => [`${item.refTable}:${item.refId}`, item])).values());
+  const client = await pool.connect();
+  let moved = 0;
+  try {
+    await client.query("BEGIN");
+    for (const item of unique) {
+      let result;
+      if (item.refTable === "sg_calendar_entries") {
+        result = await client.query(
+          `UPDATE sg_calendar_entries SET planned_date=$3, updated_by=$4, updated_at=NOW()
+            WHERE id=$1 AND planned_date::date=$2::date AND deleted_at IS NULL`,
+          [item.refId, sourceDate, targetDate, actor]
+        );
+      } else if (item.refTable === "sg_maintenance_orders") {
+        await validateTechnicianSchedule(client, item.refId, { startDate: targetDate });
+        result = await client.query(
+          `UPDATE sg_maintenance_orders
+              SET planned_date=$3,
+                  scheduled_date=CASE WHEN scheduled_date IS NULL THEN NULL ELSE $3::date END,
+                  updated_by=$4, updated_at=NOW()
+            WHERE id=$1
+              AND (COALESCE(scheduled_date::date, planned_date, created_at::date)=$2::date
+                   OR COALESCE(planned_date, created_at::date)=$2::date)
+              AND deleted_at IS NULL`,
+          [item.refId, sourceDate, targetDate, actor]
+        );
+      } else if (item.refTable === "sg_recommendations") {
+        result = await client.query(
+          `UPDATE sg_recommendations SET due_date=$3, updated_by=$4, updated_at=NOW()
+            WHERE id=$1 AND COALESCE(due_date, created_at::date)=$2::date AND deleted_at IS NULL`,
+          [item.refId, sourceDate, targetDate, actor]
+        );
+      } else {
+        const err = new Error(`Origem não pode ser reagendada: ${item.refTable}`);
+        err.code = "SG_CALENDAR_MOVE_UNSUPPORTED";
+        throw err;
+      }
+      moved += result.rowCount;
+    }
+    if (moved !== unique.length) {
+      const err = new Error("O calendário foi alterado por outro usuário. Atualize e tente novamente.");
+      err.code = "SG_CALENDAR_MOVE_STALE";
+      throw err;
+    }
+    await client.query("COMMIT");
+    return { moved };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // Rollup por cliente (contadores). Status geral (pior condição) fica na Fatia 10.3;
 // aqui entregamos os contadores que não dependem das regras de vencimento.
 async function mapSummary(filters = {}) {
@@ -255,4 +311,4 @@ async function listAlerts(filters = {}) {
   return { alerts, total: alerts.length, byPriority };
 }
 
-module.exports = { listMapEvents, mapSummary, listAlerts };
+module.exports = { listMapEvents, moveCalendarEvents, mapSummary, listAlerts };

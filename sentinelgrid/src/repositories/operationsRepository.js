@@ -111,6 +111,10 @@ async function listReports({ orderId = null, equipmentId = null, limit = 100 } =
   )).rows;
 }
 
+async function getReportById(id) {
+  return (await pool.query("SELECT * FROM sg_associated_reports WHERE id=$1 AND deleted_at IS NULL", [id])).rows[0] || null;
+}
+
 async function createReport(input, actor = "") {
   const order = await resolveOrder(input.orderId);
   const res = await pool.query(
@@ -335,7 +339,7 @@ async function dashboard({ clientId = null } = {}) {
 module.exports = {
   listMeasurements, createMeasurement,
   listParts, createPart,
-  listReports, createReport,
+  listReports, getReportById, createReport,
   listAttachments, createAttachment,
   listEvents, createEvent,
   listRecommendations, createRecommendation, updateRecommendationStatus,

@@ -798,9 +798,9 @@ ${autoPrint ? `
           htmlBody = `<!doctype html><html><body>${renderEmailPlaceholder(signedTemplate.html, signedVars)}</body></html>`;
         } else {
           const bodyIntro = customMessage
-            ? `<p style="margin:0 0 12px 0;">${customMessage}</p>`
+            ? `<p style="margin:0 0 12px 0;">${escapeHtml(customMessage)}</p>`
             : "<p style=\"margin:0 0 12px 0;\">Seu relatorio assinado esta disponivel no link abaixo para visualizacao e impressao.</p>";
-          htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;">${bodyIntro}<p style="margin:0 0 8px 0;"><strong>Relatorio:</strong> ${reportNumber || "-"}</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${orderLabel || "-"}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${signRequest.customer_name || "-"}</p><p style="margin:16px 0;"><a href="${escapeHtml(signedLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#14532d;color:#fff;text-decoration:none;font-weight:600;">Abrir relatorio assinado</a></p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo link de assinatura eletrônica.</p></body></html>`;
+          htmlBody = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937;">${bodyIntro}<p style="margin:0 0 8px 0;"><strong>Relatorio:</strong> ${escapeHtml(reportNumber || "-")}</p><p style="margin:0 0 8px 0;"><strong>OS:</strong> ${escapeHtml(orderLabel || "-")}</p><p style="margin:0 0 8px 0;"><strong>Cliente:</strong> ${escapeHtml(signRequest.customer_name || "-")}</p><p style="margin:16px 0;"><a href="${escapeHtml(signedLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#14532d;color:#fff;text-decoration:none;font-weight:600;">Abrir relatorio assinado</a></p><p style="margin:12px 0 0 0;color:#6b7280;font-size:12px;">E-mail enviado pelo link de assinatura eletrônica.</p></body></html>`;
         }
 
         await transporter.sendMail({

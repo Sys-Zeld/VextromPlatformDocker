@@ -24,10 +24,13 @@ const SentinelCatalogPage = lazy(() => import("./pages/sentinelgrid/CatalogPage"
 const SentinelEquipmentsPage = lazy(() => import("./pages/sentinelgrid/EquipmentsPage"));
 const SentinelManagementPage = lazy(() => import("./pages/sentinelgrid/ManagementPage"));
 const SentinelProgramsPage = lazy(() => import("./pages/sentinelgrid/ProgramsPage"));
+const SentinelProgramAssetsPage = lazy(() => import("./pages/sentinelgrid/ProgramAssetsPage"));
 const SentinelPlansPage = lazy(() => import("./pages/sentinelgrid/PlansPage"));
 const SentinelChecklistsPage = lazy(() => import("./pages/sentinelgrid/ChecklistsPage"));
 const SentinelMaintenanceOrdersPage = lazy(() => import("./pages/sentinelgrid/MaintenanceOrdersPage"));
 const SentinelCalendarPage = lazy(() => import("./pages/sentinelgrid/CalendarPage"));
+const SentinelSchedulePage = lazy(() => import("./pages/sentinelgrid/SchedulePage"));
+const SentinelTechnicianAgendaPage = lazy(() => import("./pages/sentinelgrid/TechnicianAgendaPage"));
 const SentinelAlertsPage = lazy(() => import("./pages/sentinelgrid/AlertsPage"));
 const SentinelHistoryPage = lazy(() => import("./pages/sentinelgrid/HistoryPage"));
 const SentinelDashboardPage = lazy(() => import("./pages/sentinelgrid/DashboardPage"));
@@ -49,6 +52,7 @@ export default function App() {
       <ConfirmHost />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
+        <Route path="/sentinelgrid/schedule/fullscreen" element={<SentinelSchedulePage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<OrdersPage />} />
           <Route path="/orders/:id/editor" element={<OrderEditorPage />} />
@@ -68,10 +72,13 @@ export default function App() {
           <Route path="/sentinelgrid/equipment" element={<SentinelEquipmentsPage />} />
           <Route path="/sentinelgrid/management" element={<SentinelManagementPage />} />
           <Route path="/sentinelgrid/programs" element={<SentinelProgramsPage />} />
+          <Route path="/sentinelgrid/assets" element={<SentinelProgramAssetsPage />} />
           <Route path="/sentinelgrid/plans" element={<SentinelPlansPage />} />
           <Route path="/sentinelgrid/checklists" element={<SentinelChecklistsPage />} />
           <Route path="/sentinelgrid/maintenance-orders" element={<SentinelMaintenanceOrdersPage />} />
           <Route path="/sentinelgrid/calendar" element={<SentinelCalendarPage />} />
+          <Route path="/sentinelgrid/schedule" element={<SentinelSchedulePage />} />
+          <Route path="/sentinelgrid/technician-agenda" element={<SentinelTechnicianAgendaPage />} />
           <Route path="/sentinelgrid/alerts" element={<SentinelAlertsPage />} />
           <Route path="/sentinelgrid/history" element={<SentinelHistoryPage />} />
           <Route path="/sentinelgrid/dashboard" element={<SentinelDashboardPage />} />

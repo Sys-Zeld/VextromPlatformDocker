@@ -14,7 +14,7 @@ const maintenanceProgramInputSchema = z.object({
   equipmentTypeId: optionalId,
   manufacturerId: optionalId,
   modelId: optionalId,
-  contractId: optionalId,
+  contractId: z.coerce.number().int().positive("Contrato e obrigatorio"),
   criticality: optionalCriticality,
   maintenanceType: z.enum(MAINTENANCE_TYPE),
   periodicity: z.enum(PERIODICITY),

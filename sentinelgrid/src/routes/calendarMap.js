@@ -54,6 +54,28 @@ function createCalendarMapRouter(deps) {
     res.json({ events, range: { from: filters.from, to: filters.to }, total: events.length });
   }));
 
+  router.put("/move", asyncHandler(async (req, res) => {
+    const sourceDate = String(req.body?.sourceDate || "").trim();
+    const targetDate = String(req.body?.targetDate || "").trim();
+    const items = Array.isArray(req.body?.items) ? req.body.items.map((item) => ({
+      refTable: String(item?.refTable || ""), refId: Number(item?.refId) || 0
+    })).filter((item) => item.refTable && item.refId) : [];
+    const validDate = /^\d{4}-\d{2}-\d{2}$/;
+    if (!validDate.test(sourceDate) || !validDate.test(targetDate) || !items.length) {
+      return res.status(400).json({ error: "Origem, destino e eventos são obrigatórios.", errorCode: "SG_CALENDAR_MOVE_INVALID" });
+    }
+    if (sourceDate === targetDate) return res.json({ moved: 0 });
+    try {
+      const result = await repo.moveCalendarEvents(items, sourceDate, targetDate, String(req.adminUsername || ""));
+      res.json(result);
+    } catch (err) {
+      if (["SG_CALENDAR_MOVE_UNSUPPORTED", "SG_CALENDAR_MOVE_STALE", "SG_TECHNICIAN_SCHEDULE_CONFLICT"].includes(err.code)) {
+        return res.status(409).json({ error: err.message, errorCode: err.code, conflict: err.conflict || null });
+      }
+      throw err;
+    }
+  }));
+
   router.get("/summary", asyncHandler(async (req, res) => {
     const filters = parseFilters(req.query);
     const summary = await repo.mapSummary(filters);

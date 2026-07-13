@@ -104,6 +104,42 @@ async function createChecklist(input, actor = "") {
   return getChecklist(res.rows[0].id);
 }
 
+// Cria cabeçalho e itens extraídos do PDF de forma atômica. Se qualquer item
+// falhar, nenhum checklist parcial fica cadastrado.
+async function createChecklistWithItems(input, items, actor = "") {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const created = await client.query(
+      `INSERT INTO sg_checklists
+        (name, description, equipment_type_id, manufacturer_id, model_id, program_id,
+         maintenance_type, active, notes, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+       RETURNING id`,
+      [...values(input), actor]
+    );
+    const checklistId = created.rows[0].id;
+    for (const item of items) {
+      // eslint-disable-next-line no-await-in-loop
+      await client.query(
+        `INSERT INTO sg_checklist_items
+          (checklist_id, title, item_type, required, expected_value, unit, acceptance_criteria,
+           order_index, notes, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+        [checklistId, item.title, item.itemType, item.required, item.expectedValue, item.unit,
+          item.acceptanceCriteria, item.orderIndex, item.notes, actor]
+      );
+    }
+    await client.query("COMMIT");
+    return getChecklist(checklistId);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function updateChecklist(id, input, actor = "") {
   const res = await pool.query(
     `UPDATE sg_checklists
@@ -210,6 +246,7 @@ module.exports = {
   listChecklists,
   getChecklist,
   createChecklist,
+  createChecklistWithItems,
   updateChecklist,
   softDeleteChecklist,
   createChecklistItem,

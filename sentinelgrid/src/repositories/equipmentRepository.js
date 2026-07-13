@@ -102,10 +102,8 @@ async function listByProgramScope(program) {
   if (program.manufacturer_id) add("e.manufacturer_id = $?", program.manufacturer_id);
   if (program.model_id) add("e.model_id = $?", program.model_id);
   if (program.criticality) add("e.criticality = $?", program.criticality);
-  if (program.contract_id) {
-    params.push(program.contract_id);
-    where += ` AND e.client_id = (SELECT client_id FROM sg_contracts WHERE id = $${params.length})`;
-  }
+  if (!program.contract_id || !program.contract_client_id) return [];
+  add("e.client_id = $?", program.contract_client_id);
   return (
     await pool.query(
       `SELECT ${SELECT_COLS} ${BASE_FROM} WHERE ${where} ORDER BY c.name ASC, e.tag ASC`,
@@ -139,7 +137,7 @@ async function createEquipment(input, actor = "") {
   const values = [scope.client_id, scope.site_id, input.areaId, ...writeValues(input), actor, actor];
   const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
   const res = await pool.query(`INSERT INTO sg_equipment (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`, values);
-  return res.rows[0];
+  return getEquipment(res.rows[0].id);
 }
 
 async function updateEquipment(id, input, actor = "") {
@@ -154,7 +152,7 @@ async function updateEquipment(id, input, actor = "") {
     `UPDATE sg_equipment SET ${setClause}, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
     values
   );
-  return res.rows[0] || null;
+  return res.rows[0] ? getEquipment(id) : null;
 }
 
 async function softDeleteEquipment(id, actor = "") {

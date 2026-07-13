@@ -107,6 +107,19 @@ export function getMapSummary(f: MapFilters = {}) {
   return api<SgMapSummary>(`/sentinelgrid/calendar/map/summary${qs(f)}`);
 }
 
+export interface MoveCalendarEventsInput {
+  sourceDate: string;
+  targetDate: string;
+  items: Array<{ refTable: string; refId: number }>;
+}
+
+export function moveCalendarEvents(input: MoveCalendarEventsInput) {
+  return api<{ moved: number }>("/sentinelgrid/calendar/map/move", {
+    method: "PUT",
+    body: JSON.stringify(input)
+  });
+}
+
 // Regras de vencimento configuráveis (A.9 / Fatia 10.2).
 export interface SgAlertRule {
   criticality: string;

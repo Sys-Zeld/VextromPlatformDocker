@@ -85,6 +85,17 @@ async function migrateServiceReport() {
     await db.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS external_source TEXT NOT NULL DEFAULT '';`);
     await db.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS external_id TEXT NOT NULL DEFAULT '';`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_external ON ${table} (external_source, external_id) WHERE external_source <> '' AND external_id <> '';`);
+    // FK externa lógica para o registro correspondente no SentinelGrid. Não
+    // usa REFERENCES porque cada módulo conserva banco e ciclo de vida próprios.
+    await db.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sentinelgrid_id BIGINT;`);
+    await db.query(`
+      UPDATE ${table}
+         SET sentinelgrid_id = external_id::BIGINT
+       WHERE sentinelgrid_id IS NULL
+         AND external_source = 'sentinelgrid'
+         AND external_id ~ '^[1-9][0-9]*$'
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_sentinelgrid ON ${table} (sentinelgrid_id) WHERE sentinelgrid_id IS NOT NULL;`);
   }
 
   await db.query(`

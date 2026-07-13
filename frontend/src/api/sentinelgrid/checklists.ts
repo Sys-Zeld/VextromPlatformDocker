@@ -65,6 +65,17 @@ export interface SgChecklistItemInput {
   notes: string;
 }
 
+export interface SgChecklistAiDraft {
+  checklist: SgChecklistInput;
+  suggestedScope: {
+    equipmentType: string;
+    manufacturer: string;
+    model: string;
+    program: string;
+  };
+  items: SgChecklistItemInput[];
+}
+
 function qs(params: Record<string, string | number | boolean | null | undefined>) {
   const q = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -91,6 +102,35 @@ export function getChecklist(id: number) {
 
 export function createChecklist(input: SgChecklistInput) {
   return api<{ checklist: SgChecklist }>("/sentinelgrid/checklists", { method: "POST", body: JSON.stringify(input) }).then((r) => r.checklist);
+}
+
+export function createChecklistWithItems(input: SgChecklistInput, items: SgChecklistItemInput[]) {
+  return api<{ checklist: SgChecklist }>("/sentinelgrid/checklists", {
+    method: "POST",
+    body: JSON.stringify({ ...input, items })
+  }).then((r) => r.checklist);
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o PDF selecionado."));
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const comma = dataUrl.indexOf(",");
+      if (comma < 0) return reject(new Error("PDF invalido."));
+      resolve(dataUrl.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function importChecklistPdfWithAi(file: File, instructions = "") {
+  const fileBase64 = await fileToBase64(file);
+  return api<{ draft: SgChecklistAiDraft }>("/sentinelgrid/checklists/ai/import-pdf", {
+    method: "POST",
+    body: JSON.stringify({ fileName: file.name, mimeType: file.type || "application/pdf", fileBase64, instructions })
+  }).then((r) => r.draft);
 }
 
 export function updateChecklist(id: number, input: SgChecklistInput) {

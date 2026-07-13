@@ -1,4 +1,5 @@
 const pool = require("../db");
+const { validateTechnicianSchedule } = require("../services/technicianScheduleValidator");
 
 const BASE_FROM = `FROM sg_maintenance_orders o
   JOIN sg_equipment e ON e.id = o.equipment_id
@@ -76,9 +77,11 @@ async function nextOrderNumber(client) {
 async function listOrders({
   equipmentId = null,
   clientId = null,
+  planId = null,
   status = "",
   maintenanceType = "",
   search = "",
+  sortDirection = "",
   limit = 100,
   offset = 0
 } = {}) {
@@ -90,6 +93,7 @@ async function listOrders({
   };
   if (equipmentId) add("o.equipment_id = $?", equipmentId);
   if (clientId) add("o.client_id = $?", clientId);
+  if (planId) add("o.plan_id = $?", planId);
   if (status) add("o.status = $?", status);
   if (maintenanceType) add("o.maintenance_type = $?", maintenanceType);
   if (search) {
@@ -102,11 +106,15 @@ async function listOrders({
   const limIdx = params.length;
   params.push(offset);
   const offIdx = params.length;
+  const normalizedSortDirection = sortDirection === "asc" ? "ASC" : sortDirection === "desc" ? "DESC" : "";
+  const orderBy = normalizedSortDirection
+    ? `o.planned_date ${normalizedSortDirection} NULLS LAST, o.id ${normalizedSortDirection}`
+    : "COALESCE(o.planned_date, o.created_at::date) DESC, o.id DESC";
   const orders = (
     await pool.query(
       `SELECT ${SELECT_COLS} ${BASE_FROM}
         WHERE ${where}
-        ORDER BY COALESCE(o.planned_date, o.created_at::date) DESC, o.id DESC
+        ORDER BY ${orderBy}
         LIMIT $${limIdx} OFFSET $${offIdx}`,
       params
     )
@@ -224,6 +232,13 @@ async function updateOrder(id, input, actor = "") {
     await client.query("BEGIN");
     const scope = await resolveEquipmentScope(client, input.equipmentId);
     const status = defaultStatus(input);
+    if (["agendada", "aprovada", "em_execucao", "reprogramada"].includes(status)) {
+      await validateTechnicianSchedule(client, id, {
+        startDate: input.scheduledDate ? String(input.scheduledDate).slice(0, 10) : input.plannedDate,
+        clientId: scope.client_id,
+        siteId: scope.site_id
+      });
+    }
     const res = await client.query(
       `UPDATE sg_maintenance_orders
           SET equipment_id = $2, client_id = $3, site_id = $4, area_id = $5,
@@ -470,6 +485,8 @@ async function transitionOrderStatus(id, input, actor = "") {
         }
       }
     }
+
+    if (nextStatus === "agendada") await validateTechnicianSchedule(client, id);
 
     await client.query(
       `UPDATE sg_maintenance_orders

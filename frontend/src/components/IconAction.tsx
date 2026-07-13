@@ -13,7 +13,22 @@ const MATERIAL_SYMBOL_BY_ACTION: Record<string, string> = {
   link_off: "link_off",
   add_link: "add_link",
   restart_alt: "restart_alt",
-  delete: "delete"
+  delete: "delete",
+  edit_record: "edit_square",
+  delete_record: "delete_forever",
+  checklist_items: "checklist_rtl",
+  execute_checklist: "fact_check",
+  technical_execution: "engineering",
+  change_status: "published_with_changes",
+  approve_shutdown: "approval",
+  save_item: "save_as",
+  program_assets: "perm_media",
+  generate_plans: "event_repeat",
+  edit_plan_action: "edit_calendar",
+  delete_plan_action: "event_busy",
+  manage_members: "group",
+  expand_more_action: "keyboard_arrow_down",
+  expand_less_action: "keyboard_arrow_up"
 };
 
 export default function IconAction({ icon, label, ...rest }: IconActionProps) {

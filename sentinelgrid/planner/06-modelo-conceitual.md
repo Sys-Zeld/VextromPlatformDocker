@@ -240,3 +240,16 @@ de produto entregável por vez.
 | `sg_maintenance_orders` | Transacional | Equipamento *(NOT NULL)* | Unidade de trabalho. Nasce do plano ou de um evento. |
 | `sg_equipment_history` | Log (append-only) | Equipamento | Prontuário. Escrito pelo sistema, nunca digitado. |
 | `sg_associated_reports` | Referência externa | OM + Report Service | Apenas associação por código/PDF/link/ID. O módulo não gera relatório. |
+
+### Correlação do registry com o Service Report
+
+```text
+sg_clients.service_report_id   <----> service_report_customers.sentinelgrid_id
+sg_sites.service_report_id     <----> service_report_customer_sites.sentinelgrid_id
+sg_equipment.service_report_id <----> service_report_equipments.sentinelgrid_id
+```
+
+Esses campos são FKs externas lógicas, sem `REFERENCES` entre bancos. Um vínculo
+só é válido quando as duas pontas coincidem e o registro do SentinelGrid não
+está em soft delete. Assim, apagar e reimportar um cadastro substitui a referência
+órfã pelo novo ID ativo.

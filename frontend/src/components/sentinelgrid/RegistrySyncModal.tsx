@@ -24,6 +24,7 @@ interface Props {
   preselectId?: number | null;
   showHierarchyOptions?: boolean;
   multiSelect?: boolean;
+  disableLinkedItems?: boolean;
   successMessage?: (result: SyncResult) => string;
 }
 
@@ -42,6 +43,7 @@ export default function RegistrySyncModal({
   preselectId,
   showHierarchyOptions = true,
   multiSelect = false,
+  disableLinkedItems = false,
   successMessage
 }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -56,9 +58,10 @@ export default function RegistrySyncModal({
 
   useEffect(() => {
     if (!show || !preselectId) return;
+    if (disableLinkedItems && items.some((it) => it.id === preselectId && it.linked)) return;
     setSelectedId(preselectId);
     setSelectedIds(new Set([preselectId]));
-  }, [show, preselectId]);
+  }, [show, preselectId, items, disableLinkedItems]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -87,6 +90,10 @@ export default function RegistrySyncModal({
 
   const submit = async () => {
     if (!selectedId) return;
+    if (disableLinkedItems && items.some((it) => it.id === selectedId && it.linked)) {
+      setError("Este cliente já está vinculado e não pode ser importado novamente.");
+      return;
+    }
     setPending(true);
     setError(null);
     setResult(null);
@@ -120,6 +127,7 @@ export default function RegistrySyncModal({
   };
 
   const toggleSelected = (id: number) => {
+    if (disableLinkedItems && items.some((it) => it.id === id && it.linked)) return;
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -128,7 +136,8 @@ export default function RegistrySyncModal({
     });
   };
 
-  const allIds = items.map((it) => it.id);
+  const selectableItems = disableLinkedItems ? items.filter((it) => !it.linked) : items;
+  const allIds = selectableItems.map((it) => it.id);
   const selectedCount = selectedIds.size;
 
   const defaultSuccess =
@@ -160,7 +169,7 @@ export default function RegistrySyncModal({
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
             <span className="text-muted small">{selectedCount} selecionado(s)</span>
             <div className="d-flex gap-2">
-              <Button size="sm" variant="outline-secondary" onClick={() => setSelectedIds(new Set(filtered.map((it) => it.id)))} disabled={filtered.length === 0 || pending}>
+              <Button size="sm" variant="outline-secondary" onClick={() => setSelectedIds(new Set(filtered.filter((it) => !disableLinkedItems || !it.linked).map((it) => it.id)))} disabled={filtered.every((it) => disableLinkedItems && it.linked) || pending}>
                 Selecionar visiveis
               </Button>
               <Button size="sm" variant="outline-secondary" onClick={() => setSelectedIds(new Set())} disabled={selectedCount === 0 || pending}>
@@ -175,12 +184,19 @@ export default function RegistrySyncModal({
         ) : (
           <ListGroup style={{ maxHeight: 320, overflowY: "auto" }}>
             {filtered.length === 0 && <ListGroup.Item className="text-muted">Nenhum registro.</ListGroup.Item>}
-            {filtered.map((it) => (
+            {filtered.map((it) => {
+              const itemDisabled = disableLinkedItems && it.linked;
+              return (
               <ListGroup.Item
                 key={it.id}
                 action
+                disabled={itemDisabled}
                 active={!multiSelect && selectedId === it.id}
-                onClick={() => (multiSelect ? toggleSelected(it.id) : setSelectedId(it.id))}
+                onClick={() => {
+                  if (itemDisabled) return;
+                  if (multiSelect) toggleSelected(it.id);
+                  else setSelectedId(it.id);
+                }}
                 className="d-flex justify-content-between align-items-center gap-2"
               >
                 <span className="d-flex align-items-center gap-2">
@@ -188,6 +204,7 @@ export default function RegistrySyncModal({
                     <Form.Check
                       type="checkbox"
                       checked={selectedIds.has(it.id)}
+                      disabled={itemDisabled}
                       onChange={() => toggleSelected(it.id)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Selecionar ${it.name}`}
@@ -198,9 +215,10 @@ export default function RegistrySyncModal({
                     {it.subtitle && <span className="text-muted small ms-2">{it.subtitle}</span>}
                   </span>
                 </span>
-                {it.linked && <Badge bg="info">ja vinculado</Badge>}
+                {it.linked && <Badge bg="info">já vinculado</Badge>}
               </ListGroup.Item>
-            ))}
+              );
+            })}
           </ListGroup>
         )}
 
@@ -236,7 +254,7 @@ export default function RegistrySyncModal({
             </Button>
           </>
         ) : (
-          <Button onClick={submit} disabled={!selectedId || pending}>
+          <Button onClick={submit} disabled={!selectedId || pending || (disableLinkedItems && items.some((it) => it.id === selectedId && it.linked))}>
             {pending ? <><Spinner animation="border" size="sm" /> Processando...</> : confirmLabel}
           </Button>
         )}

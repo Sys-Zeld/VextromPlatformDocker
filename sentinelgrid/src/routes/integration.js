@@ -21,6 +21,9 @@ function createIntegrationRouter(deps) {
     if (err && err.code === "SG_SYNC_INVALID") {
       return res.status(400).json({ error: err.message, errorCode: err.code });
     }
+    if (err && err.code === "SG_CUSTOMER_ALREADY_LINKED") {
+      return res.status(409).json({ error: err.message, errorCode: err.code });
+    }
     if (err && err.statusCode) {
       return res.status(err.statusCode).json({ error: err.message, errorCode: "SG_RS_CONTRACT_ERROR" });
     }

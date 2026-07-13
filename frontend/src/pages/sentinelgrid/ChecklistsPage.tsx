@@ -17,10 +17,12 @@ import {
   SgChecklistItem,
   SgChecklistItemInput,
   createChecklist,
+  createChecklistWithItems,
   createChecklistItem,
   deleteChecklist,
   deleteChecklistItem,
   getChecklist,
+  importChecklistPdfWithAi,
   listChecklists,
   updateChecklist,
   updateChecklistItem
@@ -79,6 +81,20 @@ function toItemInput(item: SgChecklistItem): SgChecklistItemInput {
 const labelOf = (items: readonly { value: string; label: string }[], value: string | null | undefined) =>
   items.find((item) => item.value === value)?.label || "-";
 
+const normalizedName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+function matchSuggestedId<T extends { id: number }>(items: T[], suggestion: string, getName: (item: T) => string) {
+  const wanted = normalizedName(suggestion || "");
+  if (!wanted) return null;
+  const exact = items.find((item) => normalizedName(getName(item)) === wanted);
+  if (exact) return Number(exact.id);
+  const partial = items.find((item) => {
+    const candidate = normalizedName(getName(item));
+    return candidate.includes(wanted) || wanted.includes(candidate);
+  });
+  return partial ? Number(partial.id) : null;
+}
+
 export default function ChecklistsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -92,6 +108,10 @@ export default function ChecklistsPage() {
   const [itemEditId, setItemEditId] = useState<number | null>(null);
   const [itemForm, setItemForm] = useState<SgChecklistItemInput>(EMPTY_ITEM);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [aiFile, setAiFile] = useState<File | null>(null);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [aiDraftItems, setAiDraftItems] = useState<SgChecklistItemInput[]>([]);
+  const [aiInfo, setAiInfo] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
   const params = useMemo(() => ({
@@ -121,17 +141,43 @@ export default function ChecklistsPage() {
   };
   const onError = (e: unknown) => setActionError((e as Error).message);
 
-  const mCreate = useMutation({ mutationFn: createChecklist, onSuccess: () => { setShowChecklist(false); invalidateList(); }, onError });
+  const mCreate = useMutation({
+    mutationFn: (payload: { input: SgChecklistInput; items: SgChecklistItemInput[] }) => payload.items.length
+      ? createChecklistWithItems(payload.input, payload.items)
+      : createChecklist(payload.input),
+    onSuccess: () => { setShowChecklist(false); setAiDraftItems([]); setAiFile(null); invalidateList(); },
+    onError
+  });
   const mUpdate = useMutation({ mutationFn: (p: { id: number; input: SgChecklistInput }) => updateChecklist(p.id, p.input), onSuccess: () => { setShowChecklist(false); invalidateList(); invalidateSelected(); }, onError });
   const mDelete = useMutation({ mutationFn: deleteChecklist, onSuccess: invalidateList, onError });
   const mCreateItem = useMutation({ mutationFn: (p: { checklistId: number; input: SgChecklistItemInput }) => createChecklistItem(p.checklistId, p.input), onSuccess: () => { setItemForm(nextEmptyItem()); setItemEditId(null); invalidateSelected(); invalidateList(); }, onError });
   const mUpdateItem = useMutation({ mutationFn: (p: { checklistId: number; itemId: number; input: SgChecklistItemInput }) => updateChecklistItem(p.checklistId, p.itemId, p.input), onSuccess: () => { setItemForm(nextEmptyItem()); setItemEditId(null); invalidateSelected(); invalidateList(); }, onError });
   const mDeleteItem = useMutation({ mutationFn: (p: { checklistId: number; itemId: number }) => deleteChecklistItem(p.checklistId, p.itemId), onSuccess: () => { invalidateSelected(); invalidateList(); }, onError });
+  const mImportAi = useMutation({
+    mutationFn: (payload: { file: File; instructions: string }) => importChecklistPdfWithAi(payload.file, payload.instructions),
+    onSuccess: (draft) => {
+      const typeId = matchSuggestedId(types.data ?? [], draft.suggestedScope.equipmentType, (item) => item.name);
+      const manufacturerId = matchSuggestedId(manufacturers.data ?? [], draft.suggestedScope.manufacturer, (item) => item.name);
+      const modelId = matchSuggestedId(models.data?.models ?? [], draft.suggestedScope.model, (item) => item.name);
+      const programId = matchSuggestedId(programs.data?.programs ?? [], draft.suggestedScope.program, (item) => item.name);
+      setForm({
+        ...draft.checklist,
+        equipmentTypeId: typeId,
+        manufacturerId,
+        modelId,
+        programId
+      });
+      setAiDraftItems(draft.items);
+      setAiInfo(`${draft.items.length} campo(s) extraido(s) do PDF. Revise os dados antes de salvar.`);
+      setActionError(null);
+    },
+    onError
+  });
 
   const checklists = data?.checklists ?? [];
   const selectedChecklist = selected.data ?? null;
   const items = selectedChecklist?.items ?? [];
-  const savingChecklist = mCreate.isPending || mUpdate.isPending;
+  const savingChecklist = mCreate.isPending || mUpdate.isPending || mImportAi.isPending;
   const savingItem = mCreateItem.isPending || mUpdateItem.isPending;
 
   function nextEmptyItem(): SgChecklistItemInput {
@@ -139,8 +185,24 @@ export default function ChecklistsPage() {
     return { ...EMPTY_ITEM, orderIndex: nextOrder };
   }
 
-  const openNew = () => { setEditId(null); setForm({ ...EMPTY_CHECKLIST }); setActionError(null); setShowChecklist(true); };
-  const openEdit = (checklist: SgChecklist) => { setEditId(checklist.id); setForm(toChecklistInput(checklist)); setActionError(null); setShowChecklist(true); };
+  const openNew = () => {
+    setEditId(null);
+    setForm({ ...EMPTY_CHECKLIST });
+    setAiFile(null);
+    setAiInstructions("");
+    setAiDraftItems([]);
+    setAiInfo(null);
+    setActionError(null);
+    setShowChecklist(true);
+  };
+  const openEdit = (checklist: SgChecklist) => {
+    setEditId(checklist.id);
+    setForm(toChecklistInput(checklist));
+    setAiDraftItems([]);
+    setAiInfo(null);
+    setActionError(null);
+    setShowChecklist(true);
+  };
   const openItems = (checklist: SgChecklist) => {
     setSelectedId(checklist.id);
     setItemEditId(null);
@@ -152,7 +214,7 @@ export default function ChecklistsPage() {
   const submitChecklist = (ev: React.FormEvent) => {
     ev.preventDefault();
     if (editId) mUpdate.mutate({ id: editId, input: form });
-    else mCreate.mutate(form);
+    else mCreate.mutate({ input: form, items: aiDraftItems });
   };
 
   const submitItem = (ev: React.FormEvent) => {
@@ -235,9 +297,9 @@ export default function ChecklistsPage() {
                   <td><Badge bg={checklist.active ? "success" : "secondary"}>{checklist.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="checklist" label="Itens" variant="outline-primary" onClick={() => openItems(checklist)} />
-                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(checklist)} />
-                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o checklist "${checklist.name}"?`)) mDelete.mutate(checklist.id); }} />
+                      <IconAction icon="checklist_items" label="Gerenciar itens" variant="outline-primary" onClick={() => openItems(checklist)} />
+                      <IconAction icon="edit_record" label="Editar checklist" variant="outline-secondary" onClick={() => openEdit(checklist)} />
+                      <IconAction icon="delete_record" label="Excluir checklist" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o checklist "${checklist.name}"?`)) mDelete.mutate(checklist.id); }} />
                     </div>
                   </td>
                 </tr>
@@ -248,11 +310,88 @@ export default function ChecklistsPage() {
         {!isLoading && !error && <Pager page={data?.page ?? page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />}
       </Card>
 
-      <Modal show={showChecklist} onHide={() => setShowChecklist(false)} size="lg">
+      <Modal show={showChecklist} onHide={() => setShowChecklist(false)} size="xl">
         <Modal.Header closeButton><Modal.Title>{editId ? "Editar checklist" : "Novo checklist"}</Modal.Title></Modal.Header>
         <Form onSubmit={submitChecklist}>
           <Modal.Body>
             {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
+            {!editId && (
+              <Card className="mb-3 border-primary-subtle">
+                <Card.Header className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <span className="fw-semibold d-inline-flex align-items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>auto_awesome</span>
+                    Importar com IA
+                  </span>
+                  <span className="text-muted small">PDF de até 10 MB</span>
+                </Card.Header>
+                <Card.Body className="d-flex flex-column gap-3">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-lg-7">
+                      <Form.Label>Documento do checklist</Form.Label>
+                      <Form.Control
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={mImportAi.isPending}
+                        onChange={(event) => {
+                          const file = (event.target as HTMLInputElement).files?.[0] || null;
+                          setAiFile(file);
+                          setAiInfo(null);
+                        }}
+                      />
+                    </div>
+                    <div className="col-lg-5 d-grid">
+                      <Button
+                        type="button"
+                        variant="outline-primary"
+                        disabled={!aiFile || mImportAi.isPending || aiFile.size > 10 * 1024 * 1024}
+                        onClick={() => aiFile && mImportAi.mutate({ file: aiFile, instructions: aiInstructions })}
+                      >
+                        {mImportAi.isPending ? <><Spinner animation="border" size="sm" className="me-2" />Analisando documento...</> : "Analisar PDF e preencher checklist"}
+                      </Button>
+                    </div>
+                  </div>
+                  {aiFile && aiFile.size > 10 * 1024 * 1024 && <Alert variant="warning" className="py-2 mb-0">O PDF selecionado ultrapassa 10 MB.</Alert>}
+                  <div>
+                    <Form.Label>Instruções adicionais para a IA <span className="text-muted fw-normal">(opcional)</span></Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      maxLength={4000}
+                      value={aiInstructions}
+                      disabled={mImportAi.isPending}
+                      placeholder="Ex.: preserve os códigos das etapas e trate todos os limites como critérios de aceite."
+                      onChange={(event) => setAiInstructions(event.target.value)}
+                    />
+                  </div>
+                  {aiInfo && <Alert variant="success" className="py-2 mb-0">{aiInfo}</Alert>}
+                  {aiDraftItems.length > 0 && (
+                    <div>
+                      <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                        <strong>Campos extraídos ({aiDraftItems.length})</strong>
+                        <Button type="button" size="sm" variant="outline-secondary" onClick={() => { setAiDraftItems([]); setAiInfo(null); }}>Limpar campos</Button>
+                      </div>
+                      <div className="table-responsive border rounded" style={{ maxHeight: 280, overflowY: "auto" }}>
+                        <Table hover size="sm" className="mb-0 align-middle">
+                          <thead className="position-sticky top-0"><tr><th>Ordem</th><th>Campo</th><th>Tipo</th><th>Esperado / unidade</th><th>Critério</th><th aria-label="Ações" /></tr></thead>
+                          <tbody>
+                            {aiDraftItems.map((item, index) => (
+                              <tr key={`${item.orderIndex}-${index}`}>
+                                <td>{item.orderIndex}</td>
+                                <td><div className="fw-medium">{item.title}</div>{item.notes && <div className="small text-muted">{item.notes}</div>}</td>
+                                <td>{labelOf(CHECKLIST_ITEM_TYPE_OPTIONS, item.itemType)}</td>
+                                <td>{[item.expectedValue, item.unit].filter(Boolean).join(" ") || "-"}</td>
+                                <td>{item.acceptanceCriteria || "-"}</td>
+                                <td className="text-end"><Button type="button" size="sm" variant="outline-danger" onClick={() => setAiDraftItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+                </Card.Body>
+              </Card>
+            )}
             <div className="row g-3">
               <div className="col-md-8">
                 <Form.Label>Nome</Form.Label>
@@ -307,7 +446,7 @@ export default function ChecklistsPage() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowChecklist(false)}>Cancelar</Button>
-            <Button type="submit" disabled={savingChecklist || !form.name.trim()}>{savingChecklist ? "Salvando..." : "Salvar"}</Button>
+            <Button type="submit" disabled={savingChecklist || !form.name.trim()}>{mImportAi.isPending ? "Analisando..." : savingChecklist ? "Salvando..." : aiDraftItems.length ? `Salvar checklist e ${aiDraftItems.length} campos` : "Salvar"}</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -341,8 +480,8 @@ export default function ChecklistsPage() {
                         <td>{item.required ? "Sim" : "Nao"}</td>
                         <td className="text-end">
                           <div className="vx-actions justify-content-end">
-                            <IconAction icon="pencil" label="Editar item" variant="outline-secondary" onClick={() => editItem(item)} />
-                            <IconAction icon="trash" label="Excluir item" variant="outline-danger" disabled={mDeleteItem.isPending || !selectedId} onClick={async () => { if (selectedId && await confirmDialog(`Excluir o item "${item.title}"?`)) mDeleteItem.mutate({ checklistId: selectedId, itemId: item.id }); }} />
+                            <IconAction icon="edit_record" label="Editar item" variant="outline-secondary" onClick={() => editItem(item)} />
+                            <IconAction icon="delete_record" label="Excluir item" variant="outline-danger" disabled={mDeleteItem.isPending || !selectedId} onClick={async () => { if (selectedId && await confirmDialog(`Excluir o item "${item.title}"?`)) mDeleteItem.mutate({ checklistId: selectedId, itemId: item.id }); }} />
                           </div>
                         </td>
                       </tr>

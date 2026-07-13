@@ -1,4 +1,5 @@
 const express = require("express");
+const QRCode = require("qrcode");
 const { parseEquipmentInput } = require("../validators/equipmentValidators");
 const { toValidationError, isForeignKeyError } = require("./httpErrors");
 const repo = require("../repositories/equipmentRepository");
@@ -52,6 +53,34 @@ function createEquipmentRouter(deps) {
       const equipment = await repo.getEquipment(Number(req.params.id));
       if (!equipment) return res.status(404).json(notFound);
       res.json({ equipment });
+    })
+  );
+
+  router.get(
+    "/:id/qr-code",
+    asyncHandler(async (req, res) => {
+      const equipment = await repo.getEquipment(Number(req.params.id));
+      if (!equipment) return res.status(404).json(notFound);
+      const payload = JSON.stringify({
+        tag: equipment.tag || "",
+        serialNumber: equipment.serial_number || "",
+        client: equipment.client_name || "",
+        site: equipment.site_name || "",
+        area: equipment.area_name || ""
+      });
+      const svg = await QRCode.toString(payload, {
+        type: "svg",
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 420,
+        color: { dark: "#0e1114", light: "#ffffff" }
+      });
+      const safeTag = String(equipment.tag || `equipamento-${equipment.id}`).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+      res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+      res.setHeader("Content-Disposition", `inline; filename="qr-${safeTag}.svg"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.send(svg);
     })
   );
 

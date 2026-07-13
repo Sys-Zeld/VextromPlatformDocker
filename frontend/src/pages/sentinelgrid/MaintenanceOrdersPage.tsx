@@ -1,8 +1,8 @@
 import { confirmDialog } from "../../components/ConfirmDialog";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
 import SgIcon from "../../components/sentinelgrid/SgIcon";
@@ -31,8 +31,16 @@ import {
   getMaintenanceOrder,
   listMaintenanceOrders,
   transitionMaintenanceOrderStatus,
-  updateMaintenanceOrder
+  updateMaintenanceOrder,
+  sendOrderToReportService
+  ,listServiceReportsForOrder
+  ,linkServiceReport
 } from "../../api/sentinelgrid/maintenanceOrders";
+import {
+  createTechnician, exportTechnician, importTechnician, linkOrderTechnician,
+  listOrderTechnicians, listReportServiceTechnicians, listTechnicians, preScheduleOrders,
+  SgPreScheduleResult, unlinkOrderTechnician
+} from "../../api/sentinelgrid/technicians";
 import {
   CHECKLIST_RESULT_STATUS_OPTIONS,
   SgChecklistResultInput,
@@ -47,6 +55,8 @@ import {
   createAttachment,
   createMeasurement,
   createPart
+  ,listAssociatedReports
+  ,uploadAssociatedReportPdf
 } from "../../api/sentinelgrid/operations";
 
 const EMPTY: SgMaintenanceOrderInput = {
@@ -193,10 +203,18 @@ const PAGE_SIZE = 20;
 
 export default function MaintenanceOrdersPage() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedOrderId = Number(searchParams.get("order")) || null;
+  const openedOrderRef = useRef<number | null>(null);
   const [search, setSearch] = useState("");
   const [clientId, setClientId] = useState<number | "">("");
   const [status, setStatus] = useState("");
   const [maintenanceType, setMaintenanceType] = useState("");
+  const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
+  const [showPreSchedule, setShowPreSchedule] = useState(false);
+  const [preScheduleTechnicianIds, setPreScheduleTechnicianIds] = useState<number[]>([]);
+  const [preSchedulePreview, setPreSchedulePreview] = useState<SgPreScheduleResult | null>(null);
+  const [preScheduleError, setPreScheduleError] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<SgMaintenanceOrderInput>(EMPTY);
@@ -219,13 +237,20 @@ export default function MaintenanceOrdersPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [page, setPage] = useState(1);
+  const [technicianId, setTechnicianId] = useState("");
+  const [rsTechnicianId, setRsTechnicianId] = useState("");
+  const [newTechnician, setNewTechnician] = useState({ name: "", role: "", company: "", email: "", phone: "" });
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [reportTitle, setReportTitle] = useState("");
+  const [serviceReportId, setServiceReportId] = useState("");
 
   const params = useMemo(() => ({
     search,
     clientId: clientId === "" ? undefined : clientId,
     status,
-    maintenanceType
-  }), [search, clientId, status, maintenanceType]);
+    maintenanceType,
+    sortDirection: dateSort
+  }), [search, clientId, status, maintenanceType, dateSort]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["sentinelgrid", "maintenance-orders", params, page],
@@ -246,6 +271,20 @@ export default function MaintenanceOrdersPage() {
     queryKey: ["sentinelgrid", "order-checklist-execution", selectedOrder?.id],
     queryFn: () => getOrderChecklistExecution(selectedOrder!.id),
     enabled: Boolean(showChecklist && selectedOrder?.id)
+  });
+  const technicians = useQuery({ queryKey: ["sentinelgrid", "technicians"], queryFn: listTechnicians });
+  const rsTechnicians = useQuery({ queryKey: ["sentinelgrid", "technicians", "report-service"], queryFn: listReportServiceTechnicians, enabled: showExecution });
+  const orderTechnicians = useQuery({
+    queryKey: ["sentinelgrid", "order-technicians", selectedOrder?.id],
+    queryFn: () => listOrderTechnicians(selectedOrder!.id), enabled: Boolean(showExecution && selectedOrder?.id)
+  });
+  const associatedReports = useQuery({
+    queryKey: ["sentinelgrid", "associated-reports", selectedOrder?.id],
+    queryFn: () => listAssociatedReports(selectedOrder!.id), enabled: Boolean(showExecution && selectedOrder?.id)
+  });
+  const serviceReports = useQuery({
+    queryKey: ["sentinelgrid", "service-reports", selectedOrder?.id],
+    queryFn: () => listServiceReportsForOrder(selectedOrder!.id), enabled: Boolean(showExecution && selectedOrder?.id && selectedOrder.rs_service_order_id)
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["sentinelgrid", "maintenance-orders"] });
@@ -280,6 +319,46 @@ export default function MaintenanceOrdersPage() {
     onSuccess: () => setAttachmentForm({ ...EMPTY_ATTACHMENT }),
     onError
   });
+  const refreshTechnicians = () => {
+    qc.invalidateQueries({ queryKey: ["sentinelgrid", "technicians"] });
+    if (selectedOrder?.id) qc.invalidateQueries({ queryKey: ["sentinelgrid", "order-technicians", selectedOrder.id] });
+  };
+  const mCreateTechnician = useMutation({ mutationFn: () => createTechnician(newTechnician), onSuccess: () => { setNewTechnician({ name: "", role: "", company: "", email: "", phone: "" }); refreshTechnicians(); }, onError });
+  const mImportTechnician = useMutation({ mutationFn: () => importTechnician(Number(rsTechnicianId)), onSuccess: () => { setRsTechnicianId(""); refreshTechnicians(); qc.invalidateQueries({ queryKey: ["sentinelgrid", "technicians", "report-service"] }); }, onError });
+  const mExportTechnician = useMutation({ mutationFn: exportTechnician, onSuccess: refreshTechnicians, onError });
+  const mLinkTechnician = useMutation({ mutationFn: () => linkOrderTechnician(selectedOrder!.id, Number(technicianId)), onSuccess: () => { setTechnicianId(""); refreshTechnicians(); }, onError });
+  const mUnlinkTechnician = useMutation({ mutationFn: (id: number) => unlinkOrderTechnician(selectedOrder!.id, id), onSuccess: refreshTechnicians, onError });
+  const mPreSchedule = useMutation({
+    mutationFn: (apply: boolean) => preScheduleOrders({
+      technicianIds: preScheduleTechnicianIds,
+      filters: {
+        search: search || undefined,
+        clientId: clientId === "" ? undefined : clientId,
+        status: status || undefined,
+        maintenanceType: maintenanceType || undefined
+      },
+      apply
+    }),
+    onSuccess: (result) => {
+      setPreSchedulePreview(result);
+      setPreScheduleError(null);
+      if (result.applied) {
+        setInfoMsg(`${result.appliedCount} OM(s) pré-agendada(s). A distribuição permanece somente no SentinelGrid até a mudança para Agendada.`);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["sentinelgrid", "schedule-technicians"] });
+        qc.invalidateQueries({ queryKey: ["sentinelgrid", "technician-agenda"] });
+      }
+    },
+    onError: (error) => setPreScheduleError((error as Error).message)
+  });
+  const mSendServiceOrder = useMutation({
+    mutationFn: () => sendOrderToReportService(selectedOrder!.id),
+    onSuccess: (result) => { setInfoMsg(result.reused ? `OS ${result.rsOrderCode || result.rsOrderId} já estava vinculada.` : `OS ${result.rsOrderCode || result.rsOrderId} criada no Service Report.`); invalidate(); },
+    onError
+  });
+  const refreshReports = () => selectedOrder?.id && qc.invalidateQueries({ queryKey: ["sentinelgrid", "associated-reports", selectedOrder.id] });
+  const mUploadReport = useMutation({ mutationFn: () => uploadAssociatedReportPdf(selectedOrder!.id, reportFile!, reportTitle), onSuccess: () => { setReportFile(null); setReportTitle(""); refreshReports(); setInfoMsg("Relatório PDF anexado à OM."); }, onError });
+  const mLinkServiceReport = useMutation({ mutationFn: () => linkServiceReport(selectedOrder!.id, Number(serviceReportId)), onSuccess: (result) => { setServiceReportId(""); refreshReports(); setInfoMsg(result.reused ? "Relatório já estava vinculado." : "Relatório do Service Report vinculado."); }, onError });
 
   const orders = data?.orders ?? [];
   const saving = mCreate.isPending || mUpdate.isPending;
@@ -321,6 +400,24 @@ export default function MaintenanceOrdersPage() {
     setShowFromPlan(true);
   };
 
+  const openPreSchedule = () => {
+    const activeIds = (technicians.data?.technicians || [])
+      .filter((technician) => technician.active !== false)
+      .map((technician) => Number(technician.id));
+    setPreScheduleTechnicianIds(activeIds);
+    setPreSchedulePreview(null);
+    setPreScheduleError(null);
+    setShowPreSchedule(true);
+  };
+
+  const togglePreScheduleTechnician = (technicianId: number) => {
+    setPreScheduleTechnicianIds((current) => current.includes(technicianId)
+      ? current.filter((id) => id !== technicianId)
+      : [...current, technicianId]);
+    setPreSchedulePreview(null);
+    setPreScheduleError(null);
+  };
+
   const openEdit = async (order: SgMaintenanceOrder) => {
     setLoadingEdit(true);
     setActionError(null);
@@ -335,6 +432,25 @@ export default function MaintenanceOrdersPage() {
       setLoadingEdit(false);
     }
   };
+
+  useEffect(() => {
+    if (!requestedOrderId || openedOrderRef.current === requestedOrderId) return;
+    openedOrderRef.current = requestedOrderId;
+    setLoadingEdit(true);
+    setActionError(null);
+    getMaintenanceOrder(requestedOrderId)
+      .then((full) => {
+        setEditId(full.id);
+        setForm(toInput(full));
+        setShow(true);
+        setSearchParams({}, { replace: true });
+      })
+      .catch((error) => {
+        setActionError((error as Error).message);
+        openedOrderRef.current = null;
+      })
+      .finally(() => setLoadingEdit(false));
+  }, [requestedOrderId, setSearchParams]);
 
   const openApproval = (order: SgMaintenanceOrder) => {
     setSelectedOrder(order);
@@ -363,6 +479,11 @@ export default function MaintenanceOrdersPage() {
     setReportForm({ ...EMPTY_REPORT, technician: order.technician_id || "" });
     setAttachmentForm({ ...EMPTY_ATTACHMENT });
     setActionError(null);
+    setTechnicianId("");
+    setRsTechnicianId("");
+    setReportFile(null);
+    setReportTitle("");
+    setServiceReportId("");
     setShowExecution(true);
   };
 
@@ -435,9 +556,12 @@ export default function MaintenanceOrdersPage() {
           <h2 className="h5 mb-1">SentinelGrid - Ordens de manutencao</h2>
           <p className="text-muted mb-0 small">Criacao manual de OMs vinculadas a equipamento, plano e checklist.</p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
           <Link to="/sentinelgrid/plans" className="btn btn-outline-secondary btn-sm">Planos</Link>
           <Button size="sm" variant="outline-primary" onClick={openFromPlan}>Gerar por plano</Button>
+          <Button size="sm" variant="outline-success" onClick={openPreSchedule} disabled={technicians.isLoading} className="d-inline-flex align-items-center gap-1">
+            <SgIcon name="calendar" size={16} className="sg-icon--mono" />Agendar OM
+          </Button>
           <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Nova OM</Button>
         </div>
       </div>
@@ -487,7 +611,19 @@ export default function MaintenanceOrdersPage() {
           <Card.Body><Alert variant="danger" className="mb-0">{(error as Error).message}</Alert></Card.Body>
         ) : (
           <Table striped responsive hover className="mb-0 align-middle">
-            <thead><tr><th>OM</th><th>Equipamento</th><th>Tipo</th><th>Status</th><th>Planejada</th><th>Escopo</th><th className="text-end">Acoes</th></tr></thead>
+            <thead><tr><th>OM</th><th>Equipamento</th><th>Tipo</th><th>Status</th><th aria-sort={dateSort === "asc" ? "ascending" : "descending"}>
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 d-inline-flex align-items-center gap-1 text-decoration-none fw-semibold"
+                title={dateSort === "asc" ? "Mais antigas primeiro. Clique para ordenar pelas mais recentes." : "Mais recentes primeiro. Clique para ordenar pelas mais antigas."}
+                aria-label={dateSort === "asc" ? "Ordenado por data crescente; alterar para decrescente" : "Ordenado por data decrescente; alterar para crescente"}
+                onClick={() => { setDateSort((current) => current === "asc" ? "desc" : "asc"); setPage(1); }}
+              >
+                Planejada
+                <span className="material-symbols-outlined" style={{ fontSize: 17 }} aria-hidden="true">{dateSort === "asc" ? "arrow_upward" : "arrow_downward"}</span>
+              </Button>
+            </th><th>Escopo</th><th className="text-end">Acoes</th></tr></thead>
             <tbody>
               {orders.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhuma OM cadastrada.</td></tr>}
               {orders.map((order) => {
@@ -508,14 +644,14 @@ export default function MaintenanceOrdersPage() {
                     <td>{order.scope || order.plan_name || order.checklist_name || "-"}</td>
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
-                        <IconAction icon="checklist" label="Executar checklist" variant="outline-success" disabled={!order.checklist_id} onClick={() => openChecklist(order)} />
-                        <IconAction icon="wrench" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
-                        <IconAction icon="status" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
+                        <IconAction icon="execute_checklist" label="Executar checklist" variant="outline-success" disabled={!order.checklist_id} onClick={() => openChecklist(order)} />
+                        <IconAction icon="technical_execution" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
+                        <IconAction icon="change_status" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
                         {order.maintenance_type === "preventiva_com_parada" && (
-                          <IconAction icon="check" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
+                          <IconAction icon="approve_shutdown" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
                         )}
-                        <IconAction icon="pencil" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
-                        <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
+                        <IconAction icon="edit_record" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
+                        <IconAction icon="delete_record" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
                       </div>
                     </td>
                   </tr>
@@ -736,7 +872,7 @@ export default function MaintenanceOrdersPage() {
                       <td><Form.Control size="sm" value={draft.value} onChange={(e) => setChecklistDraft(item.checklist_item_id, { value: e.target.value })} /></td>
                       <td><Form.Control size="sm" value={draft.notes} onChange={(e) => setChecklistDraft(item.checklist_item_id, { notes: e.target.value })} /></td>
                       <td className="text-end">
-                        <IconAction icon="save" label="Salvar item" variant="outline-primary" disabled={mSaveChecklist.isPending} onClick={() => saveChecklistItem(item.checklist_item_id)} />
+                        <IconAction icon="save_item" label="Salvar item" variant="outline-primary" disabled={mSaveChecklist.isPending} onClick={() => saveChecklistItem(item.checklist_item_id)} />
                       </td>
                     </tr>
                   );
@@ -751,7 +887,112 @@ export default function MaintenanceOrdersPage() {
         <Modal.Header closeButton><Modal.Title>Execucao tecnica{selectedOrder ? ` - ${selectedOrder.order_number}` : ""}</Modal.Title></Modal.Header>
         <Modal.Body>
           {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
-          <div className="row g-3">
+          {selectedOrder?.status !== "agendada" ? (
+            <Alert variant="warning">
+              A equipe técnica e a OS do Service Report só podem ser definidas quando a ordem estiver com status <strong>Agendada</strong>.
+            </Alert>
+          ) : (
+            <Card className="mb-3">
+              <Card.Header className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <span>Equipe técnica e Service Report</span>
+                <Button size="sm" onClick={() => mSendServiceOrder.mutate()} disabled={mSendServiceOrder.isPending}>
+                  {selectedOrder.rs_service_order_id ? "Abrir/reutilizar OS vinculada" : "Criar OS no Service Report"}
+                </Button>
+              </Card.Header>
+              <Card.Body>
+                <div className="row g-3">
+                  <div className="col-lg-6">
+                    <Form.Label>Adicionar técnico cadastrado</Form.Label>
+                    <div className="d-flex gap-2">
+                      <Form.Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)}>
+                        <option value="">Selecione...</option>
+                        {(technicians.data?.technicians || []).filter((t) => !(orderTechnicians.data?.technicians || []).some((linked) => linked.id === t.id)).map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}{t.company ? ` - ${t.company}` : ""}</option>
+                        ))}
+                      </Form.Select>
+                      <Button variant="outline-primary" disabled={!technicianId || mLinkTechnician.isPending} onClick={() => mLinkTechnician.mutate()}>Adicionar</Button>
+                    </div>
+                  </div>
+                  <div className="col-lg-6">
+                    <Form.Label>Importar manualmente do Service Report</Form.Label>
+                    <div className="d-flex gap-2">
+                      <Form.Select value={rsTechnicianId} onChange={(e) => setRsTechnicianId(e.target.value)}>
+                        <option value="">Selecione...</option>
+                        {(rsTechnicians.data?.technicians || []).filter((t) => !t.sg_id).map((t) => <option key={t.id} value={t.id}>{t.name} {t.email ? `- ${t.email}` : ""}</option>)}
+                      </Form.Select>
+                      <Button variant="outline-secondary" disabled={!rsTechnicianId || mImportTechnician.isPending} onClick={() => mImportTechnician.mutate()}>Importar</Button>
+                    </div>
+                  </div>
+                  <div className="col-12">
+                    <Form.Label>Novo técnico no SentinelGrid</Form.Label>
+                    <div className="row g-2">
+                      <div className="col-md-3"><Form.Control placeholder="Nome *" value={newTechnician.name} onChange={(e) => setNewTechnician({ ...newTechnician, name: e.target.value })} /></div>
+                      <div className="col-md-2"><Form.Control placeholder="Função" value={newTechnician.role} onChange={(e) => setNewTechnician({ ...newTechnician, role: e.target.value })} /></div>
+                      <div className="col-md-2"><Form.Control placeholder="Empresa" value={newTechnician.company} onChange={(e) => setNewTechnician({ ...newTechnician, company: e.target.value })} /></div>
+                      <div className="col-md-3"><Form.Control type="email" placeholder="E-mail" value={newTechnician.email} onChange={(e) => setNewTechnician({ ...newTechnician, email: e.target.value })} /></div>
+                      <div className="col-md-2 d-grid"><Button variant="outline-success" disabled={!newTechnician.name.trim() || mCreateTechnician.isPending} onClick={() => mCreateTechnician.mutate()}>Cadastrar</Button></div>
+                    </div>
+                  </div>
+                  <div className="col-12">
+                    {(orderTechnicians.data?.technicians || []).length === 0 ? <span className="text-muted small">Nenhum técnico vinculado.</span> : (
+                      <div className="d-flex gap-2 flex-wrap">
+                        {(orderTechnicians.data?.technicians || []).map((t) => (
+                          <span key={t.id} className="badge text-bg-secondary d-inline-flex align-items-center gap-2">
+                            {t.name}
+                            {!t.rs_id && <button type="button" className="btn btn-link btn-sm text-white p-0" onClick={() => mExportTechnician.mutate(t.id)}>Enviar ao Service Report</button>}
+                            <button type="button" className="btn-close btn-close-white" aria-label={`Remover ${t.name}`} onClick={() => mUnlinkTechnician.mutate(t.id)} />
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card.Body>
+            </Card>
+          )}
+          <Card>
+            <Card.Header>Relatório técnico</Card.Header>
+            <Card.Body>
+              <div className="row g-4">
+                <div className="col-lg-6">
+                  <h3 className="h6">Anexar relatório em PDF</h3>
+                  <Form onSubmit={(event) => { event.preventDefault(); if (reportFile) mUploadReport.mutate(); }} className="d-flex flex-column gap-2">
+                    <Form.Control value={reportTitle} onChange={(event) => setReportTitle(event.target.value)} placeholder="Título do relatório" />
+                    <Form.Control key={reportFile ? reportFile.name : "empty-report"} type="file" accept="application/pdf,.pdf" onChange={(event) => setReportFile((event.target as HTMLInputElement).files?.[0] || null)} />
+                    <div><Button type="submit" size="sm" disabled={!reportFile || mUploadReport.isPending}>{mUploadReport.isPending ? "Enviando..." : "Anexar PDF"}</Button></div>
+                  </Form>
+                </div>
+                <div className="col-lg-6">
+                  <h3 className="h6">Vincular do Service Report</h3>
+                  {!selectedOrder?.rs_service_order_id ? (
+                    <Alert variant="info" className="py-2 mb-0 small">Crie primeiro a OS no Service Report para consultar o relatório correspondente.</Alert>
+                  ) : (
+                    <div className="d-flex gap-2">
+                      <Form.Select value={serviceReportId} onChange={(event) => setServiceReportId(event.target.value)}>
+                        <option value="">Selecione o relatório...</option>
+                        {(serviceReports.data?.reports || []).map((report) => <option key={report.id} value={report.id}>{report.report_number || `#${report.id}`} - {report.title}</option>)}
+                      </Form.Select>
+                      <Button size="sm" variant="outline-primary" disabled={!serviceReportId || mLinkServiceReport.isPending} onClick={() => mLinkServiceReport.mutate()}>Vincular</Button>
+                    </div>
+                  )}
+                </div>
+                <div className="col-12">
+                  <div className="small fw-semibold mb-2">Relatórios vinculados à OM</div>
+                  {(associatedReports.data?.reports || []).length === 0 ? <span className="small text-muted">Nenhum relatório anexado ou vinculado.</span> : (
+                    <div className="list-group">
+                      {(associatedReports.data?.reports || []).map((report) => (
+                        <div key={report.id} className="list-group-item d-flex justify-content-between align-items-center gap-2">
+                          <div><div className="fw-medium">{report.title}</div><div className="small text-muted">{report.report_type === "service_report" ? "Service Report" : "PDF anexado"}{report.report_code ? ` · ${report.report_code}` : ""}</div></div>
+                          {report.file_ref ? <a className="btn btn-outline-secondary btn-sm" href={`/admin/api/v2/sentinelgrid/reports/${report.id}/file`} target="_blank" rel="noreferrer">Abrir PDF</a> : report.external_link ? <a className="btn btn-outline-primary btn-sm" href={report.external_link}>Abrir relatório</a> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card.Body>
+          </Card>
+          <div className="d-none">
             <div className="col-lg-6">
               <Card className="h-100">
                 <Card.Header>Medicao tecnica</Card.Header>
@@ -912,6 +1153,101 @@ export default function MaintenanceOrdersPage() {
             </div>
           </div>
         </Modal.Body>
+      </Modal>
+
+      <Modal show={showPreSchedule} onHide={() => setShowPreSchedule(false)} size="xl" scrollable>
+        <Modal.Header closeButton>
+          <Modal.Title>Agendar OMs</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="info" className="small">
+            Esta etapa cria somente o <strong>pré-agendamento no SentinelGrid</strong>. Nenhuma OS será criada ou atualizada no Service Report. O envio continuará disponível apenas depois que o usuário mudar a OM para <strong>Agendada</strong>.
+          </Alert>
+          <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+            <div>
+              <h3 className="h6 mb-1">Técnicos participantes</h3>
+              <div className="small text-muted">Habilite os profissionais que podem receber as OMs exibidas pelos filtros atuais.</div>
+            </div>
+            <div className="d-flex gap-2">
+              <Button size="sm" variant="outline-secondary" onClick={() => {
+                setPreScheduleTechnicianIds((technicians.data?.technicians || []).filter((item) => item.active !== false).map((item) => Number(item.id)));
+                setPreSchedulePreview(null);
+              }}>Selecionar todos</Button>
+              <Button size="sm" variant="outline-secondary" onClick={() => { setPreScheduleTechnicianIds([]); setPreSchedulePreview(null); }}>Limpar</Button>
+            </div>
+          </div>
+          <Card className="mb-3">
+            <Card.Body>
+              <div className="row g-2">
+                {(technicians.data?.technicians || []).filter((item) => item.active !== false).map((technician) => (
+                  <div className="col-md-6 col-xl-4" key={technician.id}>
+                    <Form.Check
+                      type="switch"
+                      id={`pre-schedule-technician-${technician.id}`}
+                      checked={preScheduleTechnicianIds.includes(Number(technician.id))}
+                      onChange={() => togglePreScheduleTechnician(Number(technician.id))}
+                      label={<span><strong>{technician.name}</strong>{technician.role || technician.company ? <small className="text-muted ms-1">{technician.role}{technician.role && technician.company ? " · " : ""}{technician.company}</small> : null}</span>}
+                    />
+                  </div>
+                ))}
+                {!technicians.isLoading && (technicians.data?.technicians || []).filter((item) => item.active !== false).length === 0 && (
+                  <div className="text-muted small">Nenhum técnico ativo cadastrado.</div>
+                )}
+              </div>
+            </Card.Body>
+          </Card>
+
+          {preScheduleError && <Alert variant="danger" dismissible onClose={() => setPreScheduleError(null)}>{preScheduleError}</Alert>}
+          {preSchedulePreview && (
+            <>
+              {preSchedulePreview.applied && <Alert variant="success">Pré-agendamento confirmado para {preSchedulePreview.appliedCount} OM(s).</Alert>}
+              <div className="d-flex gap-2 flex-wrap mb-3">
+                <Badge bg="primary">{preSchedulePreview.eligibleOrders} OMs elegíveis</Badge>
+                <Badge bg="success">{preSchedulePreview.assignments.length} distribuídas</Badge>
+                <Badge bg={preSchedulePreview.unassigned.length ? "warning" : "secondary"}>{preSchedulePreview.unassigned.length} sem técnico compatível</Badge>
+              </div>
+              <div className="row g-3 mb-3">
+                {preSchedulePreview.workload.map((item) => (
+                  <div className="col-md-6 col-xl-4" key={item.technicianId}>
+                    <Card className="h-100">
+                      <Card.Body className="py-2">
+                        <div className="fw-semibold">{item.technicianName}</div>
+                        <div className="small text-muted">Existentes: {item.existing} · Novas: {item.assigned} · Total: {item.total} equipamento(s)</div>
+                      </Card.Body>
+                    </Card>
+                  </div>
+                ))}
+              </div>
+              {preSchedulePreview.assignments.length > 0 && <div className="border rounded overflow-auto mb-3" style={{ maxHeight: 360 }}>
+                <Table responsive hover size="sm" className="mb-0 align-middle">
+                  <thead><tr><th>Data</th><th>OM / Equipamento</th><th>Cliente / Site</th><th>Técnico</th></tr></thead>
+                  <tbody>{preSchedulePreview.assignments.map((item) => (
+                    <tr key={item.orderId}>
+                      <td className="text-nowrap">{formatDate(item.startDate)}{item.endDate !== item.startDate ? ` — ${formatDate(item.endDate)}` : ""}</td>
+                      <td><div className="fw-semibold">{item.orderNumber}</div><small className="text-muted">{item.equipmentTag}</small></td>
+                      <td>{item.clientName}<div className="small text-muted">{item.siteName}</div></td>
+                      <td>{item.technicianName}</td>
+                    </tr>
+                  ))}</tbody>
+                </Table>
+              </div>}
+              {preSchedulePreview.unassigned.length > 0 && <Alert variant="warning" className="small mb-0">
+                <strong>{preSchedulePreview.unassigned.length} OM(s) não puderam ser distribuídas.</strong>
+                <ul className="mb-0 mt-2">{preSchedulePreview.unassigned.slice(0, 10).map((item) => <li key={item.orderId}>{item.orderNumber} · {formatDate(item.startDate)} · {item.clientName}/{item.siteName}: {item.reason}</li>)}</ul>
+                {preSchedulePreview.unassigned.length > 10 && <div className="mt-1">E mais {preSchedulePreview.unassigned.length - 10} OM(s).</div>}
+              </Alert>}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowPreSchedule(false)}>Fechar</Button>
+          <Button variant="outline-primary" disabled={!preScheduleTechnicianIds.length || mPreSchedule.isPending} onClick={() => mPreSchedule.mutate(false)}>
+            {mPreSchedule.isPending ? "Calculando..." : "Simular distribuição"}
+          </Button>
+          <Button variant="success" disabled={!preSchedulePreview || preSchedulePreview.applied || !preSchedulePreview.assignments.length || mPreSchedule.isPending} onClick={() => mPreSchedule.mutate(true)}>
+            Confirmar pré-agendamento
+          </Button>
+        </Modal.Footer>
       </Modal>
 
       <Modal show={showTransition} onHide={() => setShowTransition(false)}>

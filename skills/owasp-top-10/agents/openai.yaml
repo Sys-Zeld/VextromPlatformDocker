@@ -1,0 +1,4 @@
+interface:
+  display_name: "OWASP Top 10"
+  short_description: "Auditar e corrigir riscos OWASP em aplicações"
+  default_prompt: "Use $owasp-top-10 para auditar este projeto, priorizar evidências e aplicar correções seguras."

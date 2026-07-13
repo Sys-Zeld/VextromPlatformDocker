@@ -106,6 +106,8 @@ export interface SgMaintenanceOrder {
   approvals?: SgOrderApproval[];
   created_at: string;
   updated_at: string;
+  rs_service_order_id?: number | null;
+  rs_service_order_code?: string;
 }
 
 export interface SgMaintenanceOrderInput {
@@ -159,12 +161,27 @@ export function listMaintenanceOrders(params: {
   search?: string;
   equipmentId?: number;
   clientId?: number;
+  planId?: number;
   status?: string;
   maintenanceType?: string;
+  sortDirection?: "asc" | "desc";
   page?: number;
   pageSize?: number;
 } = {}) {
   return api<{ orders: SgMaintenanceOrder[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/maintenance-orders${qs(params)}`);
+}
+
+export async function listAllOrdersByPlan(planId: number) {
+  const orders: SgMaintenanceOrder[] = [];
+  let page = 1;
+  let total = 0;
+  do {
+    const result = await listMaintenanceOrders({ planId, page, pageSize: 100 });
+    orders.push(...result.orders);
+    total = result.total;
+    page += 1;
+  } while (orders.length < total);
+  return orders;
 }
 
 export function getMaintenanceOrder(id: number) {
@@ -214,6 +231,23 @@ export function sendOrderToReportService(orderId: number) {
     `/sentinelgrid/maintenance-orders/${orderId}/send-to-report-service`,
     { method: "POST", body: JSON.stringify({}) }
   );
+}
+
+export interface ServiceReportReference {
+  id: number;
+  service_order_id: number;
+  report_number: string;
+  title: string;
+  status: string;
+  issue_date: string | null;
+}
+export function listServiceReportsForOrder(orderId: number) {
+  return api<{ reports: ServiceReportReference[] }>(`/sentinelgrid/maintenance-orders/${orderId}/report-service-reports`);
+}
+export function linkServiceReport(orderId: number, reportId: number) {
+  return api<{ report: unknown; reused: boolean }>(`/sentinelgrid/maintenance-orders/${orderId}/link-report-service`, {
+    method: "POST", body: JSON.stringify({ reportId })
+  });
 }
 
 export function updateMaintenanceOrder(id: number, input: SgMaintenanceOrderInput) {

@@ -63,8 +63,21 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
   return s ? `?${s}` : "";
 }
 
-export function listEquipmentPlans(params: { equipmentId?: number; clientId?: number; active?: boolean | null; search?: string; page?: number; pageSize?: number } = {}) {
+export function listEquipmentPlans(params: { equipmentId?: number; clientId?: number; programId?: number; active?: boolean | null; search?: string; page?: number; pageSize?: number } = {}) {
   return api<{ plans: SgEquipmentPlan[]; total: number; page: number; pageSize: number }>(`/sentinelgrid/equipment-plans${qs(params)}`);
+}
+
+export async function listAllPlansByProgram(programId: number) {
+  const plans: SgEquipmentPlan[] = [];
+  let page = 1;
+  let total = 0;
+  do {
+    const result = await listEquipmentPlans({ programId, page, pageSize: 100 });
+    plans.push(...result.plans);
+    total = result.total;
+    page += 1;
+  } while (plans.length < total);
+  return plans;
 }
 
 export function getEquipmentPlan(id: number) {

@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { AppTheme, applyTheme, getStoredTheme } from "../theme/applyTheme";
 import SgIcon, { SgIconName, isSgIconName } from "./sentinelgrid/SgIcon";
+import MaintenanceAlertsPopup from "./sentinelgrid/MaintenanceAlertsPopup";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -19,13 +20,22 @@ interface NavItem {
   end?: boolean;
 }
 
+interface NavGroup {
+  key: string;
+  label: string;
+  icon: string;
+  children: NavItem[];
+}
+
+type NavEntry = NavItem | NavGroup;
+
 interface ModuleNav {
   key: string;
   subtitle: string;
   crumb: string;
   section: string;
   fallbackTitle: string;
-  nav: NavItem[];
+  nav: NavEntry[];
   footer: { href: string; label: string; icon: string };
 }
 
@@ -42,18 +52,25 @@ const SERVICE_REPORT_NAV: NavItem[] = [
 
 // SentinelGrid usa o conjunto de ícones SVG próprio (SgIcon); os nomes abaixo são
 // SgIconName, resolvidos em runtime por isSgIconName no render da nav/topbar.
-const SENTINELGRID_NAV: NavItem[] = [
+const SENTINELGRID_PROGRAM_NAV: NavItem[] = [
+  { to: "/sentinelgrid/programs", label: "Programas", icon: "program" },
+  { to: "/sentinelgrid/plans", label: "Planos", icon: "plan" },
+  { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "orders" },
+  { to: "/sentinelgrid/technician-agenda", label: "Agenda técnica", icon: "calendar" },
+  { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
+  { to: "/sentinelgrid/assets", label: "Assets", icon: "new-doc" }
+];
+
+const SENTINELGRID_NAV: NavEntry[] = [
   { to: "/sentinelgrid", label: "Início", icon: "shield", end: true },
   { to: "/sentinelgrid/clients", label: "Clientes", icon: "clients" },
   { to: "/sentinelgrid/sites", label: "Sites", icon: "site" },
   { to: "/sentinelgrid/catalog", label: "Catálogo", icon: "catalog" },
   { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "equipment" },
   { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "contract" },
-  { to: "/sentinelgrid/programs", label: "Programas", icon: "program" },
-  { to: "/sentinelgrid/plans", label: "Planos", icon: "plan" },
-  { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
-  { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "orders" },
+  { key: "maintenance-program", label: "Programa de manutenção", icon: "program", children: SENTINELGRID_PROGRAM_NAV },
   { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar" },
+  { to: "/sentinelgrid/schedule", label: "Cronograma", icon: "year" },
   { to: "/sentinelgrid/alerts", label: "Alertas", icon: "alerts" },
   { to: "/sentinelgrid/history", label: "Historico", icon: "history" },
   { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "recommendations" },
@@ -84,6 +101,14 @@ function resolveModule(pathname: string): ModuleNav {
   return pathname.startsWith("/sentinelgrid") ? SENTINELGRID_MODULE : SERVICE_REPORT_MODULE;
 }
 
+function isNavGroup(entry: NavEntry): entry is NavGroup {
+  return "children" in entry;
+}
+
+function flattenNav(entries: NavEntry[]): NavItem[] {
+  return entries.flatMap((entry) => isNavGroup(entry) ? entry.children : [entry]);
+}
+
 const THEMES: { value: AppTheme; label: string }[] = [
   { value: "soft", label: "Soft" },
   { value: "vextrom", label: "Vextrom" },
@@ -99,7 +124,7 @@ function pageTitle(pathname: string, mod: ModuleNav): string {
     return "Ordens de Serviço";
   }
   // Casa o item de rota mais específico (maior prefixo) para o título do topo.
-  const match = [...mod.nav]
+  const match = flattenNav(mod.nav)
     .filter((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))
     .sort((a, b) => b.to.length - a.to.length)[0];
   return match?.label ?? mod.fallbackTitle;
@@ -108,7 +133,7 @@ function pageTitle(pathname: string, mod: ModuleNav): string {
 // Ícone SVG do item de nav ativo (só SentinelGrid) — usado na topbar e no toggle.
 function activeSgIcon(pathname: string): SgIconName | null {
   if (!pathname.startsWith("/sentinelgrid")) return null;
-  const match = [...SENTINELGRID_NAV]
+  const match = flattenNav(SENTINELGRID_NAV)
     .filter((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))
     .sort((a, b) => b.to.length - a.to.length)[0];
   return match && isSgIconName(match.icon) ? match.icon : null;
@@ -131,6 +156,14 @@ export default function Layout() {
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
   const [open, setOpen] = useState(false); // drawer mobile
   const [collapsed, setCollapsed] = useState<boolean>(readPreferredCollapsed);
+  const programMenuActive = SENTINELGRID_PROGRAM_NAV.some((item) =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)
+  );
+  const [programMenuOpen, setProgramMenuOpen] = useState(programMenuActive);
+
+  useEffect(() => {
+    if (programMenuActive) setProgramMenuOpen(true);
+  }, [programMenuActive]);
 
   // Recolhimento automático: abaixo do breakpoint força rail; acima respeita a preferência salva.
   useEffect(() => {
@@ -177,21 +210,58 @@ export default function Layout() {
 
         <nav className="vx-nav">
           <span className="vx-nav__section">{mod.section}</span>
-          {mod.nav.map((item) => (
+          {mod.nav.map((entry) => isNavGroup(entry) ? (
+            <div className="vx-nav-group" key={entry.key}>
+              <button
+                type="button"
+                className={`vx-nav__link vx-nav-group__toggle${programMenuActive ? " is-parent-active" : ""}`}
+                onClick={() => setProgramMenuOpen((value) => !value)}
+                aria-expanded={programMenuOpen}
+                title={entry.label}
+              >
+                {isSgIconName(entry.icon) ? <SgIcon name={entry.icon} size={29} /> : (
+                  <span className="material-symbols-outlined">{entry.icon}</span>
+                )}
+                <span className="vx-nav__label">{entry.label}</span>
+                <span className="material-symbols-outlined vx-nav-group__chevron">
+                  {programMenuOpen ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+              {programMenuOpen && (
+                <div className="vx-nav-group__children">
+                  {entry.children.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      title={item.label}
+                      className={({ isActive }) => `vx-nav__link vx-nav__link--child${isActive ? " active" : ""}`}
+                      onClick={() => setOpen(false)}
+                    >
+                      {isSgIconName(item.icon) ? <SgIcon name={item.icon} size={24} /> : (
+                        <span className="material-symbols-outlined">{item.icon}</span>
+                      )}
+                      <span className="vx-nav__label">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
             <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={item.label}
+              key={entry.to}
+              to={entry.to}
+              end={entry.end}
+              title={entry.label}
               className={({ isActive }) => `vx-nav__link${isActive ? " active" : ""}`}
               onClick={() => setOpen(false)}
             >
-              {mod.key === "sentinelgrid" && isSgIconName(item.icon) ? (
-                <SgIcon name={item.icon} size={29} />
+              {mod.key === "sentinelgrid" && isSgIconName(entry.icon) ? (
+                <SgIcon name={entry.icon} size={29} />
               ) : (
-                <span className="material-symbols-outlined">{item.icon}</span>
+                <span className="material-symbols-outlined">{entry.icon}</span>
               )}
-              <span className="vx-nav__label">{item.label}</span>
+              <span className="vx-nav__label">{entry.label}</span>
             </NavLink>
           ))}
           <div className="vx-nav__spacer" />
@@ -248,6 +318,7 @@ export default function Layout() {
         <main className="vx-main">
           <Outlet />
         </main>
+        {mod.key === "sentinelgrid" && <MaintenanceAlertsPopup />}
       </div>
     </div>
   );

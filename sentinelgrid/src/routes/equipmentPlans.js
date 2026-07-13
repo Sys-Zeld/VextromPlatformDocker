@@ -36,6 +36,7 @@ function createEquipmentPlansRouter(deps) {
       const { plans, total } = await repo.listPlans({
         equipmentId: Number(req.query.equipmentId) || null,
         clientId: Number(req.query.clientId) || null,
+        programId: Number(req.query.programId) || null,
         active,
         search: String(req.query.search || "").trim(),
         limit: pageSize,

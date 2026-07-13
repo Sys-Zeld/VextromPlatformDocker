@@ -31,6 +31,9 @@ services:
 
   minio:
     restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required in production}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required in production}
     ports:
       - "127.0.0.1:9001:9001"
     deploy:
@@ -39,6 +42,12 @@ services:
           memory: 512M
         reservations:
           memory: 128M
+
+  minio-init:
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required in production}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required in production}
+      S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is required in production}
 
   app:
     build:

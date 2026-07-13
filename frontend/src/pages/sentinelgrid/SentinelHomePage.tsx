@@ -21,8 +21,10 @@ const CARDS: HomeCard[] = [
   { to: "/sentinelgrid/equipment", icon: "equipment", title: "Equipamentos", desc: "Ativos críticos e ficha técnica" },
   { to: "/sentinelgrid/maintenance-orders", icon: "orders", title: "Ordens", desc: "Ordens de manutenção (OM)" },
   { to: "/sentinelgrid/calendar", icon: "calendar", title: "Calendário", desc: "Mapa de manutenção e vencimentos" },
+  { to: "/sentinelgrid/schedule", icon: "year", title: "Cronograma", desc: "Planilha anual estilo Planner" },
   { to: "/sentinelgrid/checklists", icon: "checklist", title: "Checklists", desc: "Templates de execução técnica" },
   { to: "/sentinelgrid/programs", icon: "program", title: "Programas", desc: "Planos e periodicidades" },
+  { to: "/sentinelgrid/assets", icon: "new-doc", title: "Assets", desc: "Manuais, plaquetas e checklists" },
   { to: "/sentinelgrid/alerts", icon: "alerts", title: "Alertas", desc: "Pendências e corretivas em prazo" }
 ];
 

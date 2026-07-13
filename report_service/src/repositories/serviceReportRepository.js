@@ -278,6 +278,34 @@ const getCustomerByExternalRef = (source, id) => getByExternalRef("service_repor
 const getSiteByExternalRef = (source, id) => getByExternalRef("service_report_customer_sites", source, id);
 const getEquipmentByExternalRef = (source, id) => getByExternalRef("service_report_equipments", source, id);
 
+const SENTINELGRID_LINK_TABLES = {
+  client: "service_report_customers",
+  site: "service_report_customer_sites",
+  equipment: "service_report_equipments"
+};
+
+// Persiste a outra ponta da FK externa lógica. A tabela é escolhida somente a
+// partir da allowlist acima; entityType nunca é interpolado diretamente no SQL.
+async function setSentinelGridLink(entityType, serviceReportId, sentinelgridId) {
+  const table = SENTINELGRID_LINK_TABLES[entityType];
+  if (!table) throw new Error(`Tipo de entidade de integração inválido: ${entityType}`);
+  const rsId = toInt(serviceReportId);
+  const sgId = toInt(sentinelgridId);
+  if (!rsId || !sgId) return null;
+
+  await db.query(
+    `UPDATE ${table} SET sentinelgrid_id = NULL, updated_at = NOW()
+      WHERE sentinelgrid_id = $1 AND id <> $2`,
+    [sgId, rsId]
+  );
+  const result = await db.query(
+    `UPDATE ${table} SET sentinelgrid_id = $2, updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [rsId, sgId]
+  );
+  return result.rows[0] || null;
+}
+
 async function deleteCustomer(id) {
   const result = await db.query(
     `DELETE FROM service_report_customers WHERE id = $1`,
@@ -3542,6 +3570,7 @@ module.exports = {
   listCustomers,
   getCustomerById,
   getCustomerByExternalRef,
+  setSentinelGridLink,
   createCustomer,
   updateCustomer,
   deleteCustomer,

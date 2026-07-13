@@ -1,8 +1,8 @@
 import { confirmDialog } from "../../components/ConfirmDialog";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
 
@@ -21,6 +21,7 @@ import {
   updateMaintenanceProgram
 } from "../../api/sentinelgrid/programs";
 import GeneratePlansModal from "./GeneratePlansModal";
+import { listAllPlansByProgram } from "../../api/sentinelgrid/plans";
 
 const EMPTY: SgMaintenanceProgramInput = {
   name: "",
@@ -65,8 +66,46 @@ const labelOf = (items: readonly { value: string; label: string }[], value: stri
 const criticalityVariant = (value: string | null | undefined) =>
   CRITICALITY_OPTIONS.find((item) => item.value === value)?.variant || "secondary";
 
+function ProgramPlansCascade({ programId }: { programId: number }) {
+  const plansQuery = useQuery({
+    queryKey: ["sentinelgrid", "programs", programId, "plans-cascade"],
+    queryFn: () => listAllPlansByProgram(programId)
+  });
+
+  if (plansQuery.isLoading) {
+    return <div className="p-3 text-muted small"><Spinner animation="border" size="sm" className="me-2" />Carregando planos vinculados...</div>;
+  }
+  if (plansQuery.error) {
+    return <Alert variant="danger" className="m-3 mb-0">Falha ao carregar os planos: {(plansQuery.error as Error).message}</Alert>;
+  }
+  const plans = plansQuery.data ?? [];
+  if (!plans.length) {
+    return <div className="p-3 text-muted small">Nenhum plano vinculado a este programa.</div>;
+  }
+  return (
+    <div className="p-3 sg-program-cascade">
+      <div className="small fw-semibold text-muted mb-2">Planos vinculados ({plans.length})</div>
+      <Table size="sm" responsive hover className="mb-0 align-middle sg-program-cascade__table">
+        <thead><tr><th>Plano</th><th>Equipamento</th><th>Cliente / Local</th><th>Periodicidade</th><th>Status</th></tr></thead>
+        <tbody>
+          {plans.map((plan) => (
+            <tr key={plan.id}>
+              <td className="fw-medium">{plan.name}</td>
+              <td>{plan.equipment_tag || plan.equipment_serial_number || `#${plan.equipment_id}`}</td>
+              <td><span>{plan.client_name || "-"}</span><span className="d-block small text-muted">{[plan.site_name, plan.area_name].filter(Boolean).join(" / ") || "-"}</span></td>
+              <td>{labelOf(PERIODICITY_OPTIONS, plan.periodicity)}</td>
+              <td><Badge bg={plan.active ? "success" : "secondary"}>{plan.active ? "Ativo" : "Inativo"}</Badge></td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
+  );
+}
+
 export default function ProgramsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<number | "">("");
   const [filterMaintenanceType, setFilterMaintenanceType] = useState("");
@@ -76,6 +115,7 @@ export default function ProgramsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [genProgram, setGenProgram] = useState<SgMaintenanceProgram | null>(null);
   const [page, setPage] = useState(1);
+  const [expandedPrograms, setExpandedPrograms] = useState<Set<number>>(new Set());
 
   const params = useMemo(() => ({
     search,
@@ -95,8 +135,9 @@ export default function ProgramsPage() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["sentinelgrid", "programs"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
-  const mCreate = useMutation({ mutationFn: createMaintenanceProgram, onSuccess: () => { setShow(false); invalidate(); }, onError });
-  const mUpdate = useMutation({ mutationFn: (p: { id: number; input: SgMaintenanceProgramInput }) => updateMaintenanceProgram(p.id, p.input), onSuccess: () => { setShow(false); invalidate(); }, onError });
+  const saved = () => { setShow(false); invalidate(); };
+  const mCreate = useMutation({ mutationFn: createMaintenanceProgram, onSuccess: saved, onError });
+  const mUpdate = useMutation({ mutationFn: (p: { id: number; input: SgMaintenanceProgramInput }) => updateMaintenanceProgram(p.id, p.input), onSuccess: saved, onError });
   const mDelete = useMutation({ mutationFn: deleteMaintenanceProgram, onSuccess: invalidate, onError });
 
   const openNew = () => { setEditId(null); setForm({ ...EMPTY }); setActionError(null); setShow(true); };
@@ -109,6 +150,12 @@ export default function ProgramsPage() {
 
   const programs = data?.programs ?? [];
   const saving = mCreate.isPending || mUpdate.isPending;
+  const selectedContract = (contracts.data?.contracts ?? []).find((contract) => Number(contract.id) === Number(form.contractId));
+  const toggleProgram = (id: number) => setExpandedPrograms((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -119,6 +166,7 @@ export default function ProgramsPage() {
         </div>
         <div className="d-flex gap-2">
           <Link to="/sentinelgrid" className="btn btn-outline-secondary btn-sm">Inicio</Link>
+          <Link to="/sentinelgrid/assets" className="btn btn-outline-primary btn-sm">Assets</Link>
           <Button size="sm" onClick={openNew}>Novo programa</Button>
         </div>
       </div>
@@ -163,10 +211,21 @@ export default function ProgramsPage() {
             <thead><tr><th>Programa</th><th>Escopo</th><th>Tipo</th><th>Periodicidade</th><th>Status</th><th className="text-end">Acoes</th></tr></thead>
             <tbody>
               {programs.length === 0 && <tr><td colSpan={6} className="text-muted">Nenhum programa cadastrado.</td></tr>}
-              {programs.map((p) => (
-                <tr key={p.id}>
+              {programs.map((p) => {
+                const expanded = expandedPrograms.has(p.id);
+                return (
+                <Fragment key={p.id}>
+                <tr
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded}
+                  onClick={() => toggleProgram(p.id)}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleProgram(p.id); } }}
+                  style={{ cursor: "pointer" }}
+                  className={`sg-program-row${expanded ? " is-expanded" : ""}`}
+                >
                   <td>
-                    <div className="fw-semibold">{p.name}</div>
+                    <div className="fw-semibold d-flex align-items-center gap-2"><span aria-hidden="true" style={{ width: 12 }}>{expanded ? "▾" : "▸"}</span>{p.name}</div>
                     {p.description && <div className="small text-muted">{p.description}</div>}
                   </td>
                   <td>
@@ -180,14 +239,17 @@ export default function ProgramsPage() {
                   <td>{labelOf(PERIODICITY_OPTIONS, p.periodicity)}</td>
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
-                    <div className="vx-actions justify-content-end">
-                      <IconAction icon="calendar" label="Gerar planos" variant="outline-primary" disabled={!p.active} onClick={() => setGenProgram(p)} />
-                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
-                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o programa "${p.name}"?\n\nIsso também exclui os planos vinculados e as ordens geradas a partir deles. Se o programa for usado por equipamentos de mais de um cliente, a exclusão é bloqueada.`)) mDelete.mutate(p.id); }} />
+                    <div className="vx-actions justify-content-end" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      <IconAction icon="program_assets" label="Assets" variant="outline-primary" onClick={() => navigate(`/sentinelgrid/assets?program=${p.id}`)} />
+                      <IconAction icon="generate_plans" label={p.contract_id ? "Gerar planos" : "Defina um contrato antes de gerar planos"} variant="outline-primary" disabled={!p.active || !p.contract_id} onClick={() => setGenProgram(p)} />
+                      <IconAction icon="edit_record" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
+                      <IconAction icon="delete_record" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o programa "${p.name}"?\n\nIsso também exclui os planos vinculados e as ordens geradas a partir deles. Se o programa for usado por equipamentos de mais de um cliente, a exclusão é bloqueada.`)) mDelete.mutate(p.id); }} />
                     </div>
                   </td>
                 </tr>
-              ))}
+                {expanded && <tr className="sg-program-cascade-row"><td colSpan={6} className="p-0"><ProgramPlansCascade programId={p.id} /></td></tr>}
+                </Fragment>
+              );})}
             </tbody>
           </Table>
         )}
@@ -262,10 +324,13 @@ export default function ProgramsPage() {
               </div>
               <div className="col-md-6">
                 <Form.Label>Contrato</Form.Label>
-                <Form.Select value={form.contractId ?? ""} onChange={(e) => setForm({ ...form, contractId: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">Sem vinculo</option>
+                <Form.Select required value={form.contractId ?? ""} onChange={(e) => setForm({ ...form, contractId: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">Selecione o contrato...</option>
                   {(contracts.data?.contracts ?? []).map((c) => <option key={c.id} value={c.id}>{c.client_name} / {c.name}</option>)}
                 </Form.Select>
+                <Form.Text className="text-muted">
+                  {selectedContract ? <>Cliente definido pelo contrato: <strong>{selectedContract.client_name}</strong>. Somente equipamentos desse cliente entrarão na geração.</> : "O contrato e obrigatorio e define o cliente dos equipamentos."}
+                </Form.Text>
               </div>
               <div className="col-12">
                 <Form.Label>Notas de escopo</Form.Label>
@@ -279,7 +344,7 @@ export default function ProgramsPage() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShow(false)}>Cancelar</Button>
-            <Button type="submit" disabled={saving || !form.name.trim()}>{saving ? "Salvando..." : "Salvar"}</Button>
+            <Button type="submit" disabled={saving || !form.name.trim() || !form.contractId}>{saving ? "Salvando..." : "Salvar"}</Button>
           </Modal.Footer>
         </Form>
       </Modal>

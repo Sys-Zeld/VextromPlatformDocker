@@ -1649,3 +1649,165 @@ no `IconAction` dual-mode).
 - Conversões de `icon=`: `calendar_month→calendar` (ProgramsPage · Gerar planos); `engineering→wrench`, `published_with_changes→status`, `check_circle→check`, `save`→SVG (MaintenanceOrdersPage); `published_with_changes→status` (RecommendationsPage); `playlist_add_check→checklist` (ChecklistsPage). `checklist` já era do conjunto.
 
 **Migrations/DB:** nenhuma. **Como validar (feito):** `grep` confirma **0** glifos material em `icon=` nas telas SG; `npm --prefix frontend run build` ✅. Folha visual (Artifact) atualizada (39).
+
+### 2026-07-12 — Cronograma anual · planilha operacional estilo Planner
+
+**Status:** ✅ concluída (typecheck/build OK; validação visual e de impressão aguardando navegador)
+
+**Contexto/decisão:** criada uma nova leitura operacional dos eventos do Mapa Calendário, sem
+duplicar dados. O Cronograma organiza o ano em uma matriz de 12 meses, com cartões de atividade
+agrupados por equipamento ou por Cliente/Site. OMs permanecem navegáveis para a tela de Ordens.
+
+**Alterações:**
+- `frontend/src/pages/sentinelgrid/SchedulePage.tsx` — nova planilha com modos anual (12 meses) e mensal (semanas do mês), filtros por cliente/site/equipamento, agrupamento alternável e impressão.
+- `frontend/src/App.tsx`, `Layout.tsx`, `SentinelHomePage.tsx` — rota `/sentinelgrid/schedule`, menu e acesso rápido.
+- `frontend/src/styles/theme.css` — matriz responsiva, cartões por prioridade, DarkVextrom e folha de impressão paisagem.
+
+**Migrations/DB:** nenhuma. **Como validar (feito):** `npm --prefix frontend run build` ✅; `git diff --check` ✅.
+
+### 2026-07-12 — Execução técnica · equipe e OS integrada
+
+**Status:** ✅ implementada (typecheck/build e sintaxe backend OK)
+
+**Regras entregues:** técnicos somente podem ser vinculados ou removidos quando a OM está
+`agendada`; a Execução técnica permite criar ou reutilizar a OS no Service Report. O vínculo
+persistido na OM e uma trava transacional impedem duplicação por reenvio ou cliques concorrentes.
+O usuário decide quando importar um técnico do Service Report. Também pode cadastrá-lo no
+SentinelGrid e exportá-lo manualmente; ao criar a OS, os técnicos vinculados são sincronizados.
+
+**Alterações:**
+- `sentinelgrid/migrations/021_technicians.sql` — cadastro de técnicos e vínculo N:N com OMs.
+- `sentinelgrid/src/routes/technicians.js` e `repositories/techniciansRepository.js` — cadastro,
+  listagem e equipe da OM com validação de status no backend.
+- `sentinelgrid/src/services/reportServiceIntegration.js` — importação/exportação idempotente,
+  envio da equipe e trava da criação de OS.
+- `frontend/src/pages/sentinelgrid/MaintenanceOrdersPage.tsx` — gestão da equipe e criação da OS
+  dentro do modal Execução técnica.
+
+**Como validar (feito):** migrations locais sem pendências; `node --check` nos arquivos backend;
+`npm --prefix frontend run build` ✅. Runtime Docker não validado porque o daemon estava desligado.
+
+### 2026-07-12 — Calendário · reagendamento por arrastar e soltar
+
+**Status:** ✅ implementado (typecheck/build e sintaxe backend OK)
+
+Na visão mensal e semanal, o usuário pode arrastar um cartão para reagendar somente aquele
+equipamento. O controle `↕` do cabeçalho move, em uma única transação, todos os itens reagendáveis
+do dia. O destino recebe destaque visual e o calendário, alertas, resumo e OMs são atualizados após
+a operação. Entradas históricas e marcadores derivados não são arrastáveis.
+
+**Backend:** `PUT /calendar/map/move`, com whitelist de tabelas, verificação da data de origem e
+rollback integral quando algum item foi alterado por outro usuário.
+
+**Como validar (feito):** `node --check` no repositório e rota; `npm --prefix frontend run build` ✅.
+
+### 2026-07-12 — Agenda dos técnicos · duração e reagendamento
+
+**Status:** ✅ implementada (migration, typecheck/build e sintaxe backend OK)
+
+Nova rota `/sentinelgrid/technician-agenda`, dentro do grupo Programa de manutenção. A agenda
+mensal lista as OMs em todos os dias ocupados pelo tempo previsto, permite filtrar um técnico ou
+visualizar toda a equipe e reagendar ordens Agendadas por arraste. A duração pode ser editada no
+cartão da OM entre 1 e 365 dias; o padrão é 1 dia.
+
+**Dados e API:** `execution_days` em `sg_maintenance_orders`; leitura de intervalos sobrepostos ao
+mês; `GET /technicians/agenda` e `PUT /technicians/agenda/orders/:orderId`. O reagendamento preserva
+o horário existente e altera a mesma OM para todos os técnicos vinculados.
+
+**Como validar (feito):** runner local sem pendências (24 migrations); `node --check` nos arquivos
+backend; `npm --prefix frontend run build` ✅.
+
+### 2026-07-12 — Cronograma por técnico
+
+**Status:** ✅ implementado (typecheck/build OK)
+
+O Cronograma anual/mensal ganhou o agrupamento `Técnico`, filtro individual e impressão. As OMs
+usam o intervalo real da Agenda técnica: uma execução com vários dias aparece em todas as semanas
+ou meses atravessados. Os filtros existentes de cliente, site e equipamento continuam disponíveis,
+e o clique no cartão abre a respectiva Ordem de manutenção.
+
+**Como validar (feito):** `node --check` no repositório da agenda; `npm --prefix frontend run build` ✅.
+
+### 2026-07-12 — Motor de conflito da agenda técnica
+
+**Status:** ✅ implementado (sintaxe backend e build OK)
+
+O mesmo técnico não pode ter intervalos sobrepostos em Cliente ou Site diferentes. O motor considera
+data inicial e `execution_days`, informa técnico, OM, local e período conflitante e permite trabalhos
+paralelos no mesmo Cliente/Site. A regra é aplicada ao vínculo do técnico, reagendamento/duração da
+Agenda, arraste no Calendário, edição da OM e transição para Agendada. Travas transacionais por
+técnico impedem que requisições concorrentes criem dois agendamentos incompatíveis.
+
+### 2026-07-12 — Execução técnica · relatórios
+
+**Status:** ✅ implementado (migration, sintaxe backend e build OK)
+
+O modal Execução técnica permite anexar PDF validado de até 25 MB ou vincular o relatório da OS
+correspondente no Service Report. A lista de relatórios associados permite abrir o PDF ou navegar
+para o relatório externo. O vínculo externo é idempotente e protegido por índice único em
+`sg_associated_reports.external_id`.
+
+### 2026-07-12 — Cronograma diário
+
+**Status:** ✅ implementado (typecheck/build OK)
+
+O Cronograma ganhou o período `Dia`, com seletor de data e suporte aos agrupamentos Equipamento,
+Cliente/Site e Técnico. No modo Técnico, intervalos de execução iniciados em dias anteriores também
+são exibidos quando abrangem a data selecionada.
+
+### 2026-07-13 — Registry Service Report · vínculo externo bidirecional
+
+**Status:** ✅ implementado (migração, contrato e listagens)
+
+Clientes, sites e equipamentos agora persistem o ID correspondente nos dois
+módulos: `service_report_id` no SentinelGrid e `sentinelgrid_id` no Service
+Report. O selo `já vinculado` exige reciprocidade entre os campos e um cadastro
+ativo no SentinelGrid; uma linha antiga em `sg_rs_links` não basta mais.
+
+A reimportação reaproveita uma entidade ativa quando possível. Se a referência
+apontar para um registro em soft delete, cria uma nova entidade, substitui a
+ponta remota e saneia o mapeamento legado. Os mesmos campos são gravados pelo
+fluxo de envio de OM, evitando um segundo caminho de integração inconsistente.
+
+**Regra da interface:** clientes com vínculo recíproco válido ficam visíveis,
+mas desabilitados nos modais de importação dos dois módulos. O backend também
+recusa uma nova importação com HTTP `409`. Vínculos órfãos permanecem liberados
+para que o cadastro apagado possa ser criado novamente.
+
+### 2026-07-13 — Checklist · importação de PDF com IA
+
+**Status:** ✅ implementado (normalização, endpoint, criação atômica e build)
+
+O modal **Novo checklist** ganhou a opção **Importar com IA**. O usuário envia
+um PDF de até 10 MB, pode acrescentar instruções e recebe um rascunho com nome,
+descrição, tipo de manutenção, escopo sugerido e todos os itens encontrados.
+Campos adicionais do documento são preservados nas observações do item.
+
+O resultado não é salvo automaticamente: permanece visível para revisão e
+remoção de itens. Ao confirmar, cabeçalho e itens são gravados em uma única
+transação. O backend valida MIME, extensão, assinatura PDF, tamanho, enums e o
+limite de 500 itens antes de persistir.
+
+### 2026-07-13 — Ordens de manutenção · pré-agendamento automático
+
+**Status:** ✅ implementado (simulação em banco local, sintaxe backend e build frontend OK)
+
+A lista de OMs ganhou a ação **Agendar OM**, com seleção dos técnicos ativos que
+participam da distribuição, simulação revisável e confirmação explícita. O motor
+considera cada OM como um equipamento e escolhe o técnico compatível com menor
+carga total no período, preservando vínculos existentes e distribuindo apenas
+ordens abertas, datadas e ainda sem técnico.
+
+Uma reserva pode compartilhar os mesmos dias com outras OMs somente quando
+cliente e site forem iguais. Intervalos em cliente ou site diferente são
+incompatíveis, considerando também `execution_days`. A confirmação usa travas
+transacionais por lote e por técnico para impedir distribuições concorrentes.
+
+O pré-agendamento persiste apenas em `sg_order_technicians` e não cria OS nem
+sincroniza equipe com o Service Report. A integração continua protegida pela
+regra existente: somente uma OM cujo status foi alterado pelo usuário para
+`agendada` pode ser enviada ao Service Report.
+
+**Como validar (feito):** simulação read-only sobre 121 OMs distribuiu a carga
+total em 41/41/40 equipamentos entre três técnicos, sem itens incompatíveis;
+`node --check`, `git diff --check` e `npm --prefix frontend run build` ✅.

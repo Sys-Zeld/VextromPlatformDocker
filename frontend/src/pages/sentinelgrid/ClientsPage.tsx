@@ -306,8 +306,9 @@ export default function ClientsPage() {
         onHide={() => { setShowImport(false); setImportPreselect(null); }}
         preselectId={importPreselect}
         title="Buscar cliente do Service Report"
-        description="Importa o cliente selecionado (e, opcionalmente, seus sites e equipamentos) do Service Report para o SentinelGrid. Reimportar o mesmo cliente atualiza o registro vinculado, sem duplicar."
+        description="Importa um cliente ainda não vinculado (e, opcionalmente, seus sites e equipamentos) do Service Report para o SentinelGrid. Clientes já vinculados ficam bloqueados."
         items={importItems}
+        disableLinkedItems
         loading={rsImportable.isLoading}
         loadError={rsImportable.error ? (rsImportable.error as Error).message : null}
         confirmLabel="Importar"

@@ -4,6 +4,7 @@ const mapRepo = require("../repositories/calendarMapRepository");
 
 const ACK_TTL_SECONDS = 24 * 60 * 60; // 24h
 const ackKey = (user) => `sg:alert:ack:${user || "anon"}`;
+const positionKey = (user) => `sg:alert:popup-position:${user || "anon"}`;
 
 function alertRange() {
   const iso = (d) => d.toISOString().slice(0, 10);
@@ -62,6 +63,33 @@ function createAlertsRouter(deps) {
       /* Redis fora → já é considerado não-ciente */
     }
     res.json({ acknowledged: false, until: null });
+  }));
+
+  // Posição preferida do popup, persistida por usuário no Redis.
+  router.get("/popup-position", asyncHandler(async (req, res) => {
+    try {
+      const raw = await getRedis().get(positionKey(userOf(req)));
+      const parsed = raw ? JSON.parse(raw) : null;
+      const valid = parsed && Number.isFinite(parsed.left) && Number.isFinite(parsed.top);
+      res.json(valid ? { left: parsed.left, top: parsed.top } : { left: null, top: null });
+    } catch (_err) {
+      res.json({ left: null, top: null });
+    }
+  }));
+
+  router.put("/popup-position", asyncHandler(async (req, res) => {
+    const left = Number(req.body?.left);
+    const top = Number(req.body?.top);
+    if (!Number.isFinite(left) || !Number.isFinite(top) || left < -10000 || left > 10000 || top < -10000 || top > 10000) {
+      return res.status(400).json({ error: "Coordenadas invalidas", errorCode: "SG_ALERT_POSITION_INVALID" });
+    }
+    const position = { left: Math.round(left), top: Math.round(top) };
+    try {
+      await getRedis().set(positionKey(userOf(req)), JSON.stringify(position));
+      res.json(position);
+    } catch (_err) {
+      res.status(503).json({ error: "Redis indisponivel", errorCode: "SG_REDIS_UNAVAILABLE" });
+    }
   }));
 
   return router;

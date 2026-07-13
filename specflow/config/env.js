@@ -20,6 +20,28 @@ function normalizeAppBaseUrl(raw, options = {}) {
 
 const nodeEnv = String(process.env.NODE_ENV || "development").toLowerCase();
 const isProduction = nodeEnv === "production";
+
+function assertProductionSecrets() {
+  if (!isProduction) return;
+
+  const requirements = [
+    { name: "ADMIN_PASS", minLength: 12 },
+    { name: "ADMIN_SESSION_SECRET", minLength: 32 },
+    { name: "API_KEY_PEPPER", minLength: 32 }
+  ];
+  const invalid = requirements
+    .filter(({ name, minLength }) => {
+      const value = String(process.env[name] || "").trim();
+      return value.length < minLength || /^(change[-_ ]?me|example|placeholder)/i.test(value);
+    })
+    .map(({ name, minLength }) => `${name} (minimo ${minLength} caracteres, sem valor de exemplo)`);
+
+  if (invalid.length) {
+    throw new Error(`Configuracao insegura para producao: defina ${invalid.join(", ")}.`);
+  }
+}
+
+assertProductionSecrets();
 const appHost = isProduction ? "" : (process.env.APP_HOST || "0.0.0.0");
 const appBaseUrl = normalizeAppBaseUrl(process.env.APP_BASE_URL, {
   isProduction

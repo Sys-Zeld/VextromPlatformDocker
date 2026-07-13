@@ -39,6 +39,7 @@ function createMaintenanceOrdersRouter(deps) {
       if (err && err.code === "SG_ORDER_TRANSITION_INVALID") return res.status(409).json({ ...invalidTransition, detail: err.message });
       if (err && err.code === "SG_ORDER_COMPLETION_INVALID") return res.status(409).json({ ...invalidCompletion, detail: err.message });
       if (err && err.code === "SG_ORDER_APPROVAL_NOT_REQUIRED") return res.status(400).json(approvalNotRequired);
+      if (err && err.code === "SG_TECHNICIAN_SCHEDULE_CONFLICT") return res.status(409).json({ error: err.message, errorCode: err.code, conflict: err.conflict || null });
       if (isForeignKeyError(err)) return res.status(400).json(invalidRef);
       if (isUniqueViolation(err)) return res.status(409).json(duplicate);
       throw err;
@@ -50,12 +51,15 @@ function createMaintenanceOrdersRouter(deps) {
     asyncHandler(async (req, res) => {
       const page = Math.max(1, Number(req.query.page) || 1);
       const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 100));
+      const requestedSortDirection = String(req.query.sortDirection || "").toLowerCase();
       const { orders, total } = await repo.listOrders({
         equipmentId: Number(req.query.equipmentId) || null,
         clientId: Number(req.query.clientId) || null,
+        planId: Number(req.query.planId) || null,
         status: String(req.query.status || "").trim(),
         maintenanceType: String(req.query.maintenanceType || "").trim(),
         search: String(req.query.search || "").trim(),
+        sortDirection: ["asc", "desc"].includes(requestedSortDirection) ? requestedSortDirection : "",
         limit: pageSize,
         offset: (page - 1) * pageSize
       });
@@ -134,6 +138,20 @@ function createMaintenanceOrdersRouter(deps) {
       }
     })
   );
+
+  router.get("/:id/report-service-reports", asyncHandler(async (req, res) => {
+    try { res.json({ reports: await integration.listReportServiceReportsForOrder(Number(req.params.id)) }); }
+    catch (err) { if (err.code === "SG_ORDER_INVALID") return res.status(404).json({ error: err.message, errorCode: err.code }); throw err; }
+  }));
+
+  router.post("/:id/link-report-service", asyncHandler(async (req, res) => {
+    try { res.json(await integration.linkReportServiceReport(Number(req.params.id), Number(req.body?.reportId), actorOf(req))); }
+    catch (err) {
+      if (err.code === "SG_ORDER_INVALID") return res.status(404).json({ error: err.message, errorCode: err.code });
+      if (["SG_RS_ORDER_REQUIRED", "SG_RS_REPORT_INVALID"].includes(err.code)) return res.status(409).json({ error: err.message, errorCode: err.code });
+      throw err;
+    }
+  }));
 
   router.put(
     "/:id",

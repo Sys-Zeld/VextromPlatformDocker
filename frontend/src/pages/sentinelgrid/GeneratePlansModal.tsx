@@ -217,6 +217,11 @@ export default function GeneratePlansModal({ program, onHide }: { program: SgMai
       </Modal.Header>
       <Modal.Body>
         {error && <Alert variant="danger" dismissible onClose={() => setError(null)}>{error}</Alert>}
+        {program.contract_client_name && (
+          <Alert variant="info" className="py-2 mb-3 small">
+            Cliente definido pelo contrato: <strong>{program.contract_client_name}</strong>. A lista abaixo contém somente equipamentos desse cliente dentro do escopo do programa.
+          </Alert>
+        )}
         {result ? (
           <div className="d-flex flex-column gap-3">
             <Alert variant="success" className="mb-0">

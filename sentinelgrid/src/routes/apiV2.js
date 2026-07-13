@@ -13,6 +13,7 @@ const { createMaintenanceProgramsRouter } = require("./maintenancePrograms");
 const { createEquipmentPlansRouter } = require("./equipmentPlans");
 const { createChecklistsRouter } = require("./checklists");
 const { createMaintenanceOrdersRouter } = require("./maintenanceOrders");
+const { createTechniciansRouter } = require("./technicians");
 const { createCalendarMapRouter } = require("./calendarMap");
 const { createCalendarAlertRulesRouter } = require("./calendarAlertRules");
 const { createAlertsRouter } = require("./alerts");
@@ -81,6 +82,7 @@ function createSentinelGridV2Router(deps) {
   router.use("/equipment-plans", createEquipmentPlansRouter(deps));
   router.use("/checklists", createChecklistsRouter(deps));
   router.use("/maintenance-orders", createMaintenanceOrdersRouter(deps));
+  router.use("/technicians", createTechniciansRouter(deps));
   // Fase 10 — Mapa Calendário (agregação read-only). Montado antes do router de
   // operations ("/") para não ser sombreado por ele.
   router.use("/calendar/map", createCalendarMapRouter(deps));

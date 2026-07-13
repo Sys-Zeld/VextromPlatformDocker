@@ -1,8 +1,8 @@
 import { confirmDialog } from "../../components/ConfirmDialog";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
 import SgIcon from "../../components/sentinelgrid/SgIcon";
@@ -24,6 +24,7 @@ import {
   listEquipmentPlans,
   updateEquipmentPlan
 } from "../../api/sentinelgrid/plans";
+import { ORDER_STATUS_OPTIONS, listAllOrdersByPlan } from "../../api/sentinelgrid/maintenanceOrders";
 
 const EMPTY: SgEquipmentPlanInput = {
   equipmentId: 0,
@@ -59,6 +60,55 @@ function toInput(p: SgEquipmentPlan): SgEquipmentPlanInput {
   };
 }
 
+const dateLabel = (value: string | null | undefined) => value ? value.slice(0, 10).split("-").reverse().join("/") : "-";
+
+function PlanOrdersCascade({ planId }: { planId: number }) {
+  const navigate = useNavigate();
+  const ordersQuery = useQuery({
+    queryKey: ["sentinelgrid", "plans", planId, "orders-cascade"],
+    queryFn: () => listAllOrdersByPlan(planId)
+  });
+  if (ordersQuery.isLoading) {
+    return <div className="p-3 text-muted small"><Spinner animation="border" size="sm" className="me-2" />Carregando ordens vinculadas...</div>;
+  }
+  if (ordersQuery.error) {
+    return <Alert variant="danger" className="m-3 mb-0">Falha ao carregar as ordens: {(ordersQuery.error as Error).message}</Alert>;
+  }
+  const orders = ordersQuery.data ?? [];
+  if (!orders.length) return <div className="p-3 text-muted small">Nenhuma ordem vinculada a este plano.</div>;
+  return (
+    <div className="p-3 sg-plan-cascade">
+      <div className="small fw-semibold text-muted mb-2">Ordens vinculadas ({orders.length})</div>
+      <Table size="sm" responsive hover className="mb-0 align-middle sg-plan-cascade__table">
+        <thead><tr><th>Ordem</th><th>Item do plano</th><th>Data planejada</th><th>Agendamento</th><th>Prioridade</th><th>Status</th></tr></thead>
+        <tbody>
+          {orders.map((order) => {
+            const status = ORDER_STATUS_OPTIONS.find((item) => item.value === order.status);
+            return (
+              <tr
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                title={`Abrir ${order.order_number} em Ordens`}
+                style={{ cursor: "pointer" }}
+                onClick={() => navigate(`/sentinelgrid/maintenance-orders?order=${order.id}`)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/sentinelgrid/maintenance-orders?order=${order.id}`); } }}
+              >
+                <td><span className="fw-medium">{order.order_number}</span><span className="d-block small text-muted">{order.equipment_tag || order.equipment_serial_number || `#${order.equipment_id}`}</span></td>
+                <td>{order.plan_item_title || order.scope || "-"}</td>
+                <td>{dateLabel(order.planned_date)}</td>
+                <td>{dateLabel(order.scheduled_date)}</td>
+                <td>{order.priority || "-"}</td>
+                <td><Badge bg={status?.variant || "secondary"}>{status?.label || order.status}</Badge></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </div>
+  );
+}
+
 export default function PlansPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -68,6 +118,7 @@ export default function PlansPage() {
   const [form, setForm] = useState<SgEquipmentPlanInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [expandedPlans, setExpandedPlans] = useState<Set<number>>(new Set());
 
   const params = useMemo(() => ({
     search,
@@ -110,6 +161,11 @@ export default function PlansPage() {
 
   const plans = data?.plans || [];
   const saving = mCreate.isPending || mUpdate.isPending;
+  const togglePlan = (id: number) => setExpandedPlans((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -157,10 +213,21 @@ export default function PlansPage() {
             <thead><tr><th>Plano</th><th>Equipamento</th><th>Programa</th><th>Tipo</th><th>Periodicidade</th><th>Status</th><th className="text-end">Acoes</th></tr></thead>
             <tbody>
               {plans.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum plano cadastrado.</td></tr>}
-              {plans.map((p) => (
-                <tr key={p.id}>
+              {plans.map((p) => {
+                const expanded = expandedPlans.has(p.id);
+                return (
+                <Fragment key={p.id}>
+                <tr
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded}
+                  onClick={() => togglePlan(p.id)}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePlan(p.id); } }}
+                  className={`sg-plan-row${expanded ? " is-expanded" : ""}`}
+                  style={{ cursor: "pointer" }}
+                >
                   <td>
-                    <div className="fw-semibold">{p.name}</div>
+                    <div className="fw-semibold d-flex align-items-center gap-2"><span aria-hidden="true" style={{ width: 12 }}>{expanded ? "▾" : "▸"}</span>{p.name}</div>
                     {p.notes && <div className="small text-muted">{p.notes}</div>}
                   </td>
                   <td>
@@ -172,13 +239,15 @@ export default function PlansPage() {
                   <td>{labelOf(PERIODICITY_OPTIONS, p.periodicity)}</td>
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
-                    <div className="vx-actions justify-content-end">
-                      <IconAction icon="edit-plan" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
-                      <IconAction icon="delete-plan" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o plano "${p.name}"?\n\nIsso também exclui as ordens geradas a partir dele.`)) mDelete.mutate(p.id); }} />
+                    <div className="vx-actions justify-content-end" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      <IconAction icon="edit_plan_action" label="Editar plano" variant="outline-secondary" onClick={() => openEdit(p)} />
+                      <IconAction icon="delete_plan_action" label="Excluir plano" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o plano "${p.name}"?\n\nIsso também exclui as ordens geradas a partir dele.`)) mDelete.mutate(p.id); }} />
                     </div>
                   </td>
                 </tr>
-              ))}
+                {expanded && <tr className="sg-plan-cascade-row"><td colSpan={7} className="p-0"><PlanOrdersCascade planId={p.id} /></td></tr>}
+                </Fragment>
+              );})}
             </tbody>
           </Table>
         )}

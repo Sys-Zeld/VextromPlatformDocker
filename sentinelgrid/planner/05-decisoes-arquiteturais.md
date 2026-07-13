@@ -94,14 +94,22 @@ criticidade e FK normalizada de fabricante/modelo/tipo. Dois registries
 independentes causariam *drift* do mesmo ativo.
 
 **Decisão.** O SentinelGrid mantém **registry próprio normalizado** (tabelas
-`sg_*`). Quando referenciar um ativo de outro módulo, guarda um **snapshot em
-cache + `external_ref` (`source_module` + `source_id`)**, populado/atualizado via
-API (pull one-way) — **nunca fetch vivo a cada leitura**. Unificação num "Asset
-Registry" canônico é um épico futuro, fora do MVP.
+`sg_*`). A correlação com o Service Report usa uma **FK externa lógica
+bidirecional**: `service_report_id` em `sg_clients`, `sg_sites` e `sg_equipment`,
+e `sentinelgrid_id` nas entidades equivalentes do Service Report. Não existe
+constraint SQL nem JOIN entre bancos; o contrato de integração grava as duas
+pontas e considera o cadastro vinculado somente quando ambas se apontam
+mutuamente e a entidade local está ativa. `sg_rs_links` permanece apenas como
+compatibilidade de transição para vínculos antigos.
+
+O snapshot continua populado/atualizado via API — **nunca fetch vivo a cada
+leitura de domínio**. A verificação remota ocorre somente nas superfícies de
+sincronização. Unificação num "Asset Registry" canônico é um épico futuro.
 
 **Consequências.**
 - ✅ Não bloqueia o MVP; não refatora o Report Service agora.
-- ⚠️ Dívida consciente: dado de referência duplicado; tratar *staleness* e referência órfã (ativo apagado na origem).
+- ✅ Soft delete ou remoção em um módulo invalida o estado visual de vínculo; a próxima importação repara as duas pontas sem duplicar o registro ativo.
+- ⚠️ Consistência entre as duas pontas é eventual; falha entre as escritas deixa o item como não vinculado até o retry idempotente.
 
 ---
 
@@ -223,6 +231,50 @@ ativos + preventiva) cedo. ⚠️ Reduz o "wow" inicial (sem dashboard no MVP).
 
 ---
 
+## ADR-012 — Importação de checklist por IA gera rascunho revisável
+
+**Status:** Aceita (2026-07-13)
+
+**Contexto.** Manuais e formulários de manutenção em PDF possuem estruturas
+variáveis. Permitir que o modelo grave diretamente no banco pode omitir etapas,
+inventar limites técnicos ou deixar um checklist parcialmente criado.
+
+**Decisão.** A IA recebe somente PDF validado (assinatura `%PDF-`, até 10 MB) e
+produz um **rascunho** no contrato canônico de checklist. Cada campo/linha do
+documento vira um item; colunas sem correspondência são preservadas nas
+observações. O usuário revisa cabeçalho e itens antes de salvar. A persistência
+do checklist e de todos os itens ocorre numa única transação.
+
+**Consequências.** ✅ Evita escrita autônoma da IA e registros parciais; aceita
+documentos heterogêneos sem ampliar o schema a cada formato. ⚠️ A qualidade da
+extração depende do PDF e exige revisão humana antes do uso operacional.
+
+---
+
+## ADR-013 — Pré-agendamento determinístico com reserva local
+
+**Status:** Aceita (2026-07-13)
+
+**Contexto.** A distribuição manual de muitas OMs tende a concentrar equipamentos
+em poucos técnicos e pode criar deslocamentos incompatíveis no mesmo período. Ao
+mesmo tempo, a distribuição preliminar ainda não representa autorização para
+criar uma OS no Service Report.
+
+**Decisão.** O SentinelGrid calcula uma simulação determinística sobre OMs abertas,
+datadas e sem técnico. Cada OM vale uma unidade de carga (um equipamento); entre os
+técnicos habilitados e sem conflito de cliente/site, recebe a ordem aquele com
+menor carga total no período. A confirmação persiste o vínculo N:N existente como
+reserva local, sob travas transacionais, mas não altera o status da OM nem chama a
+integração. Estados abertos com técnico reservado participam do motor de conflito.
+O Service Report continua protegido pelo gate explícito `status = agendada`.
+
+**Consequências.** ✅ Distribuição equilibrada, previsível e revisável; evita dois
+locais incompatíveis para o mesmo técnico; nenhuma OS é criada por antecipação.
+⚠️ Vínculos já confirmados são preservados nas próximas execuções e precisam de
+alteração explícita, não de redistribuição silenciosa.
+
+---
+
 ## Índice de status
 
 | ADR | Decisão | Status |
@@ -230,7 +282,7 @@ ativos + preventiva) cedo. ⚠️ Reduz o "wow" inicial (sem dashboard no MVP).
 | 001 | Isolamento total por dado + contrato | Aceita |
 | 002 | Domínio isolado, infra compartilhada | Aceita |
 | 003 | Transporte in-process remote-ready vs HTTP | **Pendente** (topologia de deploy) |
-| 004 | Registry próprio + `external_ref`/snapshot | Aceita |
+| 004 | Registry próprio + FK externa lógica bidirecional | Aceita |
 | 005 | Integração RS por API read-only, sem escrita compartilhada | Aceita |
 | 006 | Migrations versionadas | Aceita |
 | 007 | Terminologia OM ≠ OS | Aceita |
@@ -238,3 +290,5 @@ ativos + preventiva) cedo. ⚠️ Reduz o "wow" inicial (sem dashboard no MVP).
 | 009 | Contrato tipado com zod | Aceita |
 | 010 | Client-scoping desde o dia 1 | Aceita |
 | 011 | MVP Fases 0–3 + histórico | Proposta |
+| 012 | Importação de checklist por IA como rascunho revisável | Aceita |
+| 013 | Pré-agendamento determinístico com reserva local | Aceita |

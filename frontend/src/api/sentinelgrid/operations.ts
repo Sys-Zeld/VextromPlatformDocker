@@ -34,6 +34,17 @@ export interface SgReportInput {
   externalId: string;
   notes: string;
 }
+export interface SgAssociatedReport {
+  id: number;
+  order_id: number;
+  report_code: string;
+  title: string;
+  report_type: string;
+  file_ref: string;
+  external_link: string;
+  external_id: string;
+  created_at: string;
+}
 
 export interface SgEventInput {
   equipmentId: number;
@@ -135,6 +146,16 @@ export function createPart(input: SgPartInput) {
 
 export function createAssociatedReport(input: SgReportInput) {
   return api<{ report: unknown }>("/sentinelgrid/reports", { method: "POST", body: JSON.stringify(input) });
+}
+export function listAssociatedReports(orderId: number) {
+  return api<{ reports: SgAssociatedReport[] }>(`/sentinelgrid/reports?orderId=${orderId}`);
+}
+export function uploadAssociatedReportPdf(orderId: number, file: File, title: string) {
+  return api<{ report: SgAssociatedReport }>(`/sentinelgrid/reports/upload/${orderId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf", "X-File-Name": encodeURIComponent(file.name), "X-Report-Title": encodeURIComponent(title || file.name.replace(/\.pdf$/i, "")) },
+    body: file
+  });
 }
 
 export function createEvent(input: SgEventInput) {

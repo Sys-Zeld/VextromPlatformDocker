@@ -6,9 +6,9 @@
 // tabelas `sg_*`. Quando exporta para o RS, usa `ensure*ByRef` (contrato de escrita
 // idempotente do RS). Nada de JOIN/FK/transação cruzando a fronteira do módulo.
 //
-// Idempotência (ADR-004): o mapeamento 1:1 vive em `sg_rs_links` (por entidade); a
-// referência externa (`external_source`/`external_id`) faz a dedupe do lado do RS.
-// Reimportar/reexportar o mesmo cadastro atualiza o registro vinculado, não duplica.
+// Idempotência (ADR-004): o mapeamento 1:1 vive nas duas entidades, por meio de
+// `service_report_id` (SG) e `sentinelgrid_id` (RS). `sg_rs_links` é mantida como
+// compatibilidade de transição. Reimportar/reexportar atualiza as duas pontas.
 
 const clientsRepo = require("../repositories/clientsRepository");
 const sitesRepo = require("../repositories/sitesRepository");
@@ -41,20 +41,38 @@ function syncError(message, code = "SG_SYNC_INVALID") {
 
 // Cria ou atualiza um registro vinculado, seguindo o mapeamento em sg_rs_links.
 // `repoCreate`/`repoUpdate` são funções do repositório; devolve { id, reused }.
-async function upsertLinked(entityType, rsId, buildInput, repoCreate, repoUpdate, actor) {
-  const existingSgId = await links.getSgIdByRs(entityType, rsId);
+async function upsertLinked(entityType, rsRecord, buildInput, repoCreate, repoUpdate, actor) {
+  const rsId = Number(rsRecord.id);
+  const canonicalSgId = await links.getSgIdByRs(entityType, rsId);
+  const remoteSgId = Number(rsRecord.sentinelgrid_id) || null;
+  const legacySgId = await links.getLegacySgIdByRs(entityType, rsId);
+  const candidates = [...new Set([canonicalSgId, remoteSgId, legacySgId].filter(Boolean))];
   const input = buildInput();
-  if (existingSgId) {
+  for (const existingSgId of candidates) {
+    const linkedRsId = await links.getRsIdBySg(entityType, existingSgId);
+    if (linkedRsId && linkedRsId !== rsId) continue;
     const updated = await repoUpdate(existingSgId, input, actor);
     if (updated) {
       await links.upsertLink(entityType, existingSgId, rsId);
+      await rs.linkSentinelGridEntity(entityType, rsId, existingSgId);
       return { id: existingSgId, reused: true };
     }
-    // vínculo apontava para um registro removido → recria
   }
+  // Todas as referências existentes apontavam para registros removidos ou para
+  // outra entidade: cria uma nova ponta e substitui o vínculo remoto obsoleto.
   const created = await repoCreate(input, actor);
   await links.upsertLink(entityType, created.id, rsId);
+  await rs.linkSentinelGridEntity(entityType, rsId, created.id);
   return { id: created.id, reused: false };
+}
+
+function alreadyLinkedError(direction) {
+  return syncError(
+    direction === "rs_to_sg"
+      ? "Este cliente do Service Report já está vinculado ao SentinelGrid."
+      : "Este cliente do SentinelGrid já está vinculado ao Service Report.",
+    "SG_CUSTOMER_ALREADY_LINKED"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +82,7 @@ async function upsertLinked(entityType, rsId, buildInput, repoCreate, repoUpdate
 async function ensureSgClientFromRs(rsCustomer, actor) {
   return upsertLinked(
     "client",
-    rsCustomer.id,
+    rsCustomer,
     () => ({
       name: s(rsCustomer.name) || `Cliente ${rsCustomer.id}`,
       taxId: "",
@@ -81,7 +99,7 @@ async function ensureSgClientFromRs(rsCustomer, actor) {
 async function ensureSgSiteFromRs(rsSite, sgClientId, actor) {
   return upsertLinked(
     "site",
-    rsSite.id,
+    rsSite,
     () => ({
       clientId: sgClientId,
       name: s(rsSite.site_name) || `Site ${rsSite.id}`,
@@ -148,7 +166,7 @@ async function importOneEquipmentRow(rsEquipment, sgSiteId, actor) {
 
   return upsertLinked(
     "equipment",
-    rsEquipment.id,
+    rsEquipment,
     () => ({
       areaId: area.id,
       tag: s(rsEquipment.tag_number) || s(rsEquipment.serial_number) || `EQ-RS-${rsEquipment.id}`,
@@ -185,6 +203,8 @@ async function importCustomerFromReportService({ rsCustomerId, withSites = true,
   if (!rsId) throw syncError("Cliente do Service Report inválido.", "SG_RS_CUSTOMER_INVALID");
   const rsCustomer = await rs.getCustomer(rsId);
   if (!rsCustomer) throw syncError("Cliente do Service Report inexistente.", "SG_RS_CUSTOMER_INVALID");
+  const linkedSgClientId = await reconcileMutualLink("client", rsCustomer, clientsRepo.getClient);
+  if (linkedSgClientId) throw alreadyLinkedError("rs_to_sg");
 
   const clientResult = await ensureSgClientFromRs(rsCustomer, actor);
   const sgClientId = clientResult.id;
@@ -274,6 +294,7 @@ async function ensureRsCustomerFromSg(client, actor) {
   const { customer } = await rs.ensureCustomerByRef({
     externalSource: SG_SOURCE,
     externalId: String(client.id),
+    sentinelgridId: client.id,
     name: s(client.name) || `Cliente ${client.id}`,
     customerType: "others",
     notes: clientNotes(client)
@@ -286,6 +307,7 @@ async function ensureRsSiteFromSg(sgSite, rsCustomerId, actor) {
   const { site } = await rs.ensureSiteByRef({
     externalSource: SG_SOURCE,
     externalId: String(sgSite.id),
+    sentinelgridId: sgSite.id,
     customerId: rsCustomerId,
     siteName: s(sgSite.name) || `Site ${sgSite.id}`,
     location: s(sgSite.location),
@@ -300,6 +322,7 @@ async function ensureRsEquipmentFromSg(sgEquipment, rsCustomerId, rsSiteId) {
   const { equipment } = await rs.ensureEquipmentByRef({
     externalSource: SG_SOURCE,
     externalId: String(sgEquipment.id),
+    sentinelgridId: sgEquipment.id,
     customerId: rsCustomerId,
     siteId: rsSiteId,
     type: s(sgEquipment.equipment_type_name) || "Equipamento",
@@ -323,6 +346,15 @@ async function exportClientToReportService({ sgClientId, withSites = true, withE
   if (!clientId) throw syncError("Cliente do SentinelGrid inválido.", "SG_CLIENT_INVALID");
   const client = await clientsRepo.getClient(clientId);
   if (!client) throw syncError("Cliente do SentinelGrid inexistente.", "SG_CLIENT_INVALID");
+
+  const currentRsId = await links.getRsIdBySg("client", clientId);
+  const currentRemote = currentRsId
+    ? await rs.getCustomer(currentRsId)
+    : (await rs.listCustomers()).find((item) => Number(item.sentinelgrid_id) === clientId) || null;
+  if (currentRemote) {
+    const linkedSgClientId = await reconcileMutualLink("client", currentRemote, clientsRepo.getClient);
+    if (linkedSgClientId === clientId) throw alreadyLinkedError("sg_to_rs");
+  }
 
   const customer = await ensureRsCustomerFromSg(client, actor);
   const summary = {
@@ -393,11 +425,37 @@ async function exportEquipmentToReportService({ sgEquipmentId } = {}, actor = ""
 // Listagens (candidatos a importar/exportar com o status do vínculo).
 // ---------------------------------------------------------------------------
 
+// Reconcilia vínculos de versões anteriores sem ressuscitar soft deletes. A
+// ponta ausente só é gravada depois de confirmar que a entidade SG ainda existe
+// e que não está correlacionada a outro registro remoto.
+async function reconcileMutualLink(entityType, rsRecord, getSgEntity) {
+  if (!rsRecord) return null;
+  const rsId = Number(rsRecord.id);
+  const candidates = [...new Set([
+    Number(rsRecord.sentinelgrid_id) || null,
+    await links.getSgIdByRs(entityType, rsId),
+    await links.getLegacySgIdByRs(entityType, rsId)
+  ].filter(Boolean))];
+
+  for (const sgId of candidates) {
+    const activeEntity = await getSgEntity(sgId);
+    if (!activeEntity) continue;
+    const localRsId = await links.getRsIdBySg(entityType, sgId);
+    if (localRsId && localRsId !== rsId) continue;
+    if (localRsId !== rsId) await links.upsertLink(entityType, sgId, rsId);
+    if (Number(rsRecord.sentinelgrid_id) !== Number(sgId)) {
+      await rs.linkSentinelGridEntity(entityType, rsId, sgId);
+    }
+    return Number(sgId);
+  }
+  return null;
+}
+
 async function listReportServiceImportable() {
   const customers = await rs.listCustomers();
   const result = [];
   for (const c of customers) {
-    const sgClientId = await links.getSgIdByRs("client", c.id);
+    const sgClientId = await reconcileMutualLink("client", c, clientsRepo.getClient);
     result.push({
       id: Number(c.id),
       name: s(c.name),
@@ -412,16 +470,24 @@ async function listReportServiceImportable() {
 
 async function listReportServiceExportable() {
   const { clients } = await clientsRepo.listClients({ search: "", limit: 1000, offset: 0 });
+  const remoteCustomers = await rs.listCustomers();
+  const remoteBySgId = new Map(
+    remoteCustomers.filter((item) => Number(item.sentinelgrid_id)).map((item) => [Number(item.sentinelgrid_id), item])
+  );
   const result = [];
   for (const c of clients) {
-    const rsCustomerId = await links.getRsIdBySg("client", c.id);
+    const localRsId = await links.getRsIdBySg("client", c.id);
+    const remote = (localRsId ? await rs.getCustomer(localRsId) : null) || remoteBySgId.get(Number(c.id)) || null;
+    const sgClientId = await reconcileMutualLink("client", remote, clientsRepo.getClient);
+    const mutuallyLinked = sgClientId === Number(c.id);
+    const rsCustomerId = mutuallyLinked ? Number(remote.id) : null;
     result.push({
       id: Number(c.id),
       name: s(c.name),
       tax_id: s(c.tax_id),
       status: s(c.status),
-      rs_linked: !!rsCustomerId,
-      rs_customer_id: rsCustomerId
+      rs_linked: mutuallyLinked,
+      rs_customer_id: mutuallyLinked ? rsCustomerId : null
     });
   }
   return result;
@@ -432,11 +498,7 @@ async function listReportServiceImportableEquipment() {
   const equipments = await rs.listEquipments();
   const result = [];
   for (const e of equipments) {
-    const linkedByExternalRef =
-      s(e.external_source) === SG_SOURCE && Number(s(e.external_id)) ? Number(s(e.external_id)) : null;
-    const candidateSgEquipmentId = (await links.getSgIdByRs("equipment", e.id)) || linkedByExternalRef;
-    const linkedEquipment = candidateSgEquipmentId ? await equipmentRepo.getEquipment(candidateSgEquipmentId) : null;
-    const sgEquipmentId = linkedEquipment ? Number(candidateSgEquipmentId) : null;
+    const sgEquipmentId = await reconcileMutualLink("equipment", e, equipmentRepo.getEquipment);
     result.push({
       id: Number(e.id),
       tag: s(e.tag_number) || s(e.serial_number),
@@ -452,28 +514,24 @@ async function listReportServiceImportableEquipment() {
 // Equipamentos do SG disponíveis para exportar ao RS (marca os já vinculados).
 async function listReportServiceExportableEquipment() {
   const { equipment } = await equipmentRepo.listEquipment({ limit: 5000, offset: 0 });
-  const rsEquipments = await rs.listEquipments();
-  const rsIds = new Set(rsEquipments.map((e) => Number(e.id)));
-  const rsBySgId = new Map();
-  for (const e of rsEquipments) {
-    if (s(e.external_source) !== SG_SOURCE) continue;
-    const sgId = Number(s(e.external_id));
-    if (sgId) rsBySgId.set(sgId, Number(e.id));
-  }
+  const remoteEquipment = await rs.listEquipments();
+  const remoteBySgId = new Map(
+    remoteEquipment.filter((item) => Number(item.sentinelgrid_id)).map((item) => [Number(item.sentinelgrid_id), item])
+  );
   const result = [];
   for (const e of equipment) {
-    const linkedRsEquipmentId = await links.getRsIdBySg("equipment", e.id);
-    const rsEquipmentId =
-      (linkedRsEquipmentId && rsIds.has(Number(linkedRsEquipmentId)) ? Number(linkedRsEquipmentId) : null) ||
-      rsBySgId.get(Number(e.id)) ||
-      null;
+    const localRsId = await links.getRsIdBySg("equipment", e.id);
+    const remote = (localRsId ? await rs.getEquipment(localRsId) : null) || remoteBySgId.get(Number(e.id)) || null;
+    const sgEquipmentId = await reconcileMutualLink("equipment", remote, equipmentRepo.getEquipment);
+    const mutuallyLinked = sgEquipmentId === Number(e.id);
+    const rsEquipmentId = mutuallyLinked ? Number(remote.id) : null;
     result.push({
       id: Number(e.id),
       tag: s(e.tag) || s(e.serial_number),
       client_name: s(e.client_name),
       site_name: s(e.site_name),
-      rs_linked: !!rsEquipmentId,
-      rs_equipment_id: rsEquipmentId
+      rs_linked: mutuallyLinked,
+      rs_equipment_id: mutuallyLinked ? rsEquipmentId : null
     });
   }
   return result;

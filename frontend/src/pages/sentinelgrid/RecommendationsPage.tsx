@@ -149,7 +149,7 @@ export default function RecommendationsPage() {
                   <td>{r.due_date || "-"}</td>
                   <td>{r.responsible || "-"}</td>
                   <td className="text-end">
-                    <IconAction icon="status" label="Alterar status" variant="outline-primary" onClick={() => { setSelected(r); setNextStatus(r.status); setStatusNotes(""); setError(null); }} />
+                    <IconAction icon="change_status" label="Alterar status" variant="outline-primary" onClick={() => { setSelected(r); setNextStatus(r.status); setStatusNotes(""); setError(null); }} />
                   </td>
                 </tr>
               ))}

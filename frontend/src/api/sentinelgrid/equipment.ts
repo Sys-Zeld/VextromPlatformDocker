@@ -1,4 +1,4 @@
-import { api } from "../client";
+import { api, API_BASE } from "../client";
 
 export const CRITICALITY: { value: string; label: string; variant: string }[] = [
   { value: "baixa", label: "Baixa", variant: "secondary" },
@@ -105,4 +105,8 @@ export function updateEquipment(id: number, input: SgEquipmentInput) {
 }
 export function deleteEquipment(id: number) {
   return api<void>(`/sentinelgrid/equipment/${id}`, { method: "DELETE" });
+}
+
+export function equipmentQrCodeUrl(id: number) {
+  return `${API_BASE}/sentinelgrid/equipment/${id}/qr-code`;
 }

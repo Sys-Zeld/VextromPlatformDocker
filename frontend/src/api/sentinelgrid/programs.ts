@@ -1,4 +1,4 @@
-import { api } from "../client";
+import { api, API_BASE } from "../client";
 
 export const CRITICALITY_OPTIONS = [
   { value: "baixa", label: "Baixa", variant: "secondary" },
@@ -41,6 +41,7 @@ export interface SgMaintenanceProgram {
   model_name?: string | null;
   contract_id: number | null;
   contract_name?: string | null;
+  contract_client_id?: number | null;
   contract_client_name?: string | null;
   contract_valid_from?: string | null;
   contract_valid_to?: string | null;
@@ -48,6 +49,14 @@ export interface SgMaintenanceProgram {
   maintenance_type: SgMaintenanceType;
   periodicity: SgPeriodicity;
   plan_intervals_months: number[];
+  checklist_ids?: number[];
+  checklist_names?: string[];
+  manual_original_name?: string | null;
+  manual_mime_type?: string | null;
+  manual_file_size?: number | null;
+  nameplate_original_name?: string | null;
+  nameplate_mime_type?: string | null;
+  nameplate_file_size?: number | null;
   active: boolean;
   scope_notes: string;
   notes: string;
@@ -102,6 +111,25 @@ export function updateMaintenanceProgram(id: number, input: SgMaintenanceProgram
 
 export function deleteMaintenanceProgram(id: number) {
   return api<void>(`/sentinelgrid/maintenance-programs/${id}`, { method: "DELETE" });
+}
+
+export function uploadProgramDocument(id: number, kind: "manual" | "nameplate", file: File) {
+  return api<{ program: SgMaintenanceProgram }>(`/sentinelgrid/maintenance-programs/${id}/${kind}`, {
+    method: "PUT",
+    headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) },
+    body: file
+  }).then((r) => r.program);
+}
+
+export function programDocumentUrl(id: number, kind: "manual" | "nameplate") {
+  return `${API_BASE}/sentinelgrid/maintenance-programs/${id}/documents/${kind}`;
+}
+
+export function updateProgramAssets(id: number, checklistIds: number[]) {
+  return api<{ program: SgMaintenanceProgram }>(`/sentinelgrid/maintenance-programs/${id}/assets`, {
+    method: "PUT",
+    body: JSON.stringify({ checklistIds })
+  }).then((r) => r.program);
 }
 
 // Gerar Planos a partir do programa (escopo + datas por periodicidade).
