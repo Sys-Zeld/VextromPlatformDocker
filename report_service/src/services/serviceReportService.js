@@ -654,15 +654,33 @@ async function attachSentinelGridLink(entityType, row, rawSentinelgridId) {
   return (await repo.setSentinelGridLink(entityType, row.id, sentinelgridId)) || row;
 }
 
-async function ensureCustomerByRef(input = {}) {
+// Adota um registro que JÁ existe no RS: carimba a referência externa (para a próxima busca achar
+// pelo caminho rápido) e fecha o vínculo com o SentinelGrid. É o que impede a duplicata.
+async function adoptExisting(entityType, row, input) {
+  const externalSource = sanitizeText(input.externalSource);
+  const externalId = sanitizeText(input.externalId);
+  const refreshed = externalSource && externalId
+    ? (await repo.backfillExternalRef(entityType, row.id, externalSource, externalId)) || row
+    : row;
+  return attachSentinelGridLink(entityType, refreshed, input.sentinelgridId);
+}
+
+// Resolve por VÍNCULO, na ordem: referência externa → sentinelgrid_id (a outra ponta, gravada por
+// quem importou do RS para o SG). Só depois disso é que se cogita criar.
+async function resolveLinked(entityType, getByExternalRef, input) {
   const externalSource = sanitizeText(input.externalSource);
   const externalId = sanitizeText(input.externalId);
   if (externalSource && externalId) {
-    const existing = await repo.getCustomerByExternalRef(externalSource, externalId);
-    if (existing) {
-      const customer = await attachSentinelGridLink("client", existing, input.sentinelgridId);
-      return { customer, created: false };
-    }
+    const byRef = await getByExternalRef(externalSource, externalId);
+    if (byRef) return byRef;
+  }
+  return repo.getBySentinelGridId(entityType, input.sentinelgridId);
+}
+
+async function ensureCustomerByRef(input = {}) {
+  const linked = await resolveLinked("client", repo.getCustomerByExternalRef, input);
+  if (linked) {
+    return { customer: await adoptExisting("client", linked, input), created: false };
   }
   const name = sanitizeText(input.name);
   if (!name) {
@@ -670,25 +688,27 @@ async function ensureCustomerByRef(input = {}) {
     err.statusCode = 422;
     throw err;
   }
+  // Chave natural: o nome. O SentinelGrid não conhece customer_type e manda sempre 'others' — o
+  // tipo fica FORA do casamento e o do RS ('offshore'/'onshore') é preservado na adoção, porque
+  // era exatamente o único campo que diferia entre o cliente original e a duplicata.
+  const byName = await repo.getCustomerByNormalizedName(name);
+  if (byName) {
+    return { customer: await adoptExisting("client", byName, input), created: false };
+  }
   const customer = await repo.createCustomer({
     name,
     customerType: sanitizeText(input.customerType || "others").toLowerCase(),
     notes: sanitizeText(input.notes),
-    externalSource,
-    externalId
+    externalSource: sanitizeText(input.externalSource),
+    externalId: sanitizeText(input.externalId)
   });
   return { customer: await attachSentinelGridLink("client", customer, input.sentinelgridId), created: true };
 }
 
 async function ensureSiteByRef(input = {}) {
-  const externalSource = sanitizeText(input.externalSource);
-  const externalId = sanitizeText(input.externalId);
-  if (externalSource && externalId) {
-    const existing = await repo.getSiteByExternalRef(externalSource, externalId);
-    if (existing) {
-      const site = await attachSentinelGridLink("site", existing, input.sentinelgridId);
-      return { site, created: false };
-    }
+  const linked = await resolveLinked("site", repo.getSiteByExternalRef, input);
+  if (linked) {
+    return { site: await adoptExisting("site", linked, input), created: false };
   }
   const customerId = repo.toInt(input.customerId);
   if (!customerId) {
@@ -702,6 +722,11 @@ async function ensureSiteByRef(input = {}) {
     err.statusCode = 422;
     throw err;
   }
+  // Chave natural: um cliente não tem dois sites com o mesmo nome. Adota em vez de duplicar.
+  const byName = await repo.getSiteByNameForCustomer(customerId, siteName);
+  if (byName) {
+    return { site: await adoptExisting("site", byName, input), created: false };
+  }
   const site = await repo.createSite({
     customerId,
     siteName,
@@ -710,8 +735,8 @@ async function ensureSiteByRef(input = {}) {
     latitude: null,
     longitude: null,
     notes: sanitizeText(input.notes),
-    externalSource,
-    externalId
+    externalSource: sanitizeText(input.externalSource),
+    externalId: sanitizeText(input.externalId)
   });
   return { site: await attachSentinelGridLink("site", site, input.sentinelgridId), created: true };
 }
@@ -778,21 +803,29 @@ async function listEquipmentsByCustomer(customerId) {
 }
 
 async function ensureEquipmentByRef(input = {}) {
-  const externalSource = sanitizeText(input.externalSource);
-  const externalId = sanitizeText(input.externalId);
-  if (externalSource && externalId) {
-    const existing = await repo.getEquipmentByExternalRef(externalSource, externalId);
-    if (existing) {
-      const equipment = await attachSentinelGridLink("equipment", existing, input.sentinelgridId);
-      return { equipment, created: false };
-    }
-  }
+  // Adota e, se o equipamento estava órfão (sem cliente/site), pendura no dono certo.
+  const adoptEquipment = async (row) => {
+    const owned = (await repo.backfillEquipmentOwner(row.id, input.customerId, input.siteId)) || row;
+    return { equipment: await adoptExisting("equipment", owned, input), created: false };
+  };
+
+  const linked = await resolveLinked("equipment", repo.getEquipmentByExternalRef, input);
+  if (linked) return adoptEquipment(linked);
+
   const type = sanitizeText(input.type);
   if (!type) {
     const err = new Error("Tipo de equipamento e obrigatorio.");
     err.statusCode = 422;
     throw err;
   }
+  // Chave natural: a TAG dentro do cliente (o RS já a trata como única por site). A série vem
+  // depois e só quando é inequívoca — na base real o mesmo serial aparece em unidades distintas.
+  const byTag = await repo.getEquipmentByTagForCustomer(input.customerId, input.tagNumber);
+  if (byTag) return adoptEquipment(byTag);
+
+  const bySerial = await repo.getEquipmentBySerialForCustomer(input.customerId, input.serialNumber);
+  if (bySerial) return adoptEquipment(bySerial);
+
   const payload = {
     customerId: repo.toInt(input.customerId),
     siteId: repo.toInt(input.siteId),
@@ -812,8 +845,8 @@ async function ensureEquipmentByRef(input = {}) {
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
     notes: sanitizeText(input.notes),
-    externalSource,
-    externalId
+    externalSource: sanitizeText(input.externalSource),
+    externalId: sanitizeText(input.externalId)
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
   const equipment = await repo.createEquipment(payload);
@@ -833,6 +866,16 @@ async function createGlobalTechnician(input = {}) {
 async function linkTechnicianToOrder(orderId, technicianId) {
   return repo.linkTechnicianToOrder(repo.toInt(orderId), repo.toInt(technicianId));
 }
+async function unlinkTechnicianFromOrder(orderId, technicianId) {
+  return repo.unlinkTechnicianFromOrder(repo.toInt(orderId), repo.toInt(technicianId));
+}
+async function listOrderTechnicians(orderId) {
+  return repo.listTechniciansByOrder(repo.toInt(orderId));
+}
+async function getOrder(id) { return repo.getOrderById(repo.toInt(id)); }
+// Existência em lote — consumidores externos (SentinelGrid) usam para detectar OS apagadas sem
+// puxar cada OS inteira. A exclusão de OS aqui é DELETE físico, então "sumiu" é a única evidência.
+async function listExistingOrderIds(ids = []) { return repo.listExistingOrderIds(ids); }
 async function getReportById(id) { return repo.getReportById(repo.toInt(id)); }
 async function getReportByOrderId(orderId) { return repo.getReportByOrderId(repo.toInt(orderId)); }
 
@@ -851,6 +894,10 @@ module.exports = {
   getGlobalTechnician,
   createGlobalTechnician,
   linkTechnicianToOrder,
+  unlinkTechnicianFromOrder,
+  listOrderTechnicians,
+  getOrder,
+  listExistingOrderIds,
   getReportById,
   getReportByOrderId,
   getCustomer,

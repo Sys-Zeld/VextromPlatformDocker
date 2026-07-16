@@ -24,7 +24,7 @@ interface NavGroup {
   key: string;
   label: string;
   icon: string;
-  children: NavItem[];
+  children: NavEntry[];
 }
 
 type NavEntry = NavItem | NavGroup;
@@ -52,11 +52,16 @@ const SERVICE_REPORT_NAV: NavItem[] = [
 
 // SentinelGrid usa o conjunto de ícones SVG próprio (SgIcon); os nomes abaixo são
 // SgIconName, resolvidos em runtime por isSgIconName no render da nav/topbar.
-const SENTINELGRID_PROGRAM_NAV: NavItem[] = [
+const SENTINELGRID_DEMAND_NAV: NavItem[] = [
+  { to: "/sentinelgrid/demands/scheduled", label: "Agendado", icon: "today" },
+  { to: "/sentinelgrid/technician-agenda", label: "Agenda técnica", icon: "calendar" }
+];
+
+const SENTINELGRID_PROGRAM_NAV: NavEntry[] = [
   { to: "/sentinelgrid/programs", label: "Programas", icon: "program" },
   { to: "/sentinelgrid/plans", label: "Planos", icon: "plan" },
   { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "orders" },
-  { to: "/sentinelgrid/technician-agenda", label: "Agenda técnica", icon: "calendar" },
+  { key: "generate-demand", label: "Gerar Demanda", icon: "groups", children: SENTINELGRID_DEMAND_NAV },
   { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
   { to: "/sentinelgrid/assets", label: "Assets", icon: "new-doc" }
 ];
@@ -106,7 +111,21 @@ function isNavGroup(entry: NavEntry): entry is NavGroup {
 }
 
 function flattenNav(entries: NavEntry[]): NavItem[] {
-  return entries.flatMap((entry) => isNavGroup(entry) ? entry.children : [entry]);
+  return entries.flatMap((entry) => isNavGroup(entry) ? flattenNav(entry.children) : [entry]);
+}
+
+function matchesPath(item: NavItem, pathname: string): boolean {
+  return item.end ? pathname === item.to : pathname.startsWith(item.to);
+}
+
+// Grupos que contêm a rota ativa — abrem sozinhos, em qualquer profundidade.
+function activeGroupKeys(entries: NavEntry[], pathname: string): string[] {
+  return entries.flatMap((entry) => {
+    if (!isNavGroup(entry)) return [];
+    const nested = activeGroupKeys(entry.children, pathname);
+    const active = nested.length > 0 || flattenNav(entry.children).some((item) => matchesPath(item, pathname));
+    return active ? [entry.key, ...nested] : nested;
+  });
 }
 
 const THEMES: { value: AppTheme; label: string }[] = [
@@ -156,14 +175,19 @@ export default function Layout() {
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
   const [open, setOpen] = useState(false); // drawer mobile
   const [collapsed, setCollapsed] = useState<boolean>(readPreferredCollapsed);
-  const programMenuActive = SENTINELGRID_PROGRAM_NAV.some((item) =>
-    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)
+  const activeGroups = activeGroupKeys(mod.nav, location.pathname);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(activeGroups.map((key) => [key, true]))
   );
-  const [programMenuOpen, setProgramMenuOpen] = useState(programMenuActive);
+  const toggleGroup = (key: string) => setOpenGroups((state) => ({ ...state, [key]: !state[key] }));
 
+  // Navegar para uma rota dentro de um grupo abre a cadeia de grupos até ela.
+  const activeGroupsKey = activeGroups.join("|");
   useEffect(() => {
-    if (programMenuActive) setProgramMenuOpen(true);
-  }, [programMenuActive]);
+    if (!activeGroups.length) return;
+    setOpenGroups((state) => ({ ...state, ...Object.fromEntries(activeGroups.map((key) => [key, true])) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupsKey]);
 
   // Recolhimento automático: abaixo do breakpoint força rail; acima respeita a preferência salva.
   useEffect(() => {
@@ -181,6 +205,56 @@ export default function Layout() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Tamanho do ícone por profundidade: raiz 29, filho 24, neto 20.
+  const navIconSize = (depth: number) => [29, 24, 20][Math.min(depth, 2)];
+
+  const navIcon = (icon: string, depth: number) =>
+    mod.key === "sentinelgrid" && isSgIconName(icon)
+      ? <SgIcon name={icon} size={navIconSize(depth)} />
+      : <span className="material-symbols-outlined">{icon}</span>;
+
+  const renderNavEntry = (entry: NavEntry, depth: number) => {
+    const childClass = depth > 0 ? " vx-nav__link--child" : "";
+    if (!isNavGroup(entry)) {
+      return (
+        <NavLink
+          key={entry.to}
+          to={entry.to}
+          end={entry.end}
+          title={entry.label}
+          className={({ isActive }) => `vx-nav__link${childClass}${isActive ? " active" : ""}`}
+          onClick={() => setOpen(false)}
+        >
+          {navIcon(entry.icon, depth)}
+          <span className="vx-nav__label">{entry.label}</span>
+        </NavLink>
+      );
+    }
+    const expanded = Boolean(openGroups[entry.key]);
+    return (
+      <div className="vx-nav-group" key={entry.key}>
+        <button
+          type="button"
+          className={`vx-nav__link${childClass} vx-nav-group__toggle${activeGroups.includes(entry.key) ? " is-parent-active" : ""}`}
+          onClick={() => toggleGroup(entry.key)}
+          aria-expanded={expanded}
+          title={entry.label}
+        >
+          {navIcon(entry.icon, depth)}
+          <span className="vx-nav__label">{entry.label}</span>
+          <span className="material-symbols-outlined vx-nav-group__chevron">
+            {expanded ? "expand_less" : "expand_more"}
+          </span>
+        </button>
+        {expanded && (
+          <div className="vx-nav-group__children">
+            {entry.children.map((child) => renderNavEntry(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const onThemeChange = (next: AppTheme) => { setTheme(next); applyTheme(next); };
   const toggleCollapsed = () => setCollapsed((c) => {
@@ -210,60 +284,7 @@ export default function Layout() {
 
         <nav className="vx-nav">
           <span className="vx-nav__section">{mod.section}</span>
-          {mod.nav.map((entry) => isNavGroup(entry) ? (
-            <div className="vx-nav-group" key={entry.key}>
-              <button
-                type="button"
-                className={`vx-nav__link vx-nav-group__toggle${programMenuActive ? " is-parent-active" : ""}`}
-                onClick={() => setProgramMenuOpen((value) => !value)}
-                aria-expanded={programMenuOpen}
-                title={entry.label}
-              >
-                {isSgIconName(entry.icon) ? <SgIcon name={entry.icon} size={29} /> : (
-                  <span className="material-symbols-outlined">{entry.icon}</span>
-                )}
-                <span className="vx-nav__label">{entry.label}</span>
-                <span className="material-symbols-outlined vx-nav-group__chevron">
-                  {programMenuOpen ? "expand_less" : "expand_more"}
-                </span>
-              </button>
-              {programMenuOpen && (
-                <div className="vx-nav-group__children">
-                  {entry.children.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      title={item.label}
-                      className={({ isActive }) => `vx-nav__link vx-nav__link--child${isActive ? " active" : ""}`}
-                      onClick={() => setOpen(false)}
-                    >
-                      {isSgIconName(item.icon) ? <SgIcon name={item.icon} size={24} /> : (
-                        <span className="material-symbols-outlined">{item.icon}</span>
-                      )}
-                      <span className="vx-nav__label">{item.label}</span>
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <NavLink
-              key={entry.to}
-              to={entry.to}
-              end={entry.end}
-              title={entry.label}
-              className={({ isActive }) => `vx-nav__link${isActive ? " active" : ""}`}
-              onClick={() => setOpen(false)}
-            >
-              {mod.key === "sentinelgrid" && isSgIconName(entry.icon) ? (
-                <SgIcon name={entry.icon} size={29} />
-              ) : (
-                <span className="material-symbols-outlined">{entry.icon}</span>
-              )}
-              <span className="vx-nav__label">{entry.label}</span>
-            </NavLink>
-          ))}
+          {mod.nav.map((entry) => renderNavEntry(entry, 0))}
           <div className="vx-nav__spacer" />
           <a href={mod.footer.href} className="vx-nav__link vx-nav__link--muted" title={mod.footer.label}>
             <span className="material-symbols-outlined">{mod.footer.icon}</span>

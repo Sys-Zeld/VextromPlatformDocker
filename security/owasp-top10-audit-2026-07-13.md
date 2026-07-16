@@ -63,12 +63,21 @@ Esta é uma revisão estática de prontidão, não uma certificação nem um tes
 - Evidência: autenticação administrativa, CSRF, escopos de API e gates de módulo estão centralizados. A revisão estática não substitui testes negativos por função e por objeto para cada rota, especialmente links públicos, anexos, relatórios e integrações entre módulos.
 - Recomendação: criar matriz ator × rota × objeto e testes que tentem leitura/escrita cruzada, IDOR, alteração de escopo, replay e acesso após revogação.
 
+### SG-OWASP-007 — rotação de credenciais anteriormente versionadas
+
+- Categoria: A02:2025 Security Misconfiguration / A04:2025 Cryptographic Failures
+- Severidade: alta se algum valor tiver sido usado fora do ambiente local
+- Estado: ação operacional pendente
+- Evidência: o conteúdo anterior de `.env.example` continha valores com aparência de credenciais para banco, administração, SMTP e armazenamento. A versão atual foi sanitizada, mas versões anteriores permanecem no histórico Git.
+- Impacto: remover o valor do arquivo atual não revoga uma credencial que já tenha sido copiada, clonada ou exposta em histórico.
+- Recomendação: considerar esses valores comprometidos, rotacionar nos serviços correspondentes, revogar sessões/chaves derivadas e só então avaliar se a reescrita de histórico é necessária. Não reescrever histórico compartilhado sem coordenação.
+
 ## Matriz OWASP Top 10:2025
 
 | Categoria | Estado | Evidência resumida |
 |---|---|---|
 | A01 Broken Access Control | Parcial | Sessão, CSRF, escopos e gates existem; testes negativos abrangentes por objeto não foram executados. |
-| A02 Security Misconfiguration | Parcial | Helmet, cookies e fail-fast de segredos existem; CSP inline e privilégio do contêiner permanecem. |
+| A02 Security Misconfiguration | Parcial | Helmet, cookies e fail-fast de segredos existem; rotação de valores antigos, CSP inline e privilégio do contêiner permanecem. |
 | A03 Software Supply Chain Failures | Não atende | Auditorias npm registram vulnerabilidades altas conhecidas. |
 | A04 Cryptographic Failures | Parcial | HMAC, `timingSafeEqual`, `scrypt` e aleatoriedade criptográfica são usados; TLS e proteção em repouso dependem da implantação. |
 | A05 Injection | Parcial | SQL parametrizado e identificadores controlados no código; HTML de e-mail corrigido; testes dinâmicos seguem pendentes. |
@@ -98,6 +107,10 @@ Esta é uma revisão estática de prontidão, não uma certificação nem um tes
 - teste de rejeição/aceitação da configuração de segredos em `NODE_ENV=production`
 - `npm audit --omit=dev --json`
 - `npm --prefix frontend audit --omit=dev --json`
+- `npm run test:module-spec` (9 testes aprovados)
+- `npm --prefix frontend run build`
+- `docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet`
+- `git diff --check`
 - buscas estáticas de autenticação, CSRF, SQL dinâmico, subprocessos, uploads, renderização, criptografia, URLs externas e logs sensíveis
 
 ## Limitações e próximos gates

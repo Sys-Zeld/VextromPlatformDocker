@@ -125,99 +125,303 @@ async function linkReportServiceReport(orderId, rsReportId, actor = "") {
   return { report: created, reused: false };
 }
 
-// Envia uma OM (status 'agendada') para o Service Report: garante cliente/site/equipamento
-// por referência externa (sem duplicar), cria a OS (título = nº + escopo da OM) e vincula o
-// equipamento. Idempotente: se a OM já foi enviada, reabre a OS existente.
-async function sendOrderToReportService(orderId, actor = "") {
+// A exclusão de OS no Service Report é DELETE físico e não há FK entre os bancos: o carimbo
+// rs_service_order_id é uma HIPÓTESE, não uma verdade — só vale enquanto as duas pontas
+// concordam (mesma filosofia de registrySync.reconcileMutualLink).
+//
+// Confirma no RS quais OSs ainda existem e desfaz o vínculo das órfãs: a OM volta a ser pendente e
+// pode gerar uma OS nova. Ela continua 'agendada' — o trabalho de campo não deixou de existir só
+// porque alguém apagou a OS. A desvinculação vai para o histórico do equipamento (§28.4).
+async function clearOrphanServiceOrderLinks({ orderIds = null } = {}, actor = "") {
+  const ids = orderIds ? [...new Set(orderIds.map(Number).filter(Number.isInteger))] : null;
+  if (ids && !ids.length) return { checked: 0, cleared: [] };
+
+  const params = [];
+  let where = "rs_service_order_id IS NOT NULL AND deleted_at IS NULL";
+  if (ids) {
+    params.push(ids);
+    where += ` AND id = ANY($${params.length}::bigint[])`;
+  }
+  const stamped = (await pool.query(
+    `SELECT id, equipment_id, order_number, rs_service_order_id, rs_service_order_code
+       FROM sg_maintenance_orders WHERE ${where}`,
+    params
+  )).rows;
+  if (!stamped.length) return { checked: 0, cleared: [] };
+
+  const rsIds = [...new Set(stamped.map((om) => Number(om.rs_service_order_id)))];
+  const alive = new Set((await rs.listExistingOrderIds(rsIds)).map(Number));
+  const orphans = stamped.filter((om) => !alive.has(Number(om.rs_service_order_id)));
+  if (!orphans.length) return { checked: stamped.length, cleared: [] };
+
   const client = await pool.connect();
-  await client.query("BEGIN");
-  await client.query("SELECT pg_advisory_xact_lock(71001, $1)", [orderId]);
   try {
-  const om = (await client.query(
-    `SELECT o.* FROM sg_maintenance_orders o WHERE o.id = $1 AND o.deleted_at IS NULL`,
-    [orderId]
-  )).rows[0];
-  if (!om) throw integrationError("Ordem de manutenção inexistente.", "SG_ORDER_INVALID");
-
-  // Reenvio → reabre a OS já criada (não duplica).
-  if (om.rs_service_order_id) {
-    await client.query("COMMIT");
-    return { rsOrderId: Number(om.rs_service_order_id), rsOrderCode: om.rs_service_order_code || "", reused: true };
-  }
-  if (om.status !== "agendada") {
-    throw integrationError("Só é possível enviar OM com status 'agendada'.", "SG_ORDER_NOT_SCHEDULED");
-  }
-
-  const eq = await equipmentRepo.getEquipment(om.equipment_id);
-  if (!eq) throw integrationError("Equipamento da OM inexistente.", "SG_ORDER_INVALID");
-
-  // ensure-or-create no RS por referência externa (idempotente — 1:1 por módulo).
-  const { customer } = await rs.ensureCustomerByRef({
-    externalSource: SOURCE,
-    externalId: String(eq.client_id),
-    sentinelgridId: eq.client_id,
-    name: eq.client_name || `Cliente ${eq.client_id}`
-  });
-  const { site } = await rs.ensureSiteByRef({
-    externalSource: SOURCE,
-    externalId: String(eq.site_id),
-    sentinelgridId: eq.site_id,
-    customerId: customer.id,
-    siteName: eq.site_name || `Site ${eq.site_id}`
-  });
-  const { equipment } = await rs.ensureEquipmentByRef({
-    externalSource: SOURCE,
-    externalId: String(eq.id),
-    sentinelgridId: eq.id,
-    customerId: customer.id,
-    siteId: site.id,
-    type: eq.equipment_type_name || "Equipamento",
-    serialNumber: eq.serial_number || "",
-    tagNumber: eq.tag || "",
-    manufacturer: eq.manufacturer_name || "",
-    modelFamily: eq.model_name || ""
-  });
-
-  // Cria a OS e vincula o equipamento.
-  const title = [om.order_number, om.scope].map((v) => String(v || "").trim()).filter(Boolean).join(" - ");
-  const rsOrder = await rs.createOrder({
-    customerId: customer.id,
-    siteId: site.id,
-    title,
-    description: om.scope || "",
-    createdBy: actor
-  });
-  await rs.linkOrderEquipment(rsOrder.id, equipment.id);
-
-  // Grava mapeamentos e carimba a OM (transação no lado SG).
-    await upsertLink(client, "client", eq.client_id, customer.id);
-    await upsertLink(client, "site", eq.site_id, site.id);
-    await upsertLink(client, "equipment", eq.id, equipment.id);
-    const technicians = await require("../repositories/techniciansRepository").listOrderTechnicians(om.id);
-    for (const technician of technicians) {
-      const exported = await exportTechnicianToReportService(technician.id);
-      await rs.linkTechnicianToOrder(rsOrder.id, exported.rsTechnicianId);
-    }
+    await client.query("BEGIN");
+    const orphanIds = orphans.map((om) => Number(om.id));
     await client.query(
       `UPDATE sg_maintenance_orders
-          SET rs_service_order_id = $2, rs_service_order_code = $3, rs_sent_at = NOW(),
-              updated_by = $4, updated_at = NOW()
-        WHERE id = $1`,
-      [om.id, rsOrder.id, rsOrder.service_order_code || "", actor]
+          SET rs_service_order_id = NULL, rs_service_order_code = '', rs_sent_at = NULL,
+              updated_by = $2, updated_at = NOW()
+        WHERE id = ANY($1::bigint[])`,
+      [orphanIds, actor]
     );
+    for (const om of orphans) {
+      const label = om.rs_service_order_code || `#${om.rs_service_order_id}`;
+      await client.query(
+        `INSERT INTO sg_equipment_history (equipment_id, event_kind, ref_table, ref_id, summary, actor)
+         VALUES ($1, 'os_desvinculada', 'sg_maintenance_orders', $2, $3, $4)`,
+        [om.equipment_id, om.id, `OS ${label} apagada no Service Report — vínculo desfeito, ${om.order_number} voltou a aguardar OS.`, actor]
+      );
+    }
     await client.query("COMMIT");
-    return { rsOrderId: Number(rsOrder.id), rsOrderCode: rsOrder.service_order_code || "", reused: false };
+    return { checked: stamped.length, cleared: orphanIds };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();
   }
+}
 
+// Título da OS: SEMPRE "Programa + OM(s)" — é assim que a operação identifica o trabalho.
+//
+//   PROGRAMA MANUT. PREVENTIVA SEM PARADA KN ACU - SG-2026-00767, SG-2026-00780
+//
+// O programa vem por OM.plan_id → sg_equipment_plans.program_id → sg_maintenance_programs.name.
+// Um grupo pode reunir OMs de programas diferentes (mesmo cliente/site/dia, planos distintos):
+// nesse caso os nomes distintos entram juntos, sem repetir.
+// Corretiva/avulsa não tem plano — cai no nome do plano e, na falta dele, no tipo de manutenção.
+function programLabel(orders) {
+  const names = [...new Set(
+    orders
+      .map((om) => String(om.program_name || om.plan_name || "").trim())
+      .filter(Boolean)
+  )];
+  if (names.length) return names.join(" / ");
+  const types = [...new Set(orders.map((om) => String(om.maintenance_type || "").replace(/_/g, " ").trim()).filter(Boolean))];
+  return types.join(" / ") || "Manutenção";
+}
+
+function buildOrderTitle(orders) {
+  const numbers = orders.map((om) => om.order_number).filter(Boolean).join(", ");
+  return [programLabel(orders), numbers].filter(Boolean).join(" - ");
+}
+
+function buildOrderDescription(orders, equipmentById) {
+  if (orders.length === 1) return orders[0].scope || "";
+  return orders
+    .map((om) => {
+      const tag = equipmentById.get(Number(om.equipment_id))?.tag || `#${om.equipment_id}`;
+      const type = String(om.maintenance_type || "").replace(/_/g, " ");
+      return [om.order_number, tag, type].filter(Boolean).join(" · ") + (om.scope ? ` — ${om.scope}` : "");
+    })
+    .join("\n");
+}
+
+// Envia um grupo de OMs (mesmo cliente + site + dia) ao Service Report como UMA OS com N
+// equipamentos. Garante cliente/site/equipamento por referência externa (sem duplicar) e carimba
+// todas as OMs do grupo com a OS criada.
+//
+// Idempotente por natureza:
+//   · todas já enviadas          → reabre a OS existente (reused);
+//   · nenhuma enviada            → cria a OS;
+//   · parte enviada (grupo parcial) → anexa as pendentes à OS que já existe, sem criar uma segunda.
+async function sendOrderGroupToReportService(orderIds, actor = "") {
+  const ids = [...new Set((orderIds || []).map(Number).filter(Number.isInteger))].sort((a, b) => a - b);
+  if (!ids.length) throw integrationError("Selecione ao menos uma OM para gerar a OS.", "SG_ORDER_INVALID");
+
+  const client = await pool.connect();
+  await client.query("BEGIN");
+  try {
+    // Lock por OM (mesmo namespace do envio individual) + lock do lote, para que dois usuários
+    // gerando o mesmo grupo simultaneamente não criem duas OSs.
+    for (const id of ids) await client.query("SELECT pg_advisory_xact_lock(71001, $1)", [id]);
+    await client.query("SELECT pg_advisory_xact_lock(71004, $1)", [ids[0]]);
+
+    const orders = (await client.query(
+      `SELECT o.*, to_char(COALESCE(o.scheduled_date::date, o.planned_date), 'YYYY-MM-DD') AS group_date,
+              pr.name AS program_name, pl.name AS plan_name
+         FROM sg_maintenance_orders o
+         LEFT JOIN sg_equipment_plans pl ON pl.id = o.plan_id
+         LEFT JOIN sg_maintenance_programs pr ON pr.id = pl.program_id
+        WHERE o.id = ANY($1::bigint[]) AND o.deleted_at IS NULL
+        ORDER BY o.id`,
+      [ids]
+    )).rows;
+    if (orders.length !== ids.length) throw integrationError("Ordem de manutenção inexistente.", "SG_ORDER_INVALID");
+
+    // O grupo é (cliente, site, dia). Revalida no servidor — o payload do cliente não decide isso.
+    const groupKeyOf = (om) => `${om.client_id}:${om.site_id}:${om.group_date}`;
+    const groupKey = groupKeyOf(orders[0]);
+    if (orders.some((om) => groupKeyOf(om) !== groupKey)) {
+      throw integrationError(
+        "As OMs selecionadas não pertencem ao mesmo grupo (cliente, site e dia).",
+        "SG_DEMAND_GROUP_MISMATCH"
+      );
+    }
+    if (!orders[0].group_date) {
+      throw integrationError("OM sem data de execução não pode gerar OS.", "SG_DEMAND_DATE_REQUIRED");
+    }
+
+    // O carimbo não basta: a OS pode ter sido APAGADA no RS. Sem esta checagem o grupo trava —
+    // reusaria eternamente um id morto e nunca criaria OS nova. A órfã é desvinculada aqui mesmo,
+    // dentro da transação, e a OM volta a contar como pendente.
+    const stampedIds = [...new Set(orders.filter((om) => om.rs_service_order_id).map((om) => Number(om.rs_service_order_id)))];
+    const alive = new Set(stampedIds.length ? (await rs.listExistingOrderIds(stampedIds)).map(Number) : []);
+    const orphans = orders.filter((om) => om.rs_service_order_id && !alive.has(Number(om.rs_service_order_id)));
+    if (orphans.length) {
+      await client.query(
+        `UPDATE sg_maintenance_orders
+            SET rs_service_order_id = NULL, rs_service_order_code = '', rs_sent_at = NULL,
+                updated_by = $2, updated_at = NOW()
+          WHERE id = ANY($1::bigint[])`,
+        [orphans.map((om) => Number(om.id)), actor]
+      );
+      for (const om of orphans) {
+        const label = om.rs_service_order_code || `#${om.rs_service_order_id}`;
+        await client.query(
+          `INSERT INTO sg_equipment_history (equipment_id, event_kind, ref_table, ref_id, summary, actor)
+           VALUES ($1, 'os_desvinculada', 'sg_maintenance_orders', $2, $3, $4)`,
+          [om.equipment_id, om.id, `OS ${label} apagada no Service Report — vínculo desfeito, ${om.order_number} voltou a aguardar OS.`, actor]
+        );
+        om.rs_service_order_id = null;
+        om.rs_service_order_code = "";
+      }
+    }
+
+    // Já enviadas → definem a OS de destino. Duas OSs distintas no mesmo grupo é estado corrompido.
+    const sent = orders.filter((om) => om.rs_service_order_id);
+    const pending = orders.filter((om) => !om.rs_service_order_id);
+    const existingIds = [...new Set(sent.map((om) => Number(om.rs_service_order_id)))];
+    if (existingIds.length > 1) {
+      throw integrationError(
+        "As OMs deste grupo já apontam para OSs diferentes no Service Report.",
+        "SG_DEMAND_MULTIPLE_OS"
+      );
+    }
+    if (!pending.length) {
+      await client.query("COMMIT");
+      return {
+        rsOrderId: existingIds[0],
+        rsOrderCode: sent[0].rs_service_order_code || "",
+        reused: true,
+        orderIds: [],
+        skipped: sent.map((om) => Number(om.id))
+      };
+    }
+    const notScheduled = pending.find((om) => om.status !== "agendada");
+    if (notScheduled) {
+      throw integrationError(
+        `Só é possível enviar OM com status 'agendada' (${notScheduled.order_number}).`,
+        "SG_ORDER_NOT_SCHEDULED"
+      );
+    }
+
+    // Equipamentos das OMs pendentes — o cliente/site da OS vem daqui, não da OM.
+    const equipmentById = new Map();
+    for (const om of pending) {
+      const eq = await equipmentRepo.getEquipment(om.equipment_id);
+      if (!eq) throw integrationError("Equipamento da OM inexistente.", "SG_ORDER_INVALID");
+      equipmentById.set(Number(om.equipment_id), eq);
+    }
+    const head = equipmentById.get(Number(pending[0].equipment_id));
+
+    // ensure-or-create no RS por referência externa (idempotente — 1:1 por módulo). Uma vez por grupo.
+    const { customer } = await rs.ensureCustomerByRef({
+      externalSource: SOURCE,
+      externalId: String(head.client_id),
+      sentinelgridId: head.client_id,
+      name: head.client_name || `Cliente ${head.client_id}`
+    });
+    const { site } = await rs.ensureSiteByRef({
+      externalSource: SOURCE,
+      externalId: String(head.site_id),
+      sentinelgridId: head.site_id,
+      customerId: customer.id,
+      siteName: head.site_name || `Site ${head.site_id}`
+    });
+    await upsertLink(client, "client", head.client_id, customer.id);
+    await upsertLink(client, "site", head.site_id, site.id);
+
+    // Grupo parcial reusa a OS existente; senão cria uma nova para o grupo inteiro.
+    const reused = existingIds.length === 1;
+    const rsOrder = reused
+      ? { id: existingIds[0], service_order_code: sent[0].rs_service_order_code || "" }
+      : await rs.createOrder({
+          customerId: customer.id,
+          siteId: site.id,
+          title: buildOrderTitle(pending),
+          description: buildOrderDescription(pending, equipmentById),
+          createdBy: actor
+        });
+
+    // Um equipamento por OM pendente, todos na mesma OS.
+    for (const om of pending) {
+      const eq = equipmentById.get(Number(om.equipment_id));
+      const { equipment } = await rs.ensureEquipmentByRef({
+        externalSource: SOURCE,
+        externalId: String(eq.id),
+        sentinelgridId: eq.id,
+        customerId: customer.id,
+        siteId: site.id,
+        type: eq.equipment_type_name || "Equipamento",
+        serialNumber: eq.serial_number || "",
+        tagNumber: eq.tag || "",
+        manufacturer: eq.manufacturer_name || "",
+        modelFamily: eq.model_name || ""
+      });
+      await rs.linkOrderEquipment(rsOrder.id, equipment.id);
+      await upsertLink(client, "equipment", eq.id, equipment.id);
+    }
+
+    // União dos técnicos do grupo — o mesmo técnico em duas OMs entra uma vez só na OS.
+    const techniciansRepo = require("../repositories/techniciansRepository");
+    const technicianIds = new Set();
+    for (const om of pending) {
+      for (const technician of await techniciansRepo.listOrderTechnicians(om.id)) {
+        technicianIds.add(Number(technician.id));
+      }
+    }
+    for (const technicianId of technicianIds) {
+      const exported = await exportTechnicianToReportService(technicianId);
+      await rs.linkTechnicianToOrder(rsOrder.id, exported.rsTechnicianId);
+    }
+
+    const pendingIds = pending.map((om) => Number(om.id));
+    await client.query(
+      `UPDATE sg_maintenance_orders
+          SET rs_service_order_id = $2, rs_service_order_code = $3, rs_sent_at = NOW(),
+              updated_by = $4, updated_at = NOW()
+        WHERE id = ANY($1::bigint[])`,
+      [pendingIds, rsOrder.id, rsOrder.service_order_code || "", actor]
+    );
+    await client.query("COMMIT");
+    return {
+      rsOrderId: Number(rsOrder.id),
+      rsOrderCode: rsOrder.service_order_code || "",
+      reused,
+      orderIds: pendingIds,
+      skipped: sent.map((om) => Number(om.id))
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Envio individual: um grupo de uma OM só. Mantido pelo botão "Enviar para OS" da tela de Ordens.
+async function sendOrderToReportService(orderId, actor = "") {
+  const { rsOrderId, rsOrderCode, reused } = await sendOrderGroupToReportService([orderId], actor);
+  return { rsOrderId, rsOrderCode, reused };
 }
 
 module.exports = {
   sendOrderToReportService,
+  sendOrderGroupToReportService,
+  clearOrphanServiceOrderLinks,
+  buildOrderTitle,
   listReportServiceTechnicians,
   importReportServiceTechnician,
   exportTechnicianToReportService

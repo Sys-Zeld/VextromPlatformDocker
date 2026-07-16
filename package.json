@@ -27,6 +27,7 @@
     "report-service:disable": "node scripts/modules-toggle.js disable report-service",
     "sentinelgrid:enable": "node scripts/modules-toggle.js enable sentinelgrid",
     "sentinelgrid:disable": "node scripts/modules-toggle.js disable sentinelgrid",
+    "sentinelgrid:reconcile-orders": "node scripts/sentinelgrid-reconcile-orders.js",
     "modules:enable:all": "node scripts/modules-toggle.js enable all",
     "modules:disable:all": "node scripts/modules-toggle.js disable all",
     "db:migrate": "node scripts/migrate.js",

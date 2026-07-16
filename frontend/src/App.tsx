@@ -31,6 +31,7 @@ const SentinelMaintenanceOrdersPage = lazy(() => import("./pages/sentinelgrid/Ma
 const SentinelCalendarPage = lazy(() => import("./pages/sentinelgrid/CalendarPage"));
 const SentinelSchedulePage = lazy(() => import("./pages/sentinelgrid/SchedulePage"));
 const SentinelTechnicianAgendaPage = lazy(() => import("./pages/sentinelgrid/TechnicianAgendaPage"));
+const SentinelDemandScheduledPage = lazy(() => import("./pages/sentinelgrid/DemandScheduledPage"));
 const SentinelAlertsPage = lazy(() => import("./pages/sentinelgrid/AlertsPage"));
 const SentinelHistoryPage = lazy(() => import("./pages/sentinelgrid/HistoryPage"));
 const SentinelDashboardPage = lazy(() => import("./pages/sentinelgrid/DashboardPage"));
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/sentinelgrid/calendar" element={<SentinelCalendarPage />} />
           <Route path="/sentinelgrid/schedule" element={<SentinelSchedulePage />} />
           <Route path="/sentinelgrid/technician-agenda" element={<SentinelTechnicianAgendaPage />} />
+          <Route path="/sentinelgrid/demands/scheduled" element={<SentinelDemandScheduledPage />} />
           <Route path="/sentinelgrid/alerts" element={<SentinelAlertsPage />} />
           <Route path="/sentinelgrid/history" element={<SentinelHistoryPage />} />
           <Route path="/sentinelgrid/dashboard" element={<SentinelDashboardPage />} />

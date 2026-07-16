@@ -47,6 +47,10 @@ export interface SgTechnicianAgendaItem {
   client_name: string;
   site_id: number | null;
   site_name: string | null;
+  // OS gerada para o grupo (cliente + site + dia) ao qual esta OM pertence. Nula enquanto o grupo
+  // não foi gerado em Gerar Demanda › Agendado.
+  rs_service_order_id: number | null;
+  rs_service_order_code: string;
 }
 
 export const listTechnicianAgenda = (params: { from: string; to: string; technicianId?: number }) => {

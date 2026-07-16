@@ -136,6 +136,20 @@ async function listOrders() {
   return result.rows;
 }
 
+// Quais destes ids ainda existem. Consulta de existência em lote: usada por consumidores externos
+// (SentinelGrid) para detectar OS apagadas sem puxar a OS inteira, uma a uma.
+async function listExistingOrderIds(ids = []) {
+  const normalized = Array.from(new Set(
+    (Array.isArray(ids) ? ids : []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+  ));
+  if (!normalized.length) return [];
+  const result = await db.query(
+    "SELECT id FROM service_report_orders WHERE id = ANY($1::bigint[])",
+    [normalized]
+  );
+  return result.rows.map((row) => Number(row.id));
+}
+
 async function getOrderById(id) {
   const result = await db.query(
     `
@@ -283,6 +297,119 @@ const SENTINELGRID_LINK_TABLES = {
   site: "service_report_customer_sites",
   equipment: "service_report_equipments"
 };
+
+// Lê a outra ponta do vínculo lógico. Existia só a escrita (setSentinelGridLink): sem esta leitura,
+// um registro vinculado por importação (que tem sentinelgrid_id mas não tem external_id) não era
+// encontrado na hora de gerar a OS — e virava duplicata.
+async function getBySentinelGridId(entityType, sentinelgridId) {
+  const table = SENTINELGRID_LINK_TABLES[entityType];
+  const sgId = toInt(sentinelgridId);
+  if (!table || !sgId) return null;
+  const result = await db.query(
+    `SELECT * FROM ${table} WHERE sentinelgrid_id = $1 LIMIT 1`,
+    [sgId]
+  );
+  return result.rows[0] || null;
+}
+
+// Carimba a referência externa num registro que já existia no RS (adotado por vínculo ou chave
+// natural). Assim a próxima geração de OS o encontra pelo caminho rápido e nunca duplica.
+async function backfillExternalRef(entityType, id, source, externalId) {
+  const table = SENTINELGRID_LINK_TABLES[entityType];
+  const rowId = toInt(id);
+  if (!table || !rowId || !source || !externalId) return null;
+  const result = await db.query(
+    `UPDATE ${table}
+        SET external_source = $2, external_id = $3, updated_at = NOW()
+      WHERE id = $1 AND COALESCE(external_id, '') = ''
+      RETURNING *`,
+    [rowId, String(source), String(externalId)]
+  );
+  return result.rows[0] || null;
+}
+
+// Chave natural do site: nome dentro do cliente. Um cliente não tem dois sites com o mesmo nome.
+async function getSiteByNameForCustomer(customerId, siteName) {
+  const id = toInt(customerId);
+  const name = String(siteName || "").trim();
+  if (!id || !name) return null;
+  const result = await db.query(
+    `SELECT * FROM service_report_customer_sites
+      WHERE customer_id = $1 AND LOWER(TRIM(site_name)) = LOWER($2)
+      ORDER BY id LIMIT 1`,
+    [id, name]
+  );
+  return result.rows[0] || null;
+}
+
+// Normalização de nome para casamento: sem caixa, sem espaço nas pontas, sem acento. Evita depender
+// da extensão unaccent (que pode não estar instalada no banco).
+const NORMALIZE_NAME = (expr) => `LOWER(TRIM(TRANSLATE(${expr},
+  'ÁÀÃÂÄáàãâäÉÈÊËéèêëÍÌÎÏíìîïÓÒÕÔÖóòõôöÚÙÛÜúùûüÇçÑñ',
+  'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')))`;
+
+// Chave natural do cliente: o nome. O SentinelGrid não conhece customer_type (manda sempre
+// 'others'), então o tipo NÃO entra no casamento — era justamente o único campo que diferia entre
+// o cliente original e a duplicata criada pela integração.
+async function getCustomerByNormalizedName(name) {
+  const value = String(name || "").trim();
+  if (!value) return null;
+  const result = await db.query(
+    `SELECT * FROM service_report_customers
+      WHERE ${NORMALIZE_NAME("name")} = ${NORMALIZE_NAME("$1")}
+      ORDER BY id LIMIT 1`,
+    [value]
+  );
+  return result.rows[0] || null;
+}
+
+// Chave natural do equipamento: a TAG dentro do cliente — é o que o RS já trata como única por site
+// (ensureEquipmentTagUnique). O número de série NÃO serve sozinho: na base real o mesmo serial
+// aparece em unidades diferentes (L13-0640 em duas, L07-0515 em três).
+async function getEquipmentByTagForCustomer(customerId, tagNumber) {
+  const id = toInt(customerId);
+  const tag = String(tagNumber || "").trim();
+  if (!id || !tag) return null;
+  const result = await db.query(
+    `SELECT * FROM service_report_equipments
+      WHERE customer_id = $1 AND LOWER(TRIM(tag_number)) = LOWER($2)
+      ORDER BY id LIMIT 1`,
+    [id, tag]
+  );
+  return result.rows[0] || null;
+}
+
+// Série só casa quando é INEQUÍVOCA dentro do cliente: se dois equipamentos compartilham a série,
+// adotar qualquer um deles seria chutar. Nesse caso devolve null e deixa criar.
+async function getEquipmentBySerialForCustomer(customerId, serialNumber) {
+  const id = toInt(customerId);
+  const serial = String(serialNumber || "").trim();
+  if (!id || !serial) return null;
+  const result = await db.query(
+    `SELECT * FROM service_report_equipments
+      WHERE customer_id = $1 AND LOWER(TRIM(serial_number)) = LOWER($2)`,
+    [id, serial]
+  );
+  return result.rows.length === 1 ? result.rows[0] : null;
+}
+
+// Equipamento adotado que estava órfão (sem cliente/site) ganha o dono. Só preenche o que está
+// vazio — nunca sequestra um equipamento que já pertence a outro cliente.
+async function backfillEquipmentOwner(id, customerId, siteId) {
+  const rowId = toInt(id);
+  const customer = toInt(customerId);
+  if (!rowId || !customer) return null;
+  const result = await db.query(
+    `UPDATE service_report_equipments
+        SET customer_id = COALESCE(customer_id, $2),
+            site_id = COALESCE(site_id, $3),
+            updated_at = NOW()
+      WHERE id = $1 AND (customer_id IS NULL OR site_id IS NULL)
+      RETURNING *`,
+    [rowId, customer, toInt(siteId)]
+  );
+  return result.rows[0] || null;
+}
 
 // Persiste a outra ponta da FK externa lógica. A tabela é escolhida somente a
 // partir da allowlist acima; entityType nunca é interpolado diretamente no SQL.
@@ -3563,6 +3690,7 @@ module.exports = {
   setOrderCodeSeed,
   getOrderCodeSequence,
   listOrders,
+  listExistingOrderIds,
   getOrderById,
   createOrder,
   updateOrder,
@@ -3571,6 +3699,13 @@ module.exports = {
   getCustomerById,
   getCustomerByExternalRef,
   setSentinelGridLink,
+  getBySentinelGridId,
+  backfillExternalRef,
+  getCustomerByNormalizedName,
+  getSiteByNameForCustomer,
+  getEquipmentByTagForCustomer,
+  getEquipmentBySerialForCustomer,
+  backfillEquipmentOwner,
   createCustomer,
   updateCustomer,
   deleteCustomer,

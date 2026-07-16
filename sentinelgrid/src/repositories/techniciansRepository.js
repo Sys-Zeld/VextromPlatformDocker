@@ -85,6 +85,7 @@ async function listTechnicianAgenda({ from, to, technicianId = null }) {
   return (await pool.query(
     `SELECT o.id AS order_id, o.order_number, o.status, o.priority, o.scope,
             o.execution_days,
+            o.rs_service_order_id, o.rs_service_order_code,
             to_char(COALESCE(o.scheduled_date::date, o.planned_date), 'YYYY-MM-DD') AS start_date,
             to_char(COALESCE(o.scheduled_date::date, o.planned_date) + (o.execution_days - 1), 'YYYY-MM-DD') AS end_date,
             t.id AS technician_id, t.name AS technician_name,

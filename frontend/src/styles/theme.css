@@ -887,6 +887,28 @@ body {
 }
 .sg-tech-agenda-task__order { font-weight: 750; }
 .sg-tech-agenda-task__technician { color: #40751f; }
+
+/* Cartão da OS: o calendário mostra a Ordem de Serviço (o grupo), com as OMs que ela reúne. */
+.sg-tech-agenda-task--os {
+  grid-template-columns: 25px minmax(0, 1fr);
+  min-height: 56px;
+}
+.sg-tech-agenda-task__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.sg-tech-agenda-task__orders {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: var(--muted-text);
+}
+.sg-tech-agenda-task--unlinked { border-style: dashed; }
+:root[data-theme="darkvextrom"] .sg-tech-agenda-task__orders { color: #8aa87a; }
 :root[data-theme="darkvextrom"] .sg-tech-agenda-day.has-work { background: rgba(113, 174, 69, 0.035); }
 :root[data-theme="darkvextrom"] .sg-tech-agenda-task {
   border-color: #567c38;

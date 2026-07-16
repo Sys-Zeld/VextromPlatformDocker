@@ -14,6 +14,7 @@ const { createEquipmentPlansRouter } = require("./equipmentPlans");
 const { createChecklistsRouter } = require("./checklists");
 const { createMaintenanceOrdersRouter } = require("./maintenanceOrders");
 const { createTechniciansRouter } = require("./technicians");
+const { createDemandsRouter } = require("./demands");
 const { createCalendarMapRouter } = require("./calendarMap");
 const { createCalendarAlertRulesRouter } = require("./calendarAlertRules");
 const { createAlertsRouter } = require("./alerts");
@@ -83,6 +84,8 @@ function createSentinelGridV2Router(deps) {
   router.use("/checklists", createChecklistsRouter(deps));
   router.use("/maintenance-orders", createMaintenanceOrdersRouter(deps));
   router.use("/technicians", createTechniciansRouter(deps));
+  // Gerar Demanda — agrupa OMs agendadas (cliente + site + dia) em uma única OS no Service Report.
+  router.use("/demands", createDemandsRouter(deps));
   // Fase 10 — Mapa Calendário (agregação read-only). Montado antes do router de
   // operations ("/") para não ser sombreado por ele.
   router.use("/calendar/map", createCalendarMapRouter(deps));
