@@ -1,7 +1,6 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Form, Spinner } from "react-bootstrap";
-import { getReportPreviewHtml, reportPreviewHtmlUrl, type ReportTemplateOption } from "../api/reportEditor";
+import { useEffect, useState } from "react";
+import { Card, Form, Spinner } from "react-bootstrap";
+import { reportPreviewHtmlUrl, type ReportTemplateOption } from "../api/reportEditor";
 
 const ADMIN_BASE = "/admin/report-service";
 
@@ -12,15 +11,15 @@ export default function ReportPreviewPanel(props: {
 }) {
   const { orderId, templates, defaultTemplateKey } = props;
   const [templateKey, setTemplateKey] = useState(defaultTemplateKey || (templates[0]?.key ?? ""));
+  const [isLoading, setIsLoading] = useState(true);
 
-  const { data, isFetching, error } = useQuery({
-    queryKey: ["report-preview", orderId, templateKey],
-    queryFn: () => getReportPreviewHtml(orderId, templateKey),
-    staleTime: 0
-  });
-
+  const previewUrl = reportPreviewHtmlUrl(orderId, templateKey);
   const pdfViewUrl = `${ADMIN_BASE}/orders/${orderId}/pdf-preview?template_key=${encodeURIComponent(templateKey)}`;
   const pdfDownloadUrl = `${pdfViewUrl}&download=1`;
+
+  useEffect(() => {
+    setIsLoading(true);
+  }, [previewUrl]);
 
   return (
     <Card>
@@ -32,26 +31,24 @@ export default function ReportPreviewPanel(props: {
               {templates.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
             </Form.Select>
           )}
-          {isFetching && <Spinner animation="border" size="sm" />}
+          {isLoading && <Spinner animation="border" size="sm" />}
         </div>
         <div className="d-flex gap-2">
-          <a className="btn btn-sm btn-outline-secondary" href={reportPreviewHtmlUrl(orderId, templateKey)} target="_blank" rel="noopener">Abrir em nova janela</a>
+          <a className="btn btn-sm btn-outline-secondary" href={previewUrl} target="_blank" rel="noopener">Abrir em nova janela</a>
           <a className="btn btn-sm btn-outline-primary" href={pdfViewUrl} target="_blank" rel="noopener">Ver PDF</a>
           <a className="btn btn-sm btn-primary" href={pdfDownloadUrl}>Baixar PDF</a>
         </div>
       </Card.Header>
       <Card.Body className="p-0">
-        {error ? (
-          <Alert variant="danger" className="m-3">Falha ao carregar o preview: {(error as Error).message}</Alert>
-        ) : (
-          <iframe
-            title="Preview do relatório"
-            srcDoc={data?.html ?? ""}
-            sandbox="allow-scripts allow-modals"
-            referrerPolicy="same-origin"
-            style={{ width: "100%", height: "80vh", border: "none", background: "#fff" }}
-          />
-        )}
+        <iframe
+          key={previewUrl}
+          title="Preview do relatório"
+          src={previewUrl}
+          sandbox="allow-scripts allow-modals allow-same-origin"
+          referrerPolicy="same-origin"
+          onLoad={() => setIsLoading(false)}
+          style={{ width: "100%", height: "80vh", border: "none", background: "#fff" }}
+        />
       </Card.Body>
     </Card>
   );

@@ -67,6 +67,9 @@ export default function DemandScheduledPage() {
 
   const selectedIdsOf = (group: SgDemandGroup) => pendingOrderIds(group).filter((id) => selected[id]);
 
+  // Sem técnico não há OS: a equipe é obrigatória (o backend também recusa — SG_DEMAND_NO_TECHNICIAN).
+  const hasTeam = (group: SgDemandGroup) => group.technicians.length > 0;
+
   const generate = useMutation({
     mutationFn: (payload: Array<{ groupKey: string; orderIds: number[] }>) => generateDemands(payload),
     onSuccess: (data) => {
@@ -125,18 +128,23 @@ export default function DemandScheduledPage() {
 
   const generateGroup = (group: SgDemandGroup) => {
     const orderIds = selectedIdsOf(group);
-    if (!orderIds.length) return;
+    if (!orderIds.length || !hasTeam(group)) return;
     generate.mutate([{ groupKey: group.groupKey, orderIds }]);
   };
 
   const generateAll = () => {
     const payload = groups
+      .filter(hasTeam)
       .map((group) => ({ groupKey: group.groupKey, orderIds: selectedIdsOf(group) }))
       .filter((group) => group.orderIds.length > 0);
     if (payload.length) generate.mutate(payload);
   };
 
-  const pendingTotal = groups.reduce((total, group) => total + selectedIdsOf(group).length, 0);
+  // Grupos sem equipe não entram no lote — o total reflete só o que é gerável.
+  const pendingTotal = groups.reduce(
+    (total, group) => total + (hasTeam(group) ? selectedIdsOf(group).length : 0),
+    0
+  );
   const resultOf = (groupKey: string) => results.find((result) => result.groupKey === groupKey);
 
   return (
@@ -279,7 +287,13 @@ export default function DemandScheduledPage() {
                   </a>
                 )}
                 {selectable.length > 0 && (
-                  <Button size="sm" variant="outline-primary" disabled={!chosen.length || generate.isPending} onClick={() => generateGroup(group)}>
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    disabled={!chosen.length || !hasTeam(group) || generate.isPending}
+                    title={!hasTeam(group) ? "Adicione ao menos um técnico à equipe para gerar a OS." : undefined}
+                    onClick={() => generateGroup(group)}
+                  >
                     Gerar OS ({chosen.length} {chosen.length === 1 ? "OM" : "OMs"})
                   </Button>
                 )}
@@ -327,6 +341,11 @@ export default function DemandScheduledPage() {
                   ))}
                 </tbody>
               </Table>
+              {selectable.length > 0 && !hasTeam(group) && (
+                <Alert variant="warning" className="m-3 mb-0 py-2 small">
+                  Adicione ao menos um técnico à equipe para gerar a OS deste grupo.
+                </Alert>
+              )}
               {groupError[group.groupKey] && (
                 <Alert variant="danger" className="m-3 mb-0 py-2 small">{groupError[group.groupKey]}</Alert>
               )}

@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-b
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 
 const PAGE_SIZE = 20;
 import {
@@ -148,7 +149,7 @@ export default function ClientsPage() {
         <h2 className="h5 mb-0">SentinelGrid · Clientes</h2>
         <div className="d-flex align-items-center gap-3">
           <Button size="sm" variant="outline-primary" onClick={() => openImport(null)}>
-            Buscar do Service Report
+            <span className="d-inline-flex align-items-center gap-1"><SgIcon name="import-report" size={17} />Buscar do Service Report</span>
           </Button>
           <Link to="/sentinelgrid" className="small">← Início do módulo</Link>
         </div>
@@ -186,7 +187,9 @@ export default function ClientsPage() {
               </Form.Select>
             </div>
             <div className="col-md-1 d-grid">
-              <Button type="submit" disabled={mCreate.isPending || !novo.name.trim()}>Add</Button>
+              <Button type="submit" disabled={mCreate.isPending || !novo.name.trim()} aria-label="Adicionar cliente" title="Adicionar cliente">
+                <SgIcon name="new-client" size={19} />
+              </Button>
             </div>
           </Form>
         </Card.Body>

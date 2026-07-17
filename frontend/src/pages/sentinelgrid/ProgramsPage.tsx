@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-b
 import { Link, useNavigate } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 
 const PAGE_SIZE = 20;
 import { listContracts } from "../../api/sentinelgrid/contracts";
@@ -166,8 +167,8 @@ export default function ProgramsPage() {
         </div>
         <div className="d-flex gap-2">
           <Link to="/sentinelgrid" className="btn btn-outline-secondary btn-sm">Inicio</Link>
-          <Link to="/sentinelgrid/assets" className="btn btn-outline-primary btn-sm">Assets</Link>
-          <Button size="sm" onClick={openNew}>Novo programa</Button>
+          <Link to="/sentinelgrid/assets" className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"><SgIcon name="assets" size={17} />Assets</Link>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-program" size={17} />Novo programa</Button>
         </div>
       </div>
 
@@ -240,10 +241,10 @@ export default function ProgramsPage() {
                   <td><Badge bg={p.active ? "success" : "secondary"}>{p.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                      <IconAction icon="program_assets" label="Assets" variant="outline-primary" onClick={() => navigate(`/sentinelgrid/assets?program=${p.id}`)} />
-                      <IconAction icon="generate_plans" label={p.contract_id ? "Gerar planos" : "Defina um contrato antes de gerar planos"} variant="outline-primary" disabled={!p.active || !p.contract_id} onClick={() => setGenProgram(p)} />
-                      <IconAction icon="edit_record" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
-                      <IconAction icon="delete_record" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o programa "${p.name}"?\n\nIsso também exclui os planos vinculados e as ordens geradas a partir deles. Se o programa for usado por equipamentos de mais de um cliente, a exclusão é bloqueada.`)) mDelete.mutate(p.id); }} />
+                      <IconAction icon="assets" label="Assets" variant="outline-primary" onClick={() => navigate(`/sentinelgrid/assets?program=${p.id}`)} />
+                      <IconAction icon="generate-by-plan" label={p.contract_id ? "Gerar planos" : "Defina um contrato antes de gerar planos"} variant="outline-primary" disabled={!p.active || !p.contract_id} onClick={() => setGenProgram(p)} />
+                      <IconAction icon="pencil" label="Editar" variant="outline-secondary" onClick={() => openEdit(p)} />
+                      <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o programa "${p.name}"?\n\nIsso também exclui os planos vinculados e as ordens geradas a partir deles. Se o programa for usado por equipamentos de mais de um cliente, a exclusão é bloqueada.`)) mDelete.mutate(p.id); }} />
                     </div>
                   </td>
                 </tr>

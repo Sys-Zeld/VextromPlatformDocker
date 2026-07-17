@@ -1,5 +1,6 @@
 import { Button, OverlayTrigger, Tooltip } from "react-bootstrap";
 import SgIcon, { isSgIconName } from "./sentinelgrid/SgIcon";
+import type { SgIconName } from "./sentinelgrid/SgIcon";
 
 type IconActionProps = { icon: string; label: string } & Record<string, unknown>;
 
@@ -31,14 +32,31 @@ const MATERIAL_SYMBOL_BY_ACTION: Record<string, string> = {
   expand_less_action: "keyboard_arrow_up"
 };
 
+const SG_ICON_BY_ACTION: Record<string, SgIconName> = {
+  edit_record: "pencil",
+  delete_record: "trash",
+  checklist_items: "manage-items",
+  execute_checklist: "execute-checklist",
+  technical_execution: "technical-execution",
+  change_status: "change-status",
+  approve_shutdown: "approve-shutdown",
+  save_item: "save",
+  program_assets: "assets",
+  generate_plans: "generate-by-plan",
+  edit_plan_action: "edit-plan",
+  delete_plan_action: "delete-plan",
+  qr_code_2: "qr-code"
+};
+
 export default function IconAction({ icon, label, ...rest }: IconActionProps) {
   const materialIcon = MATERIAL_SYMBOL_BY_ACTION[icon] ?? icon;
+  const sgIcon = SG_ICON_BY_ACTION[icon] ?? (isSgIconName(icon) ? icon : null);
 
   return (
     <OverlayTrigger placement="top" overlay={<Tooltip>{label}</Tooltip>}>
-      <Button size="sm" className="vx-icon-btn" aria-label={label} title={label} {...rest}>
-        {isSgIconName(icon) ? (
-          <SgIcon name={icon} size={18} className="sg-icon--mono" />
+      <Button size="sm" className="vx-icon-btn btn-no-icon" aria-label={label} title={label} {...rest}>
+        {sgIcon ? (
+          <SgIcon name={sgIcon} size={29} />
         ) : (
           <span className="material-symbols-outlined" aria-hidden="true">{materialIcon}</span>
         )}

@@ -101,10 +101,6 @@ export function getReportEditor(id: number) {
   return api<ReportEditorPayload>(`/orders/${id}/report-editor`);
 }
 
-export function getReportPreviewHtml(id: number, templateKey: string) {
-  return api<{ html: string; templateKey: string }>(`/orders/${id}/preview-html?templateKey=${encodeURIComponent(templateKey)}`);
-}
-
 // URL (same-origin/proxied) para abrir o preview em nova janela — devolve HTML puro.
 export function reportPreviewHtmlUrl(id: number, templateKey: string): string {
   return `${API_BASE}/orders/${id}/preview-html?templateKey=${encodeURIComponent(templateKey)}&format=html`;

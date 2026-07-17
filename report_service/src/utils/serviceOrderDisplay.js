@@ -48,6 +48,13 @@ function formatServiceOrderDisplay(rawCode, rawYear) {
   return `OS:${number}`;
 }
 
+function formatServiceOrderColumnNumber(rawCode, rawYear) {
+  const { sequence, year } = parseOrderCode(rawCode, rawYear);
+  const shortYear = year ? String(year).slice(-2) : "";
+  if (!sequence || !shortYear) return "-";
+  return `OS-${String(sequence).padStart(4, "0")}-${shortYear}`;
+}
+
 function withServiceOrderDisplay(order) {
   if (!order || typeof order !== "object") return order;
   const number = formatServiceOrderNumber(order.service_order_code, order.year);
@@ -61,5 +68,6 @@ function withServiceOrderDisplay(order) {
 module.exports = {
   formatServiceOrderNumber,
   formatServiceOrderDisplay,
+  formatServiceOrderColumnNumber,
   withServiceOrderDisplay
 };

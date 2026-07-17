@@ -63,7 +63,12 @@ const SENTINELGRID_PROGRAM_NAV: NavEntry[] = [
   { to: "/sentinelgrid/maintenance-orders", label: "Ordens", icon: "orders" },
   { key: "generate-demand", label: "Gerar Demanda", icon: "groups", children: SENTINELGRID_DEMAND_NAV },
   { to: "/sentinelgrid/checklists", label: "Checklists", icon: "checklist" },
-  { to: "/sentinelgrid/assets", label: "Assets", icon: "new-doc" }
+  { to: "/sentinelgrid/assets", label: "Assets", icon: "assets" }
+];
+
+const SENTINELGRID_AUDITOR_NAV: NavItem[] = [
+  { to: "/sentinelgrid/auditor/equipment", label: "Equipamento", icon: "equipment" },
+  { to: "/sentinelgrid/auditor/client", label: "Cliente", icon: "clients" }
 ];
 
 const SENTINELGRID_NAV: NavEntry[] = [
@@ -74,6 +79,7 @@ const SENTINELGRID_NAV: NavEntry[] = [
   { to: "/sentinelgrid/equipment", label: "Equipamentos", icon: "equipment" },
   { to: "/sentinelgrid/management", label: "Contratos & Gestores", icon: "contract" },
   { key: "maintenance-program", label: "Programa de manutenção", icon: "program", children: SENTINELGRID_PROGRAM_NAV },
+  { key: "auditor", label: "Auditor", icon: "checklist", children: SENTINELGRID_AUDITOR_NAV },
   { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar" },
   { to: "/sentinelgrid/schedule", label: "Cronograma", icon: "year" },
   { to: "/sentinelgrid/alerts", label: "Alertas", icon: "alerts" },

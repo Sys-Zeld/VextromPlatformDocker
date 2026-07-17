@@ -1,5 +1,5 @@
 import { confirmDialog } from "../../components/ConfirmDialog";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { Link, useSearchParams } from "react-router-dom";
@@ -8,6 +8,7 @@ import Pager from "../../components/sentinelgrid/Pager";
 import SgIcon from "../../components/sentinelgrid/SgIcon";
 import { formatDate } from "../../utils/format";
 import { listClients } from "../../api/sentinelgrid/clients";
+import { listSites } from "../../api/sentinelgrid/sites";
 import { listEquipment, SgEquipment } from "../../api/sentinelgrid/equipment";
 import { getEquipmentPlan, listEquipmentPlans } from "../../api/sentinelgrid/plans";
 import { listChecklists } from "../../api/sentinelgrid/checklists";
@@ -208,6 +209,7 @@ export default function MaintenanceOrdersPage() {
   const openedOrderRef = useRef<number | null>(null);
   const [search, setSearch] = useState("");
   const [clientId, setClientId] = useState<number | "">("");
+  const [siteId, setSiteId] = useState<number | "">("");
   const [status, setStatus] = useState("");
   const [maintenanceType, setMaintenanceType] = useState("");
   const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
@@ -247,10 +249,12 @@ export default function MaintenanceOrdersPage() {
   const params = useMemo(() => ({
     search,
     clientId: clientId === "" ? undefined : clientId,
+    siteId: siteId === "" ? undefined : siteId,
     status,
     maintenanceType,
+    groupBySite: true,
     sortDirection: dateSort
-  }), [search, clientId, status, maintenanceType, dateSort]);
+  }), [search, clientId, siteId, status, maintenanceType, dateSort]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["sentinelgrid", "maintenance-orders", params, page],
@@ -258,6 +262,10 @@ export default function MaintenanceOrdersPage() {
     placeholderData: keepPreviousData
   });
   const clients = useQuery({ queryKey: ["sentinelgrid", "clients"], queryFn: () => listClients() });
+  const sites = useQuery({
+    queryKey: ["sentinelgrid", "sites", "order-filter", clientId],
+    queryFn: () => listSites({ clientId: clientId === "" ? undefined : clientId, pageSize: 100 })
+  });
   const equipment = useQuery({ queryKey: ["sentinelgrid", "equipment", "order-select"], queryFn: () => listEquipment({ pageSize: 100 }) });
   const plans = useQuery({ queryKey: ["sentinelgrid", "plans", "order-select"], queryFn: () => listEquipmentPlans({ active: true }) });
   const checklists = useQuery({ queryKey: ["sentinelgrid", "checklists", "order-select"], queryFn: () => listChecklists({ active: true }) });
@@ -361,6 +369,24 @@ export default function MaintenanceOrdersPage() {
   const mLinkServiceReport = useMutation({ mutationFn: () => linkServiceReport(selectedOrder!.id, Number(serviceReportId)), onSuccess: (result) => { setServiceReportId(""); refreshReports(); setInfoMsg(result.reused ? "Relatório já estava vinculado." : "Relatório do Service Report vinculado."); }, onError });
 
   const orders = data?.orders ?? [];
+  const orderGroups = useMemo(() => {
+    const groups = new Map<number, { siteId: number; siteName: string; clientName: string; orders: SgMaintenanceOrder[] }>();
+    orders.forEach((order) => {
+      const key = Number(order.site_id);
+      const current = groups.get(key);
+      if (current) {
+        current.orders.push(order);
+        return;
+      }
+      groups.set(key, {
+        siteId: key,
+        siteName: order.site_name || `Site #${key}`,
+        clientName: order.client_name || "-",
+        orders: [order]
+      });
+    });
+    return Array.from(groups.values());
+  }, [orders]);
   const saving = mCreate.isPending || mUpdate.isPending;
 
   useEffect(() => {
@@ -398,16 +424,6 @@ export default function MaintenanceOrdersPage() {
     setFromPlanForm({ ...EMPTY_FROM_PLAN });
     setActionError(null);
     setShowFromPlan(true);
-  };
-
-  const openPreSchedule = () => {
-    const activeIds = (technicians.data?.technicians || [])
-      .filter((technician) => technician.active !== false)
-      .map((technician) => Number(technician.id));
-    setPreScheduleTechnicianIds(activeIds);
-    setPreSchedulePreview(null);
-    setPreScheduleError(null);
-    setShowPreSchedule(true);
   };
 
   const togglePreScheduleTechnician = (technicianId: number) => {
@@ -559,9 +575,6 @@ export default function MaintenanceOrdersPage() {
         <div className="d-flex gap-2 flex-wrap">
           <Link to="/sentinelgrid/plans" className="btn btn-outline-secondary btn-sm">Planos</Link>
           <Button size="sm" variant="outline-primary" onClick={openFromPlan}>Gerar por plano</Button>
-          <Button size="sm" variant="outline-success" onClick={openPreSchedule} disabled={technicians.isLoading} className="d-inline-flex align-items-center gap-1">
-            <SgIcon name="calendar" size={16} className="sg-icon--mono" />Agendar OM
-          </Button>
           <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Nova OM</Button>
         </div>
       </div>
@@ -569,15 +582,30 @@ export default function MaintenanceOrdersPage() {
       <Card>
         <Card.Body>
           <div className="row g-2 align-items-end">
-            <div className="col-md-4">
+            <div className="col-md-3">
               <Form.Label>Busca</Form.Label>
               <Form.Control value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Numero, TAG ou escopo" />
             </div>
-            <div className="col-md-3">
+            <div className="col-md-2">
               <Form.Label>Cliente</Form.Label>
-              <Form.Select value={clientId} onChange={(e) => { setClientId(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
+              <Form.Select value={clientId} onChange={(e) => {
+                setClientId(e.target.value ? Number(e.target.value) : "");
+                setSiteId("");
+                setPage(1);
+              }}>
                 <option value="">Todos</option>
                 {(clients.data?.clients || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Form.Select>
+            </div>
+            <div className="col-md-2">
+              <Form.Label>Site</Form.Label>
+              <Form.Select value={siteId} onChange={(e) => { setSiteId(e.target.value ? Number(e.target.value) : ""); setPage(1); }}>
+                <option value="">Todos</option>
+                {(sites.data?.sites || []).map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {clientId === "" && site.client_name ? `${site.client_name} / ` : ""}{site.name}
+                  </option>
+                ))}
               </Form.Select>
             </div>
             <div className="col-md-2">
@@ -595,7 +623,7 @@ export default function MaintenanceOrdersPage() {
               </Form.Select>
             </div>
             <div className="col-md-1 d-grid">
-              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); setStatus(""); setMaintenanceType(""); setPage(1); }}>Limpar</Button>
+              <Button variant="outline-secondary" onClick={() => { setSearch(""); setClientId(""); setSiteId(""); setStatus(""); setMaintenanceType(""); setPage(1); }}>Limpar</Button>
             </div>
           </div>
         </Card.Body>
@@ -626,10 +654,26 @@ export default function MaintenanceOrdersPage() {
             </th><th>Escopo</th><th className="text-end">Acoes</th></tr></thead>
             <tbody>
               {orders.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhuma OM cadastrada.</td></tr>}
-              {orders.map((order) => {
-                const meta = statusMeta(order.status);
-                return (
-                  <tr key={order.id}>
+              {orderGroups.map((group) => (
+                <Fragment key={group.siteId}>
+                  <tr className="sg-orders-site-group">
+                    <td colSpan={7}>
+                      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div className="d-flex align-items-center gap-2">
+                          <SgIcon name="site" size={20} className="sg-icon--mono" />
+                          <strong>{group.siteName}</strong>
+                          <span className="text-muted">· {group.clientName}</span>
+                        </div>
+                        <span className="small text-muted">
+                          {new Set(group.orders.map((order) => Number(order.equipment_id))).size} equipamento(s) · {group.orders.length} OM(s)
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                  {group.orders.map((order) => {
+                    const meta = statusMeta(order.status);
+                    return (
+                      <tr key={order.id}>
                     <td>
                       <div className="fw-semibold">{order.order_number}</div>
                       <div className="small text-muted">{order.priority || "normal"}</div>
@@ -644,19 +688,21 @@ export default function MaintenanceOrdersPage() {
                     <td>{order.scope || order.plan_name || order.checklist_name || "-"}</td>
                     <td className="text-end">
                       <div className="vx-actions justify-content-end">
-                        <IconAction icon="execute_checklist" label="Executar checklist" variant="outline-success" disabled={!order.checklist_id} onClick={() => openChecklist(order)} />
-                        <IconAction icon="technical_execution" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
-                        <IconAction icon="change_status" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
+                        <IconAction icon="execute-checklist" label="Executar checklist" variant="outline-success" disabled={!order.checklist_id} onClick={() => openChecklist(order)} />
+                        <IconAction icon="technical-execution" label="Execucao tecnica" variant="outline-success" onClick={() => openExecution(order)} />
+                        <IconAction icon="change-status" label="Alterar status" variant="outline-primary" disabled={mTransition.isPending} onClick={() => openTransition(order)} />
                         {order.maintenance_type === "preventiva_com_parada" && (
-                          <IconAction icon="approve_shutdown" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
+                          <IconAction icon="approve-shutdown" label="Aprovar parada" variant="outline-success" disabled={mApproval.isPending} onClick={() => openApproval(order)} />
                         )}
-                        <IconAction icon="edit_record" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
-                        <IconAction icon="delete_record" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
+                        <IconAction icon="pencil" label="Editar" variant="outline-secondary" disabled={loadingEdit} onClick={() => openEdit(order)} />
+                        <IconAction icon="trash" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OM "${order.order_number}"?`)) mDelete.mutate(order.id); }} />
                       </div>
                     </td>
                   </tr>
-                );
-              })}
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </Table>
         )}
@@ -872,7 +918,7 @@ export default function MaintenanceOrdersPage() {
                       <td><Form.Control size="sm" value={draft.value} onChange={(e) => setChecklistDraft(item.checklist_item_id, { value: e.target.value })} /></td>
                       <td><Form.Control size="sm" value={draft.notes} onChange={(e) => setChecklistDraft(item.checklist_item_id, { notes: e.target.value })} /></td>
                       <td className="text-end">
-                        <IconAction icon="save_item" label="Salvar item" variant="outline-primary" disabled={mSaveChecklist.isPending} onClick={() => saveChecklistItem(item.checklist_item_id)} />
+                        <IconAction icon="save" label="Salvar item" variant="outline-primary" disabled={mSaveChecklist.isPending} onClick={() => saveChecklistItem(item.checklist_item_id)} />
                       </td>
                     </tr>
                   );

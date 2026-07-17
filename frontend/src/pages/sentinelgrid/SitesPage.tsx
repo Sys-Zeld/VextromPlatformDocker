@@ -5,6 +5,7 @@ import { Alert, Button, Card, Form, Modal, Spinner, Tab, Table, Tabs } from "rea
 import { Link } from "react-router-dom";
 import IconAction from "../../components/IconAction";
 import Pager from "../../components/sentinelgrid/Pager";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 
 const PAGE_SIZE = 20;
 import { listClients } from "../../api/sentinelgrid/clients";
@@ -248,7 +249,9 @@ export default function SitesPage() {
               <Form.Control value={novo.location} onChange={(e) => setNovo({ ...novo, location: e.target.value })} />
             </div>
             <div className="col-md-1 d-grid">
-              <Button type="submit" disabled={mCreate.isPending || !novo.clientId || !novo.name.trim()}>Add</Button>
+              <Button type="submit" disabled={mCreate.isPending || !novo.clientId || !novo.name.trim()} aria-label="Adicionar site" title="Adicionar site">
+                <SgIcon name="new-site" size={19} />
+              </Button>
             </div>
           </Form>
         </Card.Body>

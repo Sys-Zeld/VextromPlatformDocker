@@ -71,16 +71,20 @@ function defaultStatus(input) {
 
 async function nextOrderNumber(client) {
   const seq = (await client.query("SELECT nextval('sg_maintenance_order_number_seq') AS n")).rows[0].n;
-  return `SG-${new Date().getFullYear()}-${String(seq).padStart(5, "0")}`;
+  // Formato OM-XXXXX-YY: sequência de 5 dígitos + ano com 2 dígitos (ex.: OM-00767-26).
+  const year2 = String(new Date().getFullYear()).slice(-2);
+  return `OM-${String(seq).padStart(5, "0")}-${year2}`;
 }
 
 async function listOrders({
   equipmentId = null,
   clientId = null,
+  siteId = null,
   planId = null,
   status = "",
   maintenanceType = "",
   search = "",
+  groupBySite = false,
   sortDirection = "",
   limit = 100,
   offset = 0
@@ -93,6 +97,7 @@ async function listOrders({
   };
   if (equipmentId) add("o.equipment_id = $?", equipmentId);
   if (clientId) add("o.client_id = $?", clientId);
+  if (siteId) add("o.site_id = $?", siteId);
   if (planId) add("o.plan_id = $?", planId);
   if (status) add("o.status = $?", status);
   if (maintenanceType) add("o.maintenance_type = $?", maintenanceType);
@@ -107,9 +112,12 @@ async function listOrders({
   params.push(offset);
   const offIdx = params.length;
   const normalizedSortDirection = sortDirection === "asc" ? "ASC" : sortDirection === "desc" ? "DESC" : "";
-  const orderBy = normalizedSortDirection
+  const dateOrder = normalizedSortDirection
     ? `o.planned_date ${normalizedSortDirection} NULLS LAST, o.id ${normalizedSortDirection}`
     : "COALESCE(o.planned_date, o.created_at::date) DESC, o.id DESC";
+  const orderBy = groupBySite
+    ? `LOWER(c.name) ASC, LOWER(s.name) ASC, ${dateOrder}`
+    : dateOrder;
   const orders = (
     await pool.query(
       `SELECT ${SELECT_COLS} ${BASE_FROM}

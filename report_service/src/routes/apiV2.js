@@ -158,6 +158,8 @@ function createReportServiceV2Router(deps) {
 
   // Estilos de tabela (status + reset)
   router.get("/table-styles", asyncHandler(controller.listTableStyles));
+  router.post("/table-styles/:tableType/style-ai", asyncHandler(controller.tableStyleAi));
+  router.post("/table-styles/:tableType/style-reset", asyncHandler(controller.resetTableStyleWithPreview));
   router.post("/table-styles/:tableType/reset", asyncHandler(controller.resetTableStyle));
 
   // Histórico de PDFs por OS

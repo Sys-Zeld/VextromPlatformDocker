@@ -55,10 +55,12 @@ function createMaintenanceOrdersRouter(deps) {
       const { orders, total } = await repo.listOrders({
         equipmentId: Number(req.query.equipmentId) || null,
         clientId: Number(req.query.clientId) || null,
+        siteId: Number(req.query.siteId) || null,
         planId: Number(req.query.planId) || null,
         status: String(req.query.status || "").trim(),
         maintenanceType: String(req.query.maintenanceType || "").trim(),
         search: String(req.query.search || "").trim(),
+        groupBySite: String(req.query.groupBySite || "").toLowerCase() === "true",
         sortDirection: ["asc", "desc"].includes(requestedSortDirection) ? requestedSortDirection : "",
         limit: pageSize,
         offset: (page - 1) * pageSize

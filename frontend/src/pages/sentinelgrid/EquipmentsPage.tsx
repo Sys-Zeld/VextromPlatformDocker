@@ -320,9 +320,9 @@ export default function EquipmentsPage() {
                   <td><Badge bg={sm.variant}>{sm.label}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="qr_code_2" label="QR Code" variant="outline-primary" onClick={() => setQrEquipment(e)} />
-                      <IconAction icon="edit_record" label="Editar equipamento" variant="outline-secondary" onClick={() => openEdit(e)} />
-                      <IconAction icon="delete_record" label="Excluir equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
+                      <IconAction icon="qr-code" label="QR Code" variant="outline-primary" onClick={() => setQrEquipment(e)} />
+                      <IconAction icon="pencil" label="Editar equipamento" variant="outline-secondary" onClick={() => openEdit(e)} />
+                      <IconAction icon="trash" label="Excluir equipamento" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.tag || e.id}"?`)) mDelete.mutate(e.id); }} />
                     </div>
                   </td>
                 </tr>

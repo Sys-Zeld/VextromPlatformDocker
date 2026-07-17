@@ -182,6 +182,9 @@ if (env.moduleSpecEnabled) {
 }
 
 const app = express();
+// Não revelar o framework/servidor (fingerprinting). Helmet já remove por padrão; explícito por
+// defesa em profundidade.
+app.disable("x-powered-by");
 app.set("view engine", "ejs");
 app.set("views", [
   path.join(process.cwd(), "views"),
@@ -202,6 +205,11 @@ const cspDirectives = {
   imgSrc: ["'self'", "data:", "https://vextrom.com.br"],
   fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
   connectSrc: ["'self'"],
+  // Tightening que NÃO depende de inline (não afeta os scripts/estilos inline do EJS legado):
+  // workers só do próprio host (+blob para libs), manifest/mídia só self, nada de plugins.
+  workerSrc: ["'self'", "blob:"],
+  manifestSrc: ["'self'"],
+  mediaSrc: ["'self'"],
   upgradeInsecureRequests: appUsesHttps ? [] : null
 };
 
@@ -243,7 +251,38 @@ if (env.reactAppEnabled) {
   // "flash" da UI); chamadas fetch recebem 401. Gate aplicado ao estático e ao
   // fallback de rotas do SPA.
   app.use("/app", requireAdminAuth);
-  app.use("/app", express.static(frontendDist));
+  // CSP ESTRITA só para o SPA (sobrescreve a global do Helmet nas respostas /app). O bundle Vite
+  // não tem <script> inline (verificado no dist/index.html) → script-src pode ser 'self' puro,
+  // fechando a brecha de XSS por script injetado. style-src mantém 'unsafe-inline' porque o React
+  // aplica estilos via atributo style=; sem isso a UI quebra. Nenhum jsdelivr aqui (o SPA não usa).
+  const SPA_CSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: https://vextrom.com.br",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'"
+  ].join("; ");
+  app.use("/app", (req, res, next) => {
+    res.setHeader("Content-Security-Policy", SPA_CSP);
+    next();
+  });
+  app.use("/app", express.static(frontendDist, {
+    setHeaders: (res, filePath) => {
+      if (
+        process.env.NODE_ENV === "development"
+        || path.basename(filePath) === "index.html"
+      ) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      }
+    }
+  }));
   app.get("/app/*", requireAdminAuth, (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
 }
 app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
@@ -5324,6 +5363,23 @@ app.post("/admin/seed-annexd", csrfProtection, requireAdminAuth, asyncHandler(as
   await seedAnnexDFields({ overwrite: true });
   res.redirect("/admin/fields?saved=1");
 }));
+
+// Blindagem da API JSON do SPA (/admin/api/v2/*): rate-limit generoso por IP — defesa em
+// profundidade contra abuso/scraping/brute-force de ações (a API já exige sessão admin), sem
+// atrapalhar o uso normal (React Query dispara vários GETs por tela). `trust proxy=1` garante o
+// IP real do cliente atrás do Nginx. `no-store` evita cache de payloads sensíveis em proxies.
+const apiV2Limiter = createResettableRateLimit("api-v2", {
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) =>
+    res.status(429).json({ error: "Muitas requisições. Tente novamente em instantes.", errorCode: "RATE_LIMITED" })
+});
+app.use("/admin/api/v2", apiV2Limiter, (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 if (env.reportServiceEnabled) {
   registerReportService(app, {

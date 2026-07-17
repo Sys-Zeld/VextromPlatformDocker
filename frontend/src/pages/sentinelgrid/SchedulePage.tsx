@@ -153,7 +153,7 @@ export default function SchedulePage() {
     return () => { document.title = previousTitle; };
   }, [periodTitle, standalone]);
 
-  const openFullscreen = () => {
+  const currentFilterQuery = useMemo(() => {
     const query = new URLSearchParams({
       period: periodView,
       year: String(year),
@@ -164,7 +164,18 @@ export default function SchedulePage() {
     if (siteId !== "") query.set("siteId", String(siteId));
     if (equipmentId !== "") query.set("equipmentId", String(equipmentId));
     if (technicianId !== "") query.set("technicianId", String(technicianId));
-    window.open(`${fullscreenHref}?${query.toString()}`, "_blank", "noopener,noreferrer");
+    return query.toString();
+  }, [periodView, year, month, mode, clientId, siteId, equipmentId, technicianId]);
+
+  useEffect(() => {
+    if (!standalone) return;
+    const nextSearch = `?${currentFilterQuery}`;
+    if (location.search === nextSearch) return;
+    navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
+  }, [currentFilterQuery, location.pathname, location.search, navigate, standalone]);
+
+  const openFullscreen = () => {
+    window.open(`${fullscreenHref}?${currentFilterQuery}`, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -184,7 +195,7 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {!standalone && <Card className="sg-no-print">
+      <Card className="sg-no-print sg-schedule-filter-card">
         <Card.Body>
           <div className="row g-2 align-items-end sg-schedule-filters">
             <div className="col-md-2 sg-schedule-filter sg-schedule-filter--period">
@@ -233,7 +244,7 @@ export default function SchedulePage() {
             </div>}
           </div>
         </Card.Body>
-      </Card>}
+      </Card>
 
       {loading ? <div className="text-muted"><Spinner animation="border" size="sm" /> Gerando cronograma...</div>
         : queryError ? <Alert variant="danger">{(queryError as Error).message}</Alert>

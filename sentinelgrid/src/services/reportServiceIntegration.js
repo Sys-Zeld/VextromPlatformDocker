@@ -185,7 +185,7 @@ async function clearOrphanServiceOrderLinks({ orderIds = null } = {}, actor = ""
 
 // Título da OS: SEMPRE "Programa + OM(s)" — é assim que a operação identifica o trabalho.
 //
-//   PROGRAMA MANUT. PREVENTIVA SEM PARADA KN ACU - SG-2026-00767, SG-2026-00780
+//   PROGRAMA MANUT. PREVENTIVA SEM PARADA KN ACU - OM-00767-26, OM-00780-26
 //
 // O programa vem por OM.plan_id → sg_equipment_plans.program_id → sg_maintenance_programs.name.
 // Um grupo pode reunir OMs de programas diferentes (mesmo cliente/site/dia, planos distintos):
@@ -317,6 +317,23 @@ async function sendOrderGroupToReportService(orderIds, actor = "") {
       );
     }
 
+    // União dos técnicos das OMs pendentes — o mesmo técnico em duas OMs entra uma vez só na OS.
+    // Coletada ANTES de qualquer mutação no RS: sem técnico não há OS, e como o RS roda fora desta
+    // transação (bancos separados), criar a OS para só então falhar deixaria uma OS órfã no RS.
+    const techniciansRepo = require("../repositories/techniciansRepository");
+    const technicianIds = new Set();
+    for (const om of pending) {
+      for (const technician of await techniciansRepo.listOrderTechnicians(om.id)) {
+        technicianIds.add(Number(technician.id));
+      }
+    }
+    if (!technicianIds.size) {
+      throw integrationError(
+        "Defina ao menos um técnico para a equipe antes de gerar a OS.",
+        "SG_DEMAND_NO_TECHNICIAN"
+      );
+    }
+
     // Equipamentos das OMs pendentes — o cliente/site da OS vem daqui, não da OM.
     const equipmentById = new Map();
     for (const om of pending) {
@@ -374,14 +391,7 @@ async function sendOrderGroupToReportService(orderIds, actor = "") {
       await upsertLink(client, "equipment", eq.id, equipment.id);
     }
 
-    // União dos técnicos do grupo — o mesmo técnico em duas OMs entra uma vez só na OS.
-    const techniciansRepo = require("../repositories/techniciansRepository");
-    const technicianIds = new Set();
-    for (const om of pending) {
-      for (const technician of await techniciansRepo.listOrderTechnicians(om.id)) {
-        technicianIds.add(Number(technician.id));
-      }
-    }
+    // Técnicos do grupo (união já validada acima como não-vazia) → vinculados à OS.
     for (const technicianId of technicianIds) {
       const exported = await exportTechnicianToReportService(technicianId);
       await rs.linkTechnicianToOrder(rsOrder.id, exported.rsTechnicianId);

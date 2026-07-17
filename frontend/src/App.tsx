@@ -36,6 +36,8 @@ const SentinelAlertsPage = lazy(() => import("./pages/sentinelgrid/AlertsPage"))
 const SentinelHistoryPage = lazy(() => import("./pages/sentinelgrid/HistoryPage"));
 const SentinelDashboardPage = lazy(() => import("./pages/sentinelgrid/DashboardPage"));
 const SentinelRecommendationsPage = lazy(() => import("./pages/sentinelgrid/RecommendationsPage"));
+const SentinelAuditorEquipmentPage = lazy(() => import("./pages/sentinelgrid/AuditorEquipmentPage"));
+const SentinelAuditorClientPage = lazy(() => import("./pages/sentinelgrid/AuditorClientPage"));
 
 function RouteFallback() {
   return (
@@ -85,6 +87,8 @@ export default function App() {
           <Route path="/sentinelgrid/history" element={<SentinelHistoryPage />} />
           <Route path="/sentinelgrid/dashboard" element={<SentinelDashboardPage />} />
           <Route path="/sentinelgrid/recommendations" element={<SentinelRecommendationsPage />} />
+          <Route path="/sentinelgrid/auditor/equipment" element={<SentinelAuditorEquipmentPage />} />
+          <Route path="/sentinelgrid/auditor/client" element={<SentinelAuditorClientPage />} />
           <Route path="/config" element={<ConfigPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="*" element={<p className="text-muted">Pagina nao encontrada (SPA).</p>} />

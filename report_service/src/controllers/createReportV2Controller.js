@@ -17,6 +17,7 @@ const { parseAlberCsv } = require("../services/alberParserService");
 const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
 const { parseEventLogWorkbook } = require("../services/eventLogParser");
 const { COMPONENT_CATEGORIES } = require("../constants");
+const { formatServiceOrderColumnNumber } = require("../utils/serviceOrderDisplay");
 
 function jsonArr(v) {
   if (Array.isArray(v)) return v;
@@ -242,6 +243,11 @@ function setNoSniff(res) {
 function setFrameIsolationHeaders(res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://vextrom.com.br; font-src 'self' data:; connect-src 'self'"
+  );
 }
 
 function isPngDataUrl(value) {
@@ -449,6 +455,10 @@ function createReportServiceV2Controller(deps) {
       ]);
       const orderIds = orders.map((o) => Number(o.id)).filter((id) => Number.isInteger(id) && id > 0);
       const links = await repo.listOrderTechnicianLinks(orderIds);
+      const displayOrders = orders.map((order) => {
+        const osNumber = formatServiceOrderColumnNumber(order.service_order_code, order.year);
+        return { ...order, os_number: osNumber === "-" ? (order.os_number || null) : osNumber };
+      });
       const technicianIdsByOrder = links.reduce((acc, row) => {
         const orderId = Number(row.order_id);
         const techId = Number(row.technician_id);
@@ -456,7 +466,7 @@ function createReportServiceV2Controller(deps) {
         (acc[orderId] = acc[orderId] || []).push(techId);
         return acc;
       }, {});
-      return res.json({ orders, customers, sites, technicians, technicianIdsByOrder });
+      return res.json({ orders: displayOrders, customers, sites, technicians, technicianIdsByOrder });
     },
 
     async createOrder(req, res) {
@@ -1923,6 +1933,14 @@ ${bodyHtml}
     },
 
     // ---- Technician tools (por técnico) ---------------------------------
+    async tableStyleAi(req, res) {
+      return web().tableStyleAi(req, res);
+    },
+
+    async resetTableStyleWithPreview(req, res) {
+      return web().tableStyleReset(req, res);
+    },
+
     async listTechnicianTools(req, res) {
       const techId = Number(req.params.techId);
       const technician = await repo.getGlobalTechnicianById(techId);

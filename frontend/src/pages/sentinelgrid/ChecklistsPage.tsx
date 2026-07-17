@@ -239,7 +239,7 @@ export default function ChecklistsPage() {
         </div>
         <div className="d-flex gap-2">
           <Link to="/sentinelgrid" className="btn btn-outline-secondary btn-sm">Inicio</Link>
-          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-doc" size={16} className="sg-icon--mono" />Novo checklist</Button>
+          <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="new-checklist" size={17} />Novo checklist</Button>
         </div>
       </div>
 
@@ -297,9 +297,9 @@ export default function ChecklistsPage() {
                   <td><Badge bg={checklist.active ? "success" : "secondary"}>{checklist.active ? "Ativo" : "Inativo"}</Badge></td>
                   <td className="text-end">
                     <div className="vx-actions justify-content-end">
-                      <IconAction icon="checklist_items" label="Gerenciar itens" variant="outline-primary" onClick={() => openItems(checklist)} />
-                      <IconAction icon="edit_record" label="Editar checklist" variant="outline-secondary" onClick={() => openEdit(checklist)} />
-                      <IconAction icon="delete_record" label="Excluir checklist" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o checklist "${checklist.name}"?`)) mDelete.mutate(checklist.id); }} />
+                      <IconAction icon="manage-items" label="Gerenciar itens" variant="outline-primary" onClick={() => openItems(checklist)} />
+                      <IconAction icon="pencil" label="Editar checklist" variant="outline-secondary" onClick={() => openEdit(checklist)} />
+                      <IconAction icon="trash" label="Excluir checklist" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o checklist "${checklist.name}"?`)) mDelete.mutate(checklist.id); }} />
                     </div>
                   </td>
                 </tr>
@@ -480,8 +480,8 @@ export default function ChecklistsPage() {
                         <td>{item.required ? "Sim" : "Nao"}</td>
                         <td className="text-end">
                           <div className="vx-actions justify-content-end">
-                            <IconAction icon="edit_record" label="Editar item" variant="outline-secondary" onClick={() => editItem(item)} />
-                            <IconAction icon="delete_record" label="Excluir item" variant="outline-danger" disabled={mDeleteItem.isPending || !selectedId} onClick={async () => { if (selectedId && await confirmDialog(`Excluir o item "${item.title}"?`)) mDeleteItem.mutate({ checklistId: selectedId, itemId: item.id }); }} />
+                            <IconAction icon="pencil" label="Editar item" variant="outline-secondary" onClick={() => editItem(item)} />
+                            <IconAction icon="trash" label="Excluir item" variant="outline-danger" disabled={mDeleteItem.isPending || !selectedId} onClick={async () => { if (selectedId && await confirmDialog(`Excluir o item "${item.title}"?`)) mDeleteItem.mutate({ checklistId: selectedId, itemId: item.id }); }} />
                           </div>
                         </td>
                       </tr>

@@ -24,7 +24,7 @@ const CARDS: HomeCard[] = [
   { to: "/sentinelgrid/schedule", icon: "year", title: "Cronograma", desc: "Planilha anual estilo Planner" },
   { to: "/sentinelgrid/checklists", icon: "checklist", title: "Checklists", desc: "Templates de execução técnica" },
   { to: "/sentinelgrid/programs", icon: "program", title: "Programas", desc: "Planos e periodicidades" },
-  { to: "/sentinelgrid/assets", icon: "new-doc", title: "Assets", desc: "Manuais, plaquetas e checklists" },
+  { to: "/sentinelgrid/assets", icon: "assets", title: "Assets", desc: "Manuais, plaquetas e checklists" },
   { to: "/sentinelgrid/alerts", icon: "alerts", title: "Alertas", desc: "Pendências e corretivas em prazo" }
 ];
 

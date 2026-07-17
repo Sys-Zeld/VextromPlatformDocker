@@ -4,6 +4,8 @@ import type { Customer, Site } from "./customers";
 export interface Order {
   id: number;
   os_number: string | null;
+  service_order_code?: string | null;
+  year?: number | string | null;
   customer_id: number;
   customer_name: string;
   site_id: number | null;

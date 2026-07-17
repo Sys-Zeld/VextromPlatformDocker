@@ -45,7 +45,22 @@ export const SG_ICON_NAMES = [
   "pencil",
   "check",
   "status",
-  "save"
+  "save",
+  "assets",
+  "qr-code",
+  "manage-items",
+  "generate-by-plan",
+  "execute-checklist",
+  "technical-execution",
+  "change-status",
+  "approve-shutdown",
+  "new-client",
+  "new-site",
+  "new-program",
+  "new-plan",
+  "new-checklist",
+  "import-report",
+  "clear-selection"
 ] as const;
 
 export type SgIconName = (typeof SG_ICON_NAMES)[number];
@@ -395,6 +410,124 @@ const PATHS: Record<SgIconName, ReactNode> = {
       <path d="M5 4.5h11l3 3V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V6A1.5 1.5 0 0 1 5 4.5z" />
       <path d="M7 4.5v5h7v-5" />
       <rect className="sg-i-accent" x="7.5" y="13" width="9" height="4.5" rx="0.6" />
+    </>
+  ),
+  assets: (
+    <>
+      <path d="M12 3.3 7.8 5.7 12 8.1l4.2-2.4zM7.8 5.7 3.8 8 8 10.4l4-2.3M16.2 5.7 20.2 8 16 10.4l-4-2.3" />
+      <path d="M3.8 8v4.7L8 15.1l4-2.3V8.1M12 8.1v4.7l4 2.3 4.2-2.4V8" />
+      <path className="sg-i-accent" d="M8 15.1v4.4l4 2.2 4-2.2v-4.4L12 12.8z" />
+    </>
+  ),
+  "qr-code": (
+    <>
+      <path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
+      <rect x="6.5" y="6.5" width="3.5" height="3.5" />
+      <rect x="14" y="6.5" width="3.5" height="3.5" />
+      <rect x="6.5" y="14" width="3.5" height="3.5" />
+      <path className="sg-i-accent" d="M13.5 13.5h2v2h2v2h-4v-4zM12 9.8v2.1h2.2" />
+    </>
+  ),
+  "manage-items": (
+    <>
+      <path d="M5.5 7h1M5.5 12h1M5.5 17h1M9 7h6M9 12h5M9 17h4" />
+      <g className="sg-i-accent">
+        <circle cx="17.2" cy="16.5" r="2.6" />
+        <path d="M17.2 12.7v1.2M17.2 19.1v1.2M13.4 16.5h1.2M19.8 16.5H21M14.5 13.8l.9.9M19 18.3l.9.9M14.5 19.2l.9-.9M19 14.7l.9-.9" />
+      </g>
+    </>
+  ),
+  "generate-by-plan": (
+    <>
+      <path d="M6 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5zM13 3.5v4h4" />
+      <path className="sg-i-accent" d="M7.5 12h3v2.8h3v2.7h3M9 12v-1.7M13.5 14.8v-1.7M16.5 17.5v-1.7" />
+    </>
+  ),
+  "execute-checklist": (
+    <>
+      <rect x="5" y="4.5" width="12.5" height="16" rx="2" />
+      <rect x="8.5" y="2.7" width="5.5" height="3" rx="1.2" />
+      <path className="sg-i-accent" d="M7.5 10.5l1.1 1.1 1.9-2M7.5 15l1.1 1.1 1.9-2" />
+      <path d="M12 10.7h3M12 15.2h1.4" />
+      <circle className="sg-i-accent" cx="17.2" cy="17.2" r="3.2" />
+      <path className="sg-i-accent-fill" d="m16.3 15.6 2.4 1.6-2.4 1.6z" />
+    </>
+  ),
+  "technical-execution": (
+    <>
+      <circle cx="10" cy="7" r="3" />
+      <path d="M4.5 19.5v-.6c0-3.3 2.4-5.7 5.5-5.7 1.1 0 2.1.3 2.9.8" />
+      <path d="M6.6 5.5h6.8M8 3.8V3h4v.8" />
+      <path className="sg-i-accent" d="M19.2 13.2a2.8 2.8 0 0 0-3.5 3.5l-3 3a1.3 1.3 0 0 0 1.8 1.8l3-3a2.8 2.8 0 0 0 3.5-3.5l-1.8 1.8-1.6-1.6z" />
+    </>
+  ),
+  "change-status": (
+    <>
+      <circle cx="6" cy="6.5" r="1.5" />
+      <circle className="sg-i-accent" cx="6" cy="12" r="1.5" />
+      <circle cx="6" cy="17.5" r="1.5" />
+      <path d="M10 6.5h8M10 12h8M10 17.5h8" />
+    </>
+  ),
+  "approve-shutdown": (
+    <>
+      <path d="M12 3.2 19 6v5.2c0 4.5-2.9 7.8-7 9.2-4.1-1.4-7-4.7-7-9.2V6z" />
+      <path className="sg-i-accent" d="m8.2 11.8 2.5 2.5 5-5.2" />
+    </>
+  ),
+  "new-client": (
+    <>
+      <circle cx="9.2" cy="7.8" r="3.2" />
+      <path d="M3.5 19.5v-.6c0-3.2 2.5-5.4 5.7-5.4 1.8 0 3.3.7 4.3 1.8" />
+      <circle className="sg-i-accent" cx="17.4" cy="16.8" r="3.6" />
+      <path className="sg-i-accent" d="M17.4 14.8v4M15.4 16.8h4" />
+    </>
+  ),
+  "new-site": (
+    <>
+      <path d="M12 20.5s6.2-5.1 6.2-10.6a6.2 6.2 0 1 0-12.4 0c0 5.5 6.2 10.6 6.2 10.6z" />
+      <circle cx="12" cy="9.8" r="2.2" />
+      <path className="sg-i-accent" d="M15.7 18.8h5M18.2 16.3v5" />
+    </>
+  ),
+  "new-program": (
+    <>
+      <rect x="3.8" y="5" width="14.5" height="14.5" rx="2" />
+      <path d="M4.5 9.2h13.1M7.5 3v3.4M14.7 3v3.4" />
+      <circle className="sg-i-accent" cx="18.2" cy="17.8" r="3.3" />
+      <path className="sg-i-accent" d="M18.2 15.9v3.8M16.3 17.8h3.8" />
+    </>
+  ),
+  "new-plan": (
+    <>
+      <rect x="4.5" y="4.5" width="13" height="16" rx="2" />
+      <rect x="8" y="2.7" width="6" height="3" rx="1.2" />
+      <path d="M7.5 10.5h5.5M7.5 14h4.2" />
+      <circle className="sg-i-accent" cx="17.2" cy="16.7" r="3.3" />
+      <path className="sg-i-accent" d="M17.2 14.8v3.8M15.3 16.7h3.8" />
+    </>
+  ),
+  "new-checklist": (
+    <>
+      <rect x="4.5" y="4.5" width="13" height="16" rx="2" />
+      <rect x="8" y="2.7" width="6" height="3" rx="1.2" />
+      <path className="sg-i-accent" d="m7 10.5 1 1 1.8-2M7 14.6l1 1 1.8-2" />
+      <path d="M11.5 10.7h3M11.5 14.8h2" />
+      <circle className="sg-i-accent" cx="17.4" cy="17.1" r="3.1" />
+      <path className="sg-i-accent" d="M17.4 15.3v3.6M15.6 17.1h3.6" />
+    </>
+  ),
+  "import-report": (
+    <>
+      <path d="M6 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5zM13 3.5v4h4M7.5 11.5h5M7.5 15h3.5" />
+      <path className="sg-i-accent" d="M18.5 20.5v-8M15.5 15.5l3-3 3 3" />
+    </>
+  ),
+  "clear-selection": (
+    <>
+      <rect x="4" y="4" width="14" height="14" rx="2" strokeDasharray="2.5 2.5" />
+      <circle className="sg-i-accent" cx="17.7" cy="17.7" r="3.4" />
+      <path className="sg-i-accent" d="m16.3 16.3 2.8 2.8M19.1 16.3l-2.8 2.8" />
     </>
   )
 };

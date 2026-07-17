@@ -161,9 +161,11 @@ export function listMaintenanceOrders(params: {
   search?: string;
   equipmentId?: number;
   clientId?: number;
+  siteId?: number;
   planId?: number;
   status?: string;
   maintenanceType?: string;
+  groupBySite?: boolean;
   sortDirection?: "asc" | "desc";
   page?: number;
   pageSize?: number;

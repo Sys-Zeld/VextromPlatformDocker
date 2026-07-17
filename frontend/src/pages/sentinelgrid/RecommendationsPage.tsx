@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../../components/IconAction";
+import SgIcon from "../../components/sentinelgrid/SgIcon";
 import { listEquipment } from "../../api/sentinelgrid/equipment";
 import { listMaintenanceOrders } from "../../api/sentinelgrid/maintenanceOrders";
 import {
@@ -97,7 +98,7 @@ export default function RecommendationsPage() {
           <h2 className="h5 mb-1">SentinelGrid - Recomendacoes tecnicas</h2>
           <p className="text-muted mb-0 small">Pendencias tecnicas rastreaveis por equipamento, OM e relatorio.</p>
         </div>
-        <Button size="sm" onClick={openNew}>Nova recomendacao</Button>
+        <Button size="sm" onClick={openNew} className="d-inline-flex align-items-center gap-1"><SgIcon name="recommendations" size={17} />Nova recomendacao</Button>
       </div>
 
       <Card>
@@ -149,7 +150,7 @@ export default function RecommendationsPage() {
                   <td>{r.due_date || "-"}</td>
                   <td>{r.responsible || "-"}</td>
                   <td className="text-end">
-                    <IconAction icon="change_status" label="Alterar status" variant="outline-primary" onClick={() => { setSelected(r); setNextStatus(r.status); setStatusNotes(""); setError(null); }} />
+                    <IconAction icon="change-status" label="Alterar status" variant="outline-primary" onClick={() => { setSelected(r); setNextStatus(r.status); setStatusNotes(""); setError(null); }} />
                   </td>
                 </tr>
               ))}

@@ -454,6 +454,10 @@ body {
   padding: 0;
   line-height: 1;
 }
+.vx-icon-btn::before {
+  content: none !important;
+  display: none !important;
+}
 .vx-icon-btn .material-symbols-outlined { font-size: 18px; line-height: 1; }
 /* Linha de ações em ícone: nunca quebra/sobrepõe */
 .vx-actions { display: inline-flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
@@ -706,7 +710,11 @@ body {
   min-height: 0;
 }
 .sg-schedule-page--standalone .sg-schedule-scroll {
-  height: calc(100vh - 104px);
+  height: calc(100vh - 285px);
+  min-height: 320px;
+}
+.sg-schedule-page--standalone .sg-schedule-filter-card {
+  flex: 0 0 auto;
 }
 .sg-schedule-filters {
   display: grid;
@@ -735,7 +743,10 @@ body {
 
 @media (max-width: 767.98px) {
   .sg-schedule-page--standalone { padding: 12px; }
-  .sg-schedule-page--standalone .sg-schedule-scroll { height: calc(100vh - 132px); }
+  .sg-schedule-page--standalone .sg-schedule-scroll {
+    height: auto;
+    min-height: 420px;
+  }
   .sg-schedule-filters { grid-template-columns: minmax(0, 1fr); }
   .sg-schedule-filters > .sg-schedule-filter,
   .sg-schedule-filters > .sg-schedule-filter--period,
@@ -1231,8 +1242,8 @@ body {
 }
 .vx-icon-btn svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 29px;
+  height: 29px;
 }
 .vx-actions {
   align-items: center;
@@ -1243,6 +1254,148 @@ body {
 .table td:has(> .vx-actions) {
   width: 1%;
   min-width: 210px;
+}
+
+.sg-orders-site-group > td {
+  padding-block: 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface)) !important;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+}
+
+.table-style-card {
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+}
+
+.table-style-editor {
+  min-height: 560px;
+}
+
+.table-style-editor__preview {
+  min-height: 560px;
+  padding: 18px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--surface) 88%, #cbd5e1);
+  border-right: 1px solid var(--border);
+}
+
+.table-style-editor__preview-label,
+.table-style-editor__assistant-title {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.table-style-editor__frame {
+  width: 100%;
+  min-height: 500px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.table-style-editor__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.table-style-editor__assistant {
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.table-style-editor__assistant-title {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--primary);
+  border-bottom: 1px solid var(--border);
+}
+
+.table-style-editor__chat {
+  flex: 1;
+  min-height: 260px;
+  max-height: 365px;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.table-style-editor__bubble {
+  max-width: 90%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.table-style-editor__bubble--ai {
+  align-self: flex-start;
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.table-style-editor__bubble--user {
+  align-self: flex-end;
+  color: #fff;
+  background: var(--primary);
+}
+
+.table-style-editor__bubble--error {
+  align-self: flex-start;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.table-style-editor__suggestions {
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.table-style-editor__suggestions button {
+  padding: 4px 9px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.table-style-editor__input {
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 991.98px) {
+  .table-style-editor__preview {
+    min-height: 440px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-style-editor__frame {
+    min-height: 380px;
+  }
 }
 
 .vx-chapter-carousel {

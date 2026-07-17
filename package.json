@@ -1,12 +1,12 @@
 {
   "name": "VextromPlatform",
-  "version": "1.4.0",
+  "version": "1.5.1",
   "description": "System VextromPlatform",
   "moduleVersions": {
     "specflow": "beta",
     "module_spec": "0.0.1",
     "report_service": "0.2.1",
-    "sentinelgrid": "0.0.1"
+    "sentinelgrid": "0.1.0"
   },
   "moduleStatuses": {
     "specflow": "active",
