@@ -118,13 +118,39 @@ export interface SgHistoryEntry {
 }
 
 export interface SgDashboard {
+  period: { year: number; from: string; to: string };
   equipment: number;
-  orders: { total: number; done: number; corrective: number };
+  equipmentRisk: { critical: number; attention: number };
+  orders: {
+    total: number;
+    done: number;
+    open: number;
+    corrective: number;
+    overdue: number;
+    completionRate: number | null;
+  };
+  ordersByStatus: Array<{ key: string; value: number }>;
+  ordersByType: Array<{ key: string; value: number }>;
+  monthlyTrend: Array<{ month: string; planned: number; completed: number; corrective: number }>;
+  topClients: Array<{ id: number; name: string; value: number }>;
   overdue: number;
   equipmentWithoutPlan: number;
   events: number;
   associatedReports: number;
-  recommendations: { total: number; open: number; critical: number };
+  recommendations: { total: number; open: number; critical: number; overdue: number };
+  adherence: {
+    equipamentos: number;
+    esperadasPassado: number;
+    cumpridas: number;
+    noPrazo: number;
+    aproximado: number;
+    foraPrazo: number;
+    comPendencias: number;
+    emAberto: number;
+    lacunas: number;
+    adherenceRate: number | null;
+    executionRate: number | null;
+  };
 }
 
 function qs(params: Record<string, string | number | boolean | null | undefined>) {
@@ -190,6 +216,6 @@ export function listHistory(params: { equipmentId?: number; clientId?: number; s
   return api<{ history: SgHistoryEntry[] }>(`/sentinelgrid/history${qs(params)}`);
 }
 
-export function getDashboard(params: { clientId?: number } = {}) {
+export function getDashboard(params: { clientId?: number; year?: number } = {}) {
   return api<SgDashboard>(`/sentinelgrid/dashboard${qs(params)}`);
 }

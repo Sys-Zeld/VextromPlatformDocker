@@ -5,6 +5,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { toValidationError, isForeignKeyError } = require("./httpErrors");
 const repo = require("../repositories/operationsRepository");
+const auditRepo = require("../repositories/auditRepository");
 const {
   parseMeasurementInput,
   parseReplacedPartInput,
@@ -157,7 +158,18 @@ function createOperationsRouter(deps) {
   }));
 
   router.get("/dashboard", asyncHandler(async (req, res) => {
-    res.json(await repo.dashboard({ clientId: Number(req.query.clientId) || null }));
+    const clientId = Number(req.query.clientId) || null;
+    const requestedYear = Number(req.query.year);
+    const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2200
+      ? requestedYear
+      : new Date().getFullYear();
+    const from = `${year}-01-01`;
+    const to = `${year}-12-31`;
+    const [dashboard, audit] = await Promise.all([
+      repo.dashboard({ clientId, year }),
+      auditRepo.auditPortfolio({ clientId, from, to })
+    ]);
+    res.json({ ...dashboard, adherence: audit.aggregate });
   }));
 
   return router;

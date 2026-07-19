@@ -38,6 +38,9 @@ const SentinelDashboardPage = lazy(() => import("./pages/sentinelgrid/DashboardP
 const SentinelRecommendationsPage = lazy(() => import("./pages/sentinelgrid/RecommendationsPage"));
 const SentinelAuditorEquipmentPage = lazy(() => import("./pages/sentinelgrid/AuditorEquipmentPage"));
 const SentinelAuditorClientPage = lazy(() => import("./pages/sentinelgrid/AuditorClientPage"));
+const SentinelReportEquipmentSchedulePage = lazy(() => import("./pages/sentinelgrid/ReportEquipmentSchedulePage"));
+const SentinelReportTechnicianOrdersPage = lazy(() => import("./pages/sentinelgrid/ReportTechnicianOrdersPage"));
+const SentinelReportClientSchedulePage = lazy(() => import("./pages/sentinelgrid/ReportClientSchedulePage"));
 
 function RouteFallback() {
   return (
@@ -89,6 +92,9 @@ export default function App() {
           <Route path="/sentinelgrid/recommendations" element={<SentinelRecommendationsPage />} />
           <Route path="/sentinelgrid/auditor/equipment" element={<SentinelAuditorEquipmentPage />} />
           <Route path="/sentinelgrid/auditor/client" element={<SentinelAuditorClientPage />} />
+          <Route path="/sentinelgrid/reports/equipment-schedule" element={<SentinelReportEquipmentSchedulePage />} />
+          <Route path="/sentinelgrid/reports/technician-orders" element={<SentinelReportTechnicianOrdersPage />} />
+          <Route path="/sentinelgrid/reports/client-schedule" element={<SentinelReportClientSchedulePage />} />
           <Route path="/config" element={<ConfigPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="*" element={<p className="text-muted">Pagina nao encontrada (SPA).</p>} />

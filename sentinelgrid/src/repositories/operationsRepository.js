@@ -322,18 +322,99 @@ async function listCalendar({ year = new Date().getFullYear(), month = null, equ
   )).rows;
 }
 
-async function dashboard({ clientId = null } = {}) {
+async function dashboard({ clientId = null, year = new Date().getFullYear() } = {}) {
   const clientFilter = clientId ? " AND e.client_id = $1" : "";
   const params = clientId ? [clientId] : [];
   const one = async (sql) => (await pool.query(sql, params)).rows[0];
-  const equipment = await one(`SELECT COUNT(*)::int AS total FROM sg_equipment e WHERE e.deleted_at IS NULL${clientFilter}`);
-  const orders = await one(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE o.status IN ('concluida','concluida_com_pendencias'))::int AS done, COUNT(*) FILTER (WHERE o.maintenance_type='corretiva')::int AS corrective FROM sg_maintenance_orders o JOIN sg_equipment e ON e.id=o.equipment_id WHERE o.deleted_at IS NULL${clientFilter}`);
-  const overdue = await one(`SELECT COUNT(*)::int AS total FROM sg_calendar_entries ce JOIN sg_equipment e ON e.id=ce.equipment_id WHERE ce.deleted_at IS NULL AND e.deleted_at IS NULL AND ce.status='planejada' AND ce.planned_date < CURRENT_DATE${clientFilter}`);
-  const noPlan = await one(`SELECT COUNT(*)::int AS total FROM sg_equipment e WHERE e.deleted_at IS NULL${clientFilter} AND NOT EXISTS (SELECT 1 FROM sg_equipment_plans p WHERE p.equipment_id=e.id AND p.deleted_at IS NULL AND p.active=TRUE)`);
-  const events = await one(`SELECT COUNT(*)::int AS total FROM sg_events ev JOIN sg_equipment e ON e.id=ev.equipment_id WHERE ev.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`);
-  const reports = await one(`SELECT COUNT(*)::int AS total FROM sg_associated_reports r JOIN sg_equipment e ON e.id=r.equipment_id WHERE r.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`);
-  const recommendations = await one(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE r.status IN ('aberta','em_analise','aprovada','vencida'))::int AS open, COUNT(*) FILTER (WHERE r.criticality IN ('alta','critica','missao_critica'))::int AS critical FROM sg_recommendations r JOIN sg_equipment e ON e.id=r.equipment_id WHERE r.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`);
-  return { equipment: equipment.total, orders, overdue: overdue.total, equipmentWithoutPlan: noPlan.total, events: events.total, associatedReports: reports.total, recommendations };
+  const start = `${year}-01-01`;
+  const end = `${year + 1}-01-01`;
+  const orderParams = clientId ? [clientId, start, end] : [start, end];
+  const startIndex = clientId ? 2 : 1;
+  const endIndex = clientId ? 3 : 2;
+  const orderYearFilter = ` AND COALESCE(o.planned_date, o.created_at::date) >= $${startIndex}::date
+    AND COALESCE(o.planned_date, o.created_at::date) < $${endIndex}::date`;
+  const orderRows = async (select, suffix = "") => (await pool.query(
+    `SELECT ${select}
+       FROM sg_maintenance_orders o
+       JOIN sg_equipment e ON e.id = o.equipment_id
+      WHERE o.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}${orderYearFilter} ${suffix}`,
+    orderParams
+  )).rows;
+
+  const [
+    equipment,
+    orderSummaryRows,
+    statusRows,
+    typeRows,
+    overdueCalendar,
+    noPlan,
+    events,
+    reports,
+    recommendations,
+    monthlyTrend,
+    topClients
+  ] = await Promise.all([
+    one(`SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE e.criticality IN ('alta','critica','missao_critica'))::int AS critical,
+                COUNT(*) FILTER (WHERE e.operational_status NOT IN ('operacional_normal','operacional'))::int AS attention
+           FROM sg_equipment e WHERE e.deleted_at IS NULL${clientFilter}`),
+    orderRows(`COUNT(*)::int AS total,
+               COUNT(*) FILTER (WHERE o.status IN ('concluida','concluida_com_pendencias'))::int AS done,
+               COUNT(*) FILTER (WHERE o.status NOT IN ('concluida','concluida_com_pendencias','cancelada'))::int AS open,
+               COUNT(*) FILTER (WHERE o.maintenance_type='corretiva')::int AS corrective,
+               COUNT(*) FILTER (
+                 WHERE o.planned_date < CURRENT_DATE
+                   AND o.status NOT IN ('concluida','concluida_com_pendencias','cancelada')
+               )::int AS overdue`),
+    orderRows(`o.status AS key, COUNT(*)::int AS value`, "GROUP BY o.status ORDER BY value DESC"),
+    orderRows(`o.maintenance_type AS key, COUNT(*)::int AS value`, "GROUP BY o.maintenance_type ORDER BY value DESC"),
+    one(`SELECT COUNT(*)::int AS total FROM sg_calendar_entries ce JOIN sg_equipment e ON e.id=ce.equipment_id WHERE ce.deleted_at IS NULL AND e.deleted_at IS NULL AND ce.status='planejada' AND ce.planned_date < CURRENT_DATE${clientFilter}`),
+    one(`SELECT COUNT(*)::int AS total FROM sg_equipment e WHERE e.deleted_at IS NULL${clientFilter} AND NOT EXISTS (SELECT 1 FROM sg_equipment_plans p WHERE p.equipment_id=e.id AND p.deleted_at IS NULL AND p.active=TRUE)`),
+    one(`SELECT COUNT(*)::int AS total FROM sg_events ev JOIN sg_equipment e ON e.id=ev.equipment_id WHERE ev.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`),
+    one(`SELECT COUNT(*)::int AS total FROM sg_associated_reports r JOIN sg_equipment e ON e.id=r.equipment_id WHERE r.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`),
+    one(`SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE r.status IN ('aberta','em_analise','aprovada','vencida'))::int AS open,
+                COUNT(*) FILTER (WHERE r.status IN ('aberta','em_analise','aprovada','vencida') AND r.criticality IN ('alta','critica','missao_critica'))::int AS critical,
+                COUNT(*) FILTER (WHERE r.status IN ('aberta','em_analise','aprovada','vencida') AND r.due_date < CURRENT_DATE)::int AS overdue
+           FROM sg_recommendations r JOIN sg_equipment e ON e.id=r.equipment_id WHERE r.deleted_at IS NULL AND e.deleted_at IS NULL${clientFilter}`),
+    pool.query(
+      `SELECT to_char(months.month, 'YYYY-MM') AS month,
+              COUNT(o.id)::int AS planned,
+              COUNT(o.id) FILTER (WHERE o.status IN ('concluida','concluida_com_pendencias'))::int AS completed,
+              COUNT(o.id) FILTER (WHERE o.maintenance_type='corretiva')::int AS corrective
+         FROM generate_series($${startIndex}::date, ($${endIndex}::date - INTERVAL '1 month'), INTERVAL '1 month') months(month)
+         LEFT JOIN sg_maintenance_orders o
+           ON date_trunc('month', COALESCE(o.planned_date, o.created_at::date)) = months.month
+          AND o.deleted_at IS NULL
+          ${clientId ? "AND o.client_id = $1" : ""}
+         LEFT JOIN sg_equipment e ON e.id = o.equipment_id AND e.deleted_at IS NULL
+        WHERE (o.id IS NULL OR e.id IS NOT NULL)
+        GROUP BY months.month ORDER BY months.month`,
+      orderParams
+    ).then((result) => result.rows),
+    orderRows(`o.client_id AS id,
+               MAX((SELECT c.name FROM sg_clients c WHERE c.id = o.client_id)) AS name,
+               COUNT(*)::int AS value`,
+      "GROUP BY o.client_id ORDER BY value DESC LIMIT 6")
+  ]);
+
+  const orders = orderSummaryRows[0] || { total: 0, done: 0, open: 0, corrective: 0, overdue: 0 };
+  orders.completionRate = orders.total ? Math.round((orders.done / orders.total) * 100) : null;
+  return {
+    period: { year, from: start, to: `${year}-12-31` },
+    equipment: equipment.total,
+    equipmentRisk: { critical: equipment.critical, attention: equipment.attention },
+    orders,
+    ordersByStatus: statusRows,
+    ordersByType: typeRows,
+    monthlyTrend,
+    topClients,
+    overdue: overdueCalendar.total,
+    equipmentWithoutPlan: noPlan.total,
+    events: events.total,
+    associatedReports: reports.total,
+    recommendations
+  };
 }
 
 module.exports = {

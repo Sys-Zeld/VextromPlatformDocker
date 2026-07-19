@@ -20,6 +20,7 @@ const { createCalendarAlertRulesRouter } = require("./calendarAlertRules");
 const { createAlertsRouter } = require("./alerts");
 const { createIntegrationRouter } = require("./integration");
 const { createAuditRouter } = require("./audit");
+const { createReportsRouter } = require("./reports");
 const { createOperationsRouter } = require("./operations");
 const { lookupRepo } = require("../repositories/lookupRepository");
 
@@ -97,6 +98,9 @@ function createSentinelGridV2Router(deps) {
   // Auditor — confere aderência das OMs ao plano de manutenção (por equipamento e por cliente).
   // Montado antes de "/" para não ser sombreado pelo router de operations.
   router.use("/audit", createAuditRouter(deps));
+  // Relatórios gerenciais (cronograma por equipamento/cliente, OMs por técnico).
+  // Também montado antes de "/" para não ser sombreado pelo router de operations.
+  router.use("/reports", createReportsRouter(deps));
   router.use("/", createOperationsRouter(deps));
 
   return router;

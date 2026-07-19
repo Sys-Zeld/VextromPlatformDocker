@@ -11,6 +11,7 @@ import { listTechnicianAgenda, listTechnicians } from "../../api/sentinelgrid/te
 
 type GroupMode = "equipment" | "client_site" | "technician";
 type PeriodView = "year" | "month" | "day";
+type PrintPaper = "A4" | "A3" | "A2";
 type ScheduleTask = { key: string; startDate: string; endDate: string; title: string; priority: string; orderId?: number };
 type ScheduleRow = { key: string; title: string; subtitle: string; tasks: ScheduleTask[] };
 
@@ -45,6 +46,7 @@ export default function SchedulePage() {
   const [siteId, setSiteId] = useState<number | "">(() => queryId(initialQuery, "siteId"));
   const [equipmentId, setEquipmentId] = useState<number | "">(() => queryId(initialQuery, "equipmentId"));
   const [technicianId, setTechnicianId] = useState<number | "">(() => queryId(initialQuery, "technicianId"));
+  const [printPaper, setPrintPaper] = useState<PrintPaper>("A3");
 
   const monthLastDay = new Date(year, month, 0).getDate();
   const filters = useMemo(() => ({
@@ -178,21 +180,72 @@ export default function SchedulePage() {
     window.open(`${fullscreenHref}?${currentFilterQuery}`, "_blank", "noopener,noreferrer");
   };
 
+  const handlePrint = () => {
+    const style = document.createElement("style");
+    style.id = "sg-schedule-page-size";
+    style.textContent = `@page { size: ${printPaper} landscape; margin: ${printPaper === "A4" ? "7mm" : "10mm"}; }`;
+    document.getElementById(style.id)?.remove();
+    document.head.appendChild(style);
+
+    window.addEventListener("afterprint", () => style.remove(), { once: true });
+    window.print();
+  };
+
+  const modeLabel = mode === "equipment" ? "Equipamento" : mode === "client_site" ? "Cliente / Site" : "Técnico";
+  const clientLabel = clientId === "" ? "Todos os clientes" : clientsQuery.data?.clients.find((item) => Number(item.id) === clientId)?.name || `Cliente #${clientId}`;
+  const siteLabel = siteId === "" ? "Todos os sites" : sitesQuery.data?.sites.find((item) => Number(item.id) === siteId)?.name || `Site #${siteId}`;
+  const generatedAt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
+
   return (
-    <div className={`d-flex flex-column gap-3 sg-schedule-page${standalone ? " sg-schedule-page--standalone" : ""}`}>
+    <div
+      className={`d-flex flex-column gap-3 sg-schedule-page${standalone ? " sg-schedule-page--standalone" : ""}`}
+      data-print-paper={printPaper}
+    >
       <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap sg-schedule-print-header">
-        <div>
-          <h2 className="h5 mb-1">SentinelGrid - Cronograma {periodTitle}</h2>
-          <p className="text-muted small mb-0">Planejamento {periodDescription} por equipamento, Cliente/Site ou técnico.</p>
+        <div className="sg-schedule-print-title">
+          <div className="sg-schedule-print-mark" aria-hidden="true">SG</div>
+          <div>
+            <div className="sg-schedule-print-eyebrow">SentinelGrid · Planejamento operacional</div>
+            <h2 className="h5 mb-1">Cronograma {periodTitle}</h2>
+            <p className="text-muted small mb-0">Planejamento {periodDescription} por equipamento, Cliente/Site ou técnico.</p>
+          </div>
         </div>
-        <div className="d-flex gap-2 flex-wrap sg-no-print">
+        <div className="d-flex gap-2 flex-wrap align-items-center sg-no-print sg-schedule-print-actions">
           {!standalone && <Button variant="primary" size="sm" onClick={openFullscreen}>
             <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 18 }}>open_in_new</span>Abrir em tela cheia
           </Button>}
-          <Button variant="outline-primary" size="sm" onClick={() => window.print()}>
-            <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 18 }}>print</span>Imprimir cronograma
+          <Form.Select
+            size="sm"
+            className="sg-schedule-paper-select"
+            aria-label="Tamanho do papel"
+            value={printPaper}
+            onChange={(event) => setPrintPaper(event.target.value as PrintPaper)}
+          >
+            <option value="A4">Papel A4</option>
+            <option value="A3">Papel A3</option>
+            <option value="A2">Papel A2</option>
+          </Form.Select>
+          <Button variant="outline-primary" size="sm" onClick={handlePrint}>
+            <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 18 }}>print</span>Imprimir em {printPaper}
           </Button>
         </div>
+      </div>
+
+      <div className="sg-print-only sg-schedule-print-summary">
+        <div><span>Período</span><strong>{periodTitle}</strong></div>
+        <div><span>Organização</span><strong>{modeLabel}</strong></div>
+        <div><span>Cliente</span><strong>{clientLabel}</strong></div>
+        <div><span>Site</span><strong>{siteLabel}</strong></div>
+        <div><span>Formato</span><strong>{printPaper} · Paisagem</strong></div>
+      </div>
+
+      <div className="sg-print-only sg-schedule-print-legend" aria-label="Legenda de prioridades">
+        <strong>Prioridades</strong>
+        <span className="is-emergency">Emergencial</span>
+        <span className="is-critical">Crítico</span>
+        <span className="is-warning">Importante</span>
+        <span className="is-attention">Atenção</span>
+        <span className="is-info">Informativo</span>
       </div>
 
       <Card className="sg-no-print sg-schedule-filter-card">
@@ -280,6 +333,10 @@ export default function SchedulePage() {
             </div>
           </Card>
         )}
+      <div className="sg-print-only sg-schedule-print-footer">
+        <span>SentinelGrid · Cronograma operacional</span>
+        <span>Gerado em {generatedAt}</span>
+      </div>
     </div>
   );
 }

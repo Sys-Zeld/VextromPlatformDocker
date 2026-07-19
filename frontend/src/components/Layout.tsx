@@ -71,6 +71,13 @@ const SENTINELGRID_AUDITOR_NAV: NavItem[] = [
   { to: "/sentinelgrid/auditor/client", label: "Cliente", icon: "clients" }
 ];
 
+// Relatórios gerenciais — resumo + cronograma, exportáveis em PDF/Excel/CSV.
+const SENTINELGRID_REPORTS_NAV: NavItem[] = [
+  { to: "/sentinelgrid/reports/equipment-schedule", label: "Cronograma por equipamento", icon: "equipment" },
+  { to: "/sentinelgrid/reports/technician-orders", label: "OM por técnico", icon: "groups" },
+  { to: "/sentinelgrid/reports/client-schedule", label: "Cronograma por cliente", icon: "clients" }
+];
+
 const SENTINELGRID_NAV: NavEntry[] = [
   { to: "/sentinelgrid", label: "Início", icon: "shield", end: true },
   { to: "/sentinelgrid/clients", label: "Clientes", icon: "clients" },
@@ -82,6 +89,7 @@ const SENTINELGRID_NAV: NavEntry[] = [
   { key: "auditor", label: "Auditor", icon: "checklist", children: SENTINELGRID_AUDITOR_NAV },
   { to: "/sentinelgrid/calendar", label: "Calendario", icon: "calendar" },
   { to: "/sentinelgrid/schedule", label: "Cronograma", icon: "year" },
+  { key: "reports", label: "Relatórios", icon: "export", children: SENTINELGRID_REPORTS_NAV },
   { to: "/sentinelgrid/alerts", label: "Alertas", icon: "alerts" },
   { to: "/sentinelgrid/history", label: "Historico", icon: "history" },
   { to: "/sentinelgrid/recommendations", label: "Recomendacoes", icon: "recommendations" },

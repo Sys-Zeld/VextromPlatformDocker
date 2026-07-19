@@ -79,11 +79,15 @@ async function auditEquipment({ equipmentId, from, to }) {
   return { equipment, from, to, summary, occurrences };
 }
 
-// Auditoria POR CLIENTE (+ site opcional): apenas um filtro que roda a auditoria de cada
-// equipamento e devolve o RESUMO de cada um, mais o agregado do conjunto.
-async function auditClient({ clientId, siteId = null, from, to }) {
-  const params = [clientId];
-  let where = "e.deleted_at IS NULL AND e.client_id = $1";
+// Auditoria agregada do portfólio. O mesmo cálculo atende o Dashboard geral e,
+// quando filtrado, a auditoria por cliente/site.
+async function auditPortfolio({ clientId = null, siteId = null, from, to }) {
+  const params = [];
+  let where = "e.deleted_at IS NULL";
+  if (clientId) {
+    params.push(clientId);
+    where += ` AND e.client_id = $${params.length}`;
+  }
   if (siteId) {
     params.push(siteId);
     where += ` AND e.site_id = $${params.length}`;
@@ -123,6 +127,11 @@ async function auditClient({ clientId, siteId = null, from, to }) {
   return { clientId, siteId, from, to, equipments: rows, aggregate: aggregate(rows) };
 }
 
+// Auditoria POR CLIENTE (+ site opcional): mantém o contrato público existente.
+async function auditClient({ clientId, siteId = null, from, to }) {
+  return auditPortfolio({ clientId, siteId, from, to });
+}
+
 function emptyAggregate() {
   return {
     equipamentos: 0,
@@ -159,4 +168,4 @@ function aggregate(rows) {
   return acc;
 }
 
-module.exports = { auditEquipment, auditClient };
+module.exports = { auditEquipment, auditClient, auditPortfolio };
