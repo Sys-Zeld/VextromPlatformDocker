@@ -69,13 +69,17 @@ export default function OrdersPage() {
 
   const { orders = [], customers = [], sites = [], technicians = [], technicianIdsByOrder = {} } = data ?? {};
   const sitesForCustomer = (customerId: number | "") =>
-    sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
+    // customer_id pode vir como string (bigint do Postgres) — coerção numérica nos dois lados.
+    sites.filter((s: Site) => !customerId || Number(s.customer_id) === Number(customerId));
 
   const openNew = () => { setEditOrder(null); setForm(EMPTY); setActionError(null); setShow(true); };
   const openEdit = (o: Order) => {
     setEditOrder(o);
     setForm({
-      customerId: o.customer_id, siteId: o.site_id ?? "", title: o.title ?? "",
+      // Coerção numérica: customer_id/site_id vêm como string (bigint) e precisam bater
+      // com os value dos <option> para pré-selecionar Cliente/Site ao editar.
+      customerId: o.customer_id == null ? "" : Number(o.customer_id),
+      siteId: o.site_id == null ? "" : Number(o.site_id), title: o.title ?? "",
       proposalNumber: o.proposal_number ?? "", description: "", status: o.status ?? "draft",
       openingDate: o.opening_date ? o.opening_date.slice(0, 10) : "",
       technicianIds: technicianIdsByOrder[String(o.id)] ?? []

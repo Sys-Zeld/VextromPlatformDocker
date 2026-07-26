@@ -40,8 +40,10 @@ const EMPTY: EquipmentInput = {
 
 function toInput(e: Equipment): EquipmentInput {
   return {
-    customerId: e.customer_id ?? "",
-    siteId: e.site_id ?? "",
+    // customer_id/site_id podem vir como string (bigint do Postgres) — coerção numérica
+    // garante que o Cliente/Site sejam pré-selecionados ao editar.
+    customerId: e.customer_id == null ? "" : Number(e.customer_id),
+    siteId: e.site_id == null ? "" : Number(e.site_id),
     type: e.type ?? "",
     manufacturer: e.manufacturer ?? "",
     modelFamily: e.model_family ?? "",
@@ -133,8 +135,8 @@ export default function EquipmentsPage() {
     linked: e.rs_linked
   }));
   const sitesForCustomer = (customerId: number | "") =>
-    // customer_id pode vir como string (bigint do Postgres) — coerção numérica.
-    sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
+    // customer_id pode vir como string (bigint do Postgres) — coerção numérica nos dois lados.
+    sites.filter((s: Site) => !customerId || Number(s.customer_id) === Number(customerId));
 
   // Opções de Tipo e Família derivadas dos próprios equipamentos (campos livres no cadastro).
   const norm = (v: string | null) => (v || "").trim();
