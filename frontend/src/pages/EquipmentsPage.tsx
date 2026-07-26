@@ -1,15 +1,20 @@
 import { confirmDialog } from "../components/ConfirmDialog";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
+import { downloadFile } from "../api/client";
 import {
   Equipment,
+  EquipmentAttachment,
   EquipmentInput,
   createEquipment,
   deleteEquipment,
+  deleteEquipmentAttachment,
+  listEquipmentAttachments,
   listEquipments,
-  updateEquipment
+  updateEquipment,
+  uploadEquipmentAttachment
 } from "../api/equipments";
 import type { Site } from "../api/customers";
 import { listEquipment } from "../api/sentinelgrid/equipment";
@@ -79,6 +84,11 @@ export default function EquipmentsPage() {
   const [fSite, setFSite] = useState<number | "">("");
   const [fType, setFType] = useState("");
   const [fFamily, setFFamily] = useState("");
+  // Anexos do equipamento (só no modo edição — precisa de um id já salvo).
+  const [attLabel, setAttLabel] = useState("");
+  const [attFile, setAttFile] = useState<File | null>(null);
+  const [attError, setAttError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   // Equipamentos do SentinelGrid disponíveis para trazer ao Service Report (via façade do SG).
   const sgExportableEq = useQuery({
@@ -97,6 +107,40 @@ export default function EquipmentsPage() {
     onError
   });
   const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
+
+  // Anexos: lista sob demanda ao abrir a edição; upload/remoção invalidam a lista.
+  const attachmentsQ = useQuery({
+    queryKey: ["equipment-attachments", editId],
+    queryFn: () => listEquipmentAttachments(editId as number),
+    enabled: show && editId != null
+  });
+  const resetAttInput = () => { setAttFile(null); setAttLabel(""); if (fileRef.current) fileRef.current.value = ""; };
+  const mUploadAtt = useMutation({
+    mutationFn: (p: { id: number; file: File; label: string }) => uploadEquipmentAttachment(p.id, p.file, p.label),
+    onSuccess: () => { setAttError(null); resetAttInput(); qc.invalidateQueries({ queryKey: ["equipment-attachments", editId] }); },
+    onError: (e: unknown) => setAttError((e as Error).message)
+  });
+  const mDeleteAtt = useMutation({
+    mutationFn: (p: { id: number; attId: number }) => deleteEquipmentAttachment(p.id, p.attId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["equipment-attachments", editId] }),
+    onError: (e: unknown) => setAttError((e as Error).message)
+  });
+  const doUploadAtt = () => {
+    if (!editId || !attFile) return;
+    if (attFile.size > 50 * 1024 * 1024) { setAttError("Arquivo muito grande. Limite: 50 MB."); return; }
+    setAttError(null);
+    mUploadAtt.mutate({ id: editId, file: attFile, label: attLabel });
+  };
+  const downloadAtt = (att: EquipmentAttachment) => {
+    if (!editId) return;
+    downloadFile(`/equipments/${editId}/attachments/${att.id}/download`, att.original_name || "arquivo").catch((e) => setAttError((e as Error).message));
+  };
+  const fmtSize = (bytes: number | string | null) => {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  };
   // Traz UM equipamento do SentinelGrid (com cliente + site). Acionado pela caixa de
   // sugestão da TAG ao escolher um item do outro módulo.
   const mExportEq = useMutation({
@@ -152,8 +196,8 @@ export default function EquipmentsPage() {
     return true;
   });
 
-  const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
-  const openEdit = (e: Equipment) => { setEditId(e.id); setForm(toInput(e)); setActionError(null); setShow(true); };
+  const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setAttError(null); resetAttInput(); setShow(true); };
+  const openEdit = (e: Equipment) => { setEditId(e.id); setForm(toInput(e)); setActionError(null); setAttError(null); resetAttInput(); setShow(true); };
 
   const submit = (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -348,6 +392,61 @@ export default function EquipmentsPage() {
               <div className="col-12">
                 <Form.Label>Observações</Form.Label>
                 <Form.Control as="textarea" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </div>
+              <div className="col-12">
+                <hr className="my-1" />
+                <span className="text-muted small text-uppercase fw-semibold">Anexos (manuais, parâmetros, etc.)</span>
+                {!editId && (
+                  <div className="text-muted small mt-1">Salve o equipamento primeiro para anexar arquivos.</div>
+                )}
+                {editId && (
+                  <>
+                    {attError && <Alert variant="danger" className="mt-2 mb-2" dismissible onClose={() => setAttError(null)}>{attError}</Alert>}
+                    <div className="row g-2 align-items-end mt-1">
+                      <div className="col-md-5">
+                        <Form.Label className="small mb-1">Descrição (opcional)</Form.Label>
+                        <Form.Control size="sm" value={attLabel} placeholder="Ex.: Manual de operação" onChange={(e) => setAttLabel(e.target.value)} />
+                      </div>
+                      <div className="col-md-5">
+                        <Form.Label className="small mb-1">Arquivo (até 50 MB)</Form.Label>
+                        <Form.Control size="sm" type="file" ref={fileRef} onChange={(e) => setAttFile((e.target as HTMLInputElement).files?.[0] ?? null)} />
+                      </div>
+                      <div className="col-md-2 d-grid">
+                        <Button size="sm" type="button" disabled={!attFile || mUploadAtt.isPending} onClick={doUploadAtt}>
+                          {mUploadAtt.isPending ? "Enviando…" : "Anexar"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      {attachmentsQ.isLoading && <div className="text-muted small"><Spinner animation="border" size="sm" /> Carregando anexos…</div>}
+                      {!attachmentsQ.isLoading && (attachmentsQ.data?.data?.length ?? 0) === 0 && (
+                        <div className="text-muted small">Nenhum anexo.</div>
+                      )}
+                      {(attachmentsQ.data?.data?.length ?? 0) > 0 && (
+                        <Table size="sm" hover className="mb-0 align-middle">
+                          <thead>
+                            <tr><th>Arquivo</th><th>Descrição</th><th>Tamanho</th><th className="text-end">Ações</th></tr>
+                          </thead>
+                          <tbody>
+                            {(attachmentsQ.data?.data ?? []).map((att: EquipmentAttachment) => (
+                              <tr key={att.id}>
+                                <td className="text-break">{att.original_name}</td>
+                                <td className="text-muted">{att.label || "—"}</td>
+                                <td className="text-nowrap">{fmtSize(att.file_size)}</td>
+                                <td className="text-end">
+                                  <div className="vx-actions justify-content-end">
+                                    <IconAction icon="download" label="Baixar" variant="outline-secondary" onClick={() => downloadAtt(att)} />
+                                    <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteAtt.isPending} onClick={async () => { if (await confirmDialog(`Excluir o anexo "${att.original_name}"?`)) mDeleteAtt.mutate({ id: editId, attId: att.id }); }} />
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </Modal.Body>

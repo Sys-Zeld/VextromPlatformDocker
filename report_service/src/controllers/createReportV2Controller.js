@@ -1046,6 +1046,95 @@ function createReportServiceV2Controller(deps) {
       return objectStorage.sendObjectDownload(res, storageKey, safeName, attachment.mime_type || "application/octet-stream");
     },
 
+    // ---- Anexos do cadastro de equipamento (manuais, parâmetros, etc.) ---
+    async listEquipmentAttachments(req, res) {
+      const equipmentId = parsePositiveInt(req.params.id);
+      if (!equipmentId) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ ok: false, error: "Equipamento não encontrado." });
+      const attachments = await repo.listEquipmentAttachments(equipmentId);
+      return res.json({ ok: true, data: attachments });
+    },
+
+    async uploadEquipmentAttachment(req, res) {
+      const equipmentId = parsePositiveInt(req.params.id);
+      if (!equipmentId) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ ok: false, error: "Equipamento não encontrado." });
+
+      let fileNameRaw = "arquivo";
+      try { fileNameRaw = decodeURIComponent(String(req.headers["x-file-name"] || "arquivo")); }
+      catch (_err) { fileNameRaw = String(req.headers["x-file-name"] || "arquivo"); }
+      fileNameRaw = sanitize(fileNameRaw);
+      const originalName = path.basename(fileNameRaw).replace(/[^a-zA-Z0-9._\- ]/g, "").slice(0, 200) || "arquivo";
+
+      let labelRaw = "";
+      try { labelRaw = decodeURIComponent(String(req.headers["x-label"] || "")); }
+      catch (_err) { labelRaw = String(req.headers["x-label"] || ""); }
+      const label = sanitize(labelRaw).slice(0, 200);
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      if (buffer.length > 50 * 1024 * 1024) return res.status(413).json({ ok: false, error: "Arquivo muito grande. Limite: 50 MB." });
+
+      const ext = path.extname(originalName).toLowerCase();
+      if ([".html", ".htm", ".svg", ".js", ".mjs"].includes(ext)) {
+        return res.status(415).json({ ok: false, error: "Tipo de arquivo não permitido para anexos." });
+      }
+      const baseSafe = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "arquivo";
+      const unique = crypto.randomBytes(6).toString("hex");
+      const storedName = `${Date.now()}-${baseSafe}-${unique}${ext}`;
+
+      await objectStorage.putObject(
+        path.join("dados", "equipment-attachments", String(equipmentId), storedName),
+        buffer,
+        { contentType: String(req.headers["content-type"] || "application/octet-stream").split(";")[0].trim() }
+      );
+
+      const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim();
+      const uploadedBy = sanitize(String(res.locals.adminUsername || res.locals.adminEmail || ""));
+
+      const created = await repo.createEquipmentAttachment({
+        equipmentId,
+        originalName,
+        storedName,
+        label,
+        fileSize: buffer.length,
+        mimeType,
+        uploadedBy
+      });
+
+      return res.status(201).json({ ok: true, data: { id: created.id, originalName, storedName, label, fileSize: buffer.length } });
+    },
+
+    async deleteEquipmentAttachment(req, res) {
+      const equipmentId = parsePositiveInt(req.params.id);
+      const attachmentId = parsePositiveInt(req.params.attachmentId);
+      if (!equipmentId || !attachmentId) return res.status(400).json({ ok: false, error: "ID inválido." });
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).json({ ok: false, error: "Equipamento não encontrado." });
+      const attachment = await repo.getEquipmentAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.equipment_id) !== equipmentId) return res.status(404).json({ ok: false, error: "Anexo não encontrado." });
+      await repo.deleteEquipmentAttachment(attachmentId);
+      await objectStorage.deleteObject(path.join("dados", "equipment-attachments", String(equipmentId), attachment.stored_name));
+      return res.json({ ok: true });
+    },
+
+    async downloadEquipmentAttachment(req, res) {
+      const equipmentId = parsePositiveInt(req.params.id);
+      const attachmentId = parsePositiveInt(req.params.attachmentId);
+      if (!equipmentId || !attachmentId) return res.status(400).send("ID inválido.");
+      const equipment = await repo.getEquipmentById(equipmentId);
+      if (!equipment) return res.status(404).send("Equipamento não encontrado.");
+      const attachment = await repo.getEquipmentAttachmentById(attachmentId);
+      if (!attachment || Number(attachment.equipment_id) !== equipmentId) return res.status(404).send("Anexo não encontrado.");
+      const storageKey = path.join("dados", "equipment-attachments", String(equipmentId), attachment.stored_name);
+      if (!await objectStorage.existsObject(storageKey)) return res.status(404).send("Arquivo não encontrado no servidor.");
+      const safeName = attachment.original_name.replace(/[^a-zA-Z0-9._\- ]/g, "_");
+      setNoSniff(res);
+      return objectStorage.sendObjectDownload(res, storageKey, safeName, attachment.mime_type || "application/octet-stream");
+    },
+
     // ---- Enviar OS por e-mail -------------------------------------------
     async sendOsCreatedEmail(req, res) {
       const orderId = Number(req.params.id);
@@ -1773,8 +1862,16 @@ ${bodyHtml}
     async deleteEquipment(req, res) {
       const id = Number(req.params.id);
       try {
+        // Coleta os anexos antes de excluir (o cascade do banco apaga as linhas, mas
+        // os objetos no storage precisam ser removidos manualmente para não ficarem órfãos).
+        const attachments = id > 0 ? await repo.listEquipmentAttachments(id).catch(() => []) : [];
         const ok = await service.deleteEquipment(id);
         if (!ok) return res.status(404).json({ error: "Equipamento não encontrado." });
+        for (const att of attachments) {
+          await objectStorage
+            .deleteObject(path.join("dados", "equipment-attachments", String(id), att.stored_name))
+            .catch(() => {});
+        }
         return res.status(204).end();
       } catch (err) {
         if (err && err.code === "23503") {

@@ -3298,6 +3298,56 @@ async function deleteOrderAttachment(id) {
   return result.rows[0] || null;
 }
 
+async function listEquipmentAttachments(equipmentId) {
+  const result = await db.query(
+    `
+      SELECT id, equipment_id, original_name, stored_name, label, file_size, mime_type, uploaded_by, created_at
+      FROM service_report_equipment_attachments
+      WHERE equipment_id = $1
+      ORDER BY created_at ASC, id ASC
+    `,
+    [equipmentId]
+  );
+  return result.rows;
+}
+
+async function createEquipmentAttachment(payload) {
+  const result = await db.query(
+    `
+      INSERT INTO service_report_equipment_attachments
+        (equipment_id, original_name, stored_name, label, file_size, mime_type, uploaded_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `,
+    [
+      payload.equipmentId,
+      payload.originalName,
+      payload.storedName,
+      payload.label || "",
+      payload.fileSize || 0,
+      payload.mimeType || "",
+      payload.uploadedBy || ""
+    ]
+  );
+  return result.rows[0];
+}
+
+async function getEquipmentAttachmentById(id) {
+  const result = await db.query(
+    `SELECT * FROM service_report_equipment_attachments WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteEquipmentAttachment(id) {
+  const result = await db.query(
+    `DELETE FROM service_report_equipment_attachments WHERE id = $1 RETURNING stored_name, equipment_id`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
 // ---- PDF History ----
 
 async function createPdfHistoryEntry(payload) {
@@ -3845,6 +3895,10 @@ module.exports = {
   createOrderAttachment,
   getOrderAttachmentById,
   deleteOrderAttachment,
+  listEquipmentAttachments,
+  createEquipmentAttachment,
+  getEquipmentAttachmentById,
+  deleteEquipmentAttachment,
   createPdfHistoryEntry,
   listPdfHistoryByOrderId,
   getPdfHistoryEntry,

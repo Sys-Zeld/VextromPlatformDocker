@@ -698,6 +698,23 @@ async function migrateServiceReport() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_order_attachments_order_id ON service_report_order_attachments (service_order_id);`);
 
+  // Anexos do cadastro de equipamento (manuais, parâmetros, etc.). Arquivo até 50 MB,
+  // gravado no object storage (MinIO/S3 ou local conforme STORAGE_DRIVER).
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_equipment_attachments (
+      id BIGSERIAL PRIMARY KEY,
+      equipment_id BIGINT NOT NULL REFERENCES service_report_equipments(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      file_size BIGINT NOT NULL DEFAULT 0,
+      mime_type TEXT NOT NULL DEFAULT '',
+      uploaded_by TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipment_attachments_equipment_id ON service_report_equipment_attachments (equipment_id);`);
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_pdf_history (
       id BIGSERIAL PRIMARY KEY,

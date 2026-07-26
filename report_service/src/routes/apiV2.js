@@ -118,6 +118,12 @@ function createReportServiceV2Router(deps) {
   router.put("/equipments/:id", asyncHandler(controller.updateEquipment));
   router.delete("/equipments/:id", asyncHandler(controller.deleteEquipment));
 
+  // Anexos do equipamento (manuais, parâmetros, etc. — corpo raw até 50 MB)
+  router.get("/equipments/:id/attachments", asyncHandler(controller.listEquipmentAttachments));
+  router.post("/equipments/:id/attachments", express.raw({ type: () => true, limit: "50mb" }), asyncHandler(controller.uploadEquipmentAttachment));
+  router.delete("/equipments/:id/attachments/:attachmentId", asyncHandler(controller.deleteEquipmentAttachment));
+  router.get("/equipments/:id/attachments/:attachmentId/download", asyncHandler(controller.downloadEquipmentAttachment));
+
   // Analytics (dashboard)
   router.get("/analytics", asyncHandler(controller.analytics));
 
