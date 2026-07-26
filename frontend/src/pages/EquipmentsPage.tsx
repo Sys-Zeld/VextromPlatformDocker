@@ -158,7 +158,7 @@ export default function EquipmentsPage() {
           <Button size="sm" onClick={openNew}>Novo equipamento</Button>
         </div>
       </Card.Header>
-      <div className="px-3 py-2 border-bottom bg-body-tertiary">
+      <div className="px-3 py-2 border-bottom" style={{ background: "var(--surface-2)" }}>
         <div className="row g-2 align-items-end">
           <div className="col-6 col-md-3">
             <Form.Label className="small mb-1">Cliente</Form.Label>
