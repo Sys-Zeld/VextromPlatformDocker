@@ -1,7 +1,7 @@
 import { confirmDialog } from "../components/ConfirmDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
 import {
   Equipment,
@@ -56,6 +56,11 @@ export default function EquipmentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showImportEq, setShowImportEq] = useState(false);
   const [importInfo, setImportInfo] = useState<string | null>(null);
+  // Filtros do cadastro (client-side — o payload já traz todos os equipamentos, clientes e sites).
+  const [fCustomer, setFCustomer] = useState<number | "">("");
+  const [fSite, setFSite] = useState<number | "">("");
+  const [fType, setFType] = useState("");
+  const [fFamily, setFFamily] = useState("");
 
   // Equipamentos do SentinelGrid disponíveis para trazer ao Service Report (via façade do SG).
   const sgExportableEq = useQuery({
@@ -115,6 +120,20 @@ export default function EquipmentsPage() {
     // customer_id pode vir como string (bigint do Postgres) — coerção numérica.
     sites.filter((s: Site) => !customerId || Number(s.customer_id) === customerId);
 
+  // Opções de Tipo e Família derivadas dos próprios equipamentos (campos livres no cadastro).
+  const norm = (v: string | null) => (v || "").trim();
+  const distinctTypes = Array.from(new Set(equipments.map((e: Equipment) => norm(e.type)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const distinctFamilies = Array.from(new Set(equipments.map((e: Equipment) => norm(e.model_family)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const hasFilter = fCustomer !== "" || fSite !== "" || !!fType || !!fFamily;
+  const clearFilters = () => { setFCustomer(""); setFSite(""); setFType(""); setFFamily(""); };
+  const filteredEquipments = equipments.filter((e: Equipment) => {
+    if (fCustomer !== "" && Number(e.customer_id) !== fCustomer) return false;
+    if (fSite !== "" && Number(e.site_id) !== fSite) return false;
+    if (fType && norm(e.type) !== fType) return false;
+    if (fFamily && norm(e.model_family) !== fFamily) return false;
+    return true;
+  });
+
   const openNew = () => { setEditId(null); setForm(EMPTY); setActionError(null); setShow(true); };
   const openEdit = (e: Equipment) => { setEditId(e.id); setForm(toInput(e)); setActionError(null); setShow(true); };
 
@@ -130,12 +149,58 @@ export default function EquipmentsPage() {
     <>
       <Card>
       <Card.Header className="d-flex justify-content-between align-items-center">
-        <span>Equipamentos</span>
+        <span>
+          Equipamentos
+          <Badge bg="light" text="dark" className="ms-2">{hasFilter ? `${filteredEquipments.length}/${equipments.length}` : equipments.length}</Badge>
+        </span>
         <div className="d-flex gap-2">
           <Button size="sm" variant="outline-primary" onClick={() => setShowImportEq(true)}>Buscar do SentinelGrid</Button>
           <Button size="sm" onClick={openNew}>Novo equipamento</Button>
         </div>
       </Card.Header>
+      <div className="px-3 py-2 border-bottom bg-body-tertiary">
+        <div className="row g-2 align-items-end">
+          <div className="col-6 col-md-3">
+            <Form.Label className="small mb-1">Cliente</Form.Label>
+            <Form.Select
+              size="sm"
+              value={fCustomer === "" ? "" : fCustomer}
+              onChange={(e) => { setFCustomer(e.target.value ? Number(e.target.value) : ""); setFSite(""); }}
+            >
+              <option value="">Todos</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Form.Select>
+          </div>
+          <div className="col-6 col-md-3">
+            <Form.Label className="small mb-1">Site</Form.Label>
+            <Form.Select
+              size="sm"
+              value={fSite === "" ? "" : fSite}
+              onChange={(e) => setFSite(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="">Todos</option>
+              {sitesForCustomer(fCustomer).map((s) => <option key={s.id} value={s.id}>{s.site_name}</option>)}
+            </Form.Select>
+          </div>
+          <div className="col-6 col-md-2">
+            <Form.Label className="small mb-1">Tipo</Form.Label>
+            <Form.Select size="sm" value={fType} onChange={(e) => setFType(e.target.value)}>
+              <option value="">Todos</option>
+              {distinctTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+            </Form.Select>
+          </div>
+          <div className="col-6 col-md-2">
+            <Form.Label className="small mb-1">Família</Form.Label>
+            <Form.Select size="sm" value={fFamily} onChange={(e) => setFFamily(e.target.value)}>
+              <option value="">Todas</option>
+              {distinctFamilies.map((f) => <option key={f} value={f}>{f}</option>)}
+            </Form.Select>
+          </div>
+          <div className="col-md-2 d-grid">
+            <Button size="sm" variant="outline-secondary" disabled={!hasFilter} onClick={clearFilters}>Limpar filtros</Button>
+          </div>
+        </div>
+      </div>
       {importInfo && <Alert variant="success" className="m-3" dismissible onClose={() => setImportInfo(null)}>{importInfo}</Alert>}
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Table striped responsive hover className="mb-0 align-middle">
@@ -143,8 +208,8 @@ export default function EquipmentsPage() {
           <tr><th>Tipo</th><th>Fabricante</th><th>Família</th><th>Nº de série</th><th>TAG</th><th>Cliente</th><th className="text-end">Ações</th></tr>
         </thead>
         <tbody>
-          {equipments.length === 0 && <tr><td colSpan={7} className="text-muted">Nenhum equipamento.</td></tr>}
-          {equipments.map((e: Equipment) => (
+          {filteredEquipments.length === 0 && <tr><td colSpan={7} className="text-muted">{hasFilter ? "Nenhum equipamento corresponde aos filtros." : "Nenhum equipamento."}</td></tr>}
+          {filteredEquipments.map((e: Equipment) => (
             <tr key={e.id}>
               <td>{e.type}</td>
               <td>{e.manufacturer}</td>
