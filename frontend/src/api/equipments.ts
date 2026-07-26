@@ -18,6 +18,9 @@ export interface Equipment {
   rated_dc_voltage: string | null;
   input_frequency: string | null;
   output_frequency: string | null;
+  degree_of_protection: string | null;
+  main_label: string | null;
+  dt_number: string | null;
   year_of_manufacture: string | null;
   notes: string | null;
 }
@@ -37,6 +40,14 @@ export interface EquipmentInput {
   serialNumber: string;
   tagNumber: string;
   power: string;
+  ratedAcInputVoltage: string;
+  inputFrequency: string;
+  ratedDcVoltage: string;
+  ratedAcOutputVoltage: string;
+  outputFrequency: string;
+  degreeOfProtection: string;
+  mainLabel: string;
+  dtNumber: string;
   yearOfManufacture: string;
   notes: string;
 }

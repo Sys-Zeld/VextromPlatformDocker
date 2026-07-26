@@ -26,6 +26,14 @@ const EMPTY: EquipmentInput = {
   serialNumber: "",
   tagNumber: "",
   power: "",
+  ratedAcInputVoltage: "",
+  inputFrequency: "",
+  ratedDcVoltage: "",
+  ratedAcOutputVoltage: "",
+  outputFrequency: "",
+  degreeOfProtection: "",
+  mainLabel: "",
+  dtNumber: "",
   yearOfManufacture: "",
   notes: ""
 };
@@ -40,6 +48,14 @@ function toInput(e: Equipment): EquipmentInput {
     serialNumber: e.serial_number ?? "",
     tagNumber: e.tag_number ?? "",
     power: e.power ?? "",
+    ratedAcInputVoltage: e.rated_ac_input_voltage ?? "",
+    inputFrequency: e.input_frequency ?? "",
+    ratedDcVoltage: e.rated_dc_voltage ?? "",
+    ratedAcOutputVoltage: e.rated_ac_output_voltage ?? "",
+    outputFrequency: e.output_frequency ?? "",
+    degreeOfProtection: e.degree_of_protection ?? "",
+    mainLabel: e.main_label ?? "",
+    dtNumber: e.dt_number ?? "",
     yearOfManufacture: e.year_of_manufacture ?? "",
     notes: e.notes ?? ""
   };
@@ -290,6 +306,42 @@ export default function EquipmentsPage() {
               <div className="col-md-4">
                 <Form.Label>Ano de fabricação</Form.Label>
                 <Form.Control value={form.yearOfManufacture} onChange={(e) => setForm({ ...form, yearOfManufacture: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Nº DT</Form.Label>
+                <Form.Control value={form.dtNumber} onChange={(e) => setForm({ ...form, dtNumber: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Etiqueta principal</Form.Label>
+                <Form.Control value={form.mainLabel} onChange={(e) => setForm({ ...form, mainLabel: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Grau de proteção (IP)</Form.Label>
+                <Form.Control value={form.degreeOfProtection} onChange={(e) => setForm({ ...form, degreeOfProtection: e.target.value })} />
+              </div>
+              <div className="col-12">
+                <hr className="my-1" />
+                <span className="text-muted small text-uppercase fw-semibold">Dados elétricos</span>
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Tensão CA de entrada</Form.Label>
+                <Form.Control value={form.ratedAcInputVoltage} onChange={(e) => setForm({ ...form, ratedAcInputVoltage: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Frequência de entrada</Form.Label>
+                <Form.Control value={form.inputFrequency} onChange={(e) => setForm({ ...form, inputFrequency: e.target.value })} />
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Tensão CC</Form.Label>
+                <Form.Control value={form.ratedDcVoltage} onChange={(e) => setForm({ ...form, ratedDcVoltage: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Tensão CA de saída</Form.Label>
+                <Form.Control value={form.ratedAcOutputVoltage} onChange={(e) => setForm({ ...form, ratedAcOutputVoltage: e.target.value })} />
+              </div>
+              <div className="col-md-6">
+                <Form.Label>Frequência de saída</Form.Label>
+                <Form.Control value={form.outputFrequency} onChange={(e) => setForm({ ...form, outputFrequency: e.target.value })} />
               </div>
               <div className="col-12">
                 <Form.Label>Observações</Form.Label>
