@@ -6,6 +6,7 @@ import EquipmentSparesPanel from "../components/EquipmentSparesPanel";
 import SparePartsImportModal from "../components/SparePartsImportModal";
 import IconAction from "../components/IconAction";
 import PrintSheet, { PrintColumn } from "../components/PrintSheet";
+import { CAP, useCan } from "../api/session";
 
 const PAGE_SIZE = 20;
 
@@ -67,6 +68,7 @@ function toInput(s: SparePart): SparePartInput {
 
 export default function SparePartsPage() {
   const qc = useQueryClient();
+  const can = useCan();
   const { data, isLoading, error } = useQuery({ queryKey: ["spare-parts"], queryFn: listSpareParts });
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -129,8 +131,12 @@ export default function SparePartsPage() {
           <Button size="sm" variant="outline-secondary" disabled={spareParts.length === 0} onClick={() => setPrinting(true)} title="Imprimir a lista completa (respeita o filtro)">
             <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>print</span>Imprimir lista
           </Button>
-          <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>Importar IA/PDF</Button>
-          <Button size="sm" onClick={openNew}>Nova peça</Button>
+          {can(CAP.RECORDS_WRITE) && (
+            <>
+              <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>Importar IA/PDF</Button>
+              <Button size="sm" onClick={openNew}>Nova peça</Button>
+            </>
+          )}
         </div>
       </Card.Header>
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
@@ -150,8 +156,9 @@ export default function SparePartsPage() {
               <td>{s.is_obsolete ? <Badge bg="danger">Obsoleta</Badge> : <Badge bg="success">Ativa</Badge>}</td>
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
-                  <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }} />
+                  {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(s)} />}
+                  {can(CAP.RECORDS_DELETE) && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a peça "${s.description}"?`)) mDelete.mutate(s.id); }} />}
+                  {!can(CAP.RECORDS_WRITE) && <span className="text-muted small">somente leitura</span>}
                 </div>
               </td>
             </tr>

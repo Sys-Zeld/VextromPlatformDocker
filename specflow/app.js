@@ -29,8 +29,17 @@ const {
   updateAdminUser,
   deleteAdminUser,
   changeAdminUserPasswordByUsername,
-  verifyAdminUserCredentials
+  verifyAdminUserCredentials,
+  peekUserToken,
+  setPasswordWithToken,
+  TOKEN_KINDS
 } = require("./services/adminUsers");
+const { sendInvite, sendPasswordReset } = require("./services/accountAccess");
+const {
+  MIN_LENGTH: PASSWORD_MIN_LENGTH,
+  describeRequirements: describePasswordRequirements
+} = require("./services/passwordPolicy");
+const accessControl = require("./services/accessControl");
 const {
   MAX_TOKENS_PER_WINDOW,
   WINDOW_HOURS,
@@ -251,6 +260,9 @@ if (env.reactAppEnabled) {
   // "flash" da UI); chamadas fetch recebem 401. Gate aplicado ao estático e ao
   // fallback de rotas do SPA.
   app.use("/app", requireAdminAuth);
+  // Técnico não entra no SentinelGrid: barra antes de o SPA carregar, em vez de
+  // deixar a tela abrir e quebrar em 403 a cada chamada.
+  app.use("/app/sentinelgrid", requireSentinelGridAccess(accessControl.CAPABILITIES.SENTINELGRID_READ));
   // CSP ESTRITA só para o SPA (sobrescreve a global do Helmet nas respostas /app). O bundle Vite
   // não tem <script> inline (verificado no dist/index.html) → script-src pode ser 'self' puro,
   // fechando a brecha de XSS por script injetado. style-src mantém 'unsafe-inline' porque o React
@@ -337,7 +349,7 @@ const appVersionShort = (() => {
 })();
 const recentClientCreateByKey = new Map();
 const pendingClientCreateByKey = new Map();
-const MODULE_ACCESS_KEYS = ["specflow", "module-spec", "report-service"];
+const MODULE_ACCESS_KEYS = ["specflow", "module-spec", "report-service", "sentinelgrid"];
 const MODULE_ACCESS_SET = new Set(MODULE_ACCESS_KEYS);
 const maintenanceImportRawParser = express.raw({
   type: "application/octet-stream",
@@ -375,7 +387,10 @@ app.use((req, res, next) => {
     res.locals.adminUsername = adminUsername;
     res.locals.adminRole = adminRole || "";
     res.locals.adminModuleAccess = adminAccess.moduleAccess || [];
-    res.locals.isMaintenanceAdmin = adminRole === "admin";
+    res.locals.isMaintenanceAdmin = accessControl.isAdministrator(adminRole);
+    res.locals.adminCapabilities = accessControl.capabilitiesForRole(adminRole);
+    // Helper para as views EJS esconderem ações que o perfil não pode executar.
+    res.locals.can = (capability) => accessControl.hasCapability(adminRole, capability);
     req.adminUsername = adminUsername;
     req.adminRole = adminRole || "";
     req.adminModuleAccess = adminAccess.moduleAccess || [];
@@ -538,7 +553,7 @@ function getAdminSessionUsername(req) {
 }
 
 function hasModuleAccess(role, moduleAccess, moduleKey) {
-  if (String(role || "").toLowerCase() === "admin") return true;
+  if (accessControl.isAdministrator(role)) return true;
   const normalizedKey = String(moduleKey || "").trim().toLowerCase();
   if (!MODULE_ACCESS_SET.has(normalizedKey)) return false;
   const allowed = new Set((Array.isArray(moduleAccess) ? moduleAccess : []).map((item) => String(item || "").trim().toLowerCase()));
@@ -562,7 +577,8 @@ async function getAccessForAdminUsername(username) {
   const normalized = String(username || "").trim();
   if (!normalized) return { role: null, moduleAccess: [] };
   if (safeTimingEqual(normalized, String(env.admin.user || "").trim())) {
-    return { role: "admin", moduleAccess: [...MODULE_ACCESS_KEYS] };
+    // Admin primário do .env: sempre administrador pleno, é a conta de resgate.
+    return { role: accessControl.ROLES.ADMINISTRATOR, moduleAccess: [...MODULE_ACCESS_KEYS] };
   }
   const access = await getAdminUserAccessByUsername(normalized);
   if (!access) return { role: null, moduleAccess: [] };
@@ -651,15 +667,67 @@ app.use((req, res, next) => {
 });
 
 function requireMaintenanceAdmin(req, res, next) {
-  const role = String(req.adminRole || "").toLowerCase();
-  if (role === "admin") return next();
+  if (accessControl.isAdministrator(req.adminRole)) return next();
   const username = getAdminSessionUsername(req);
   Promise.resolve(getAccessForAdminUsername(username))
     .then((access) => {
-      if (access.role === "admin") return next();
+      if (accessControl.isAdministrator(access.role)) return next();
       return sendStandardError(req, res, 403);
     })
     .catch(next);
+}
+
+/**
+ * Exige uma capacidade do perfil. Confia no req.adminRole quando ele já foi
+ * resolvido pelo middleware de sessão; senão relê do banco — mesma estratégia
+ * do requireModuleAccess, para não depender da ordem de registro das rotas.
+ */
+function requireCapability(capability) {
+  return (req, res, next) => {
+    if (accessControl.hasCapability(req.adminRole, capability)) return next();
+
+    const username = getAdminSessionUsername(req);
+    Promise.resolve(getAccessForAdminUsername(username))
+      .then((access) => {
+        if (accessControl.hasCapability(access.role, capability)) return next();
+        return sendStandardError(req, res, 403, { errorCode: "CAPABILITY_REQUIRED" });
+      })
+      .catch(next);
+  };
+}
+
+/**
+ * Acesso ao SentinelGrid: exige a capacidade do PERFIL e o módulo liberado no
+ * CADASTRO do usuário. As duas coisas são independentes — o perfil diz o que a
+ * pessoa pode fazer, o cadastro diz a quais módulos ela tem acesso.
+ */
+function requireSentinelGridAccess(writeCapability) {
+  return (req, res, next) => {
+    const check = (role, moduleAccess) =>
+      accessControl.hasCapability(role, writeCapability) && hasModuleAccess(role, moduleAccess, "sentinelgrid");
+
+    if (check(req.adminRole, req.adminModuleAccess)) return next();
+
+    const username = getAdminSessionUsername(req);
+    Promise.resolve(getAccessForAdminUsername(username))
+      .then((access) => {
+        if (check(access.role, access.moduleAccess)) return next();
+        return sendStandardError(req, res, 403, { errorCode: "CAPABILITY_REQUIRED" });
+      })
+      .catch(next);
+  };
+}
+
+/**
+ * Leitura livre para quem tem `readCapability`; qualquer método que altera dados
+ * exige `writeCapability`. Assim o Gestor navega a API inteira em modo consulta
+ * sem que seja preciso anotar rota por rota.
+ */
+function requireReadWriteCapability(readCapability, writeCapability) {
+  return (req, res, next) => {
+    const isRead = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+    return requireCapability(isRead ? readCapability : writeCapability)(req, res, next);
+  };
 }
 
 function requireModuleAccess(moduleKey) {
@@ -1011,7 +1079,7 @@ async function renderAdminMaintenancePage(req, res, options = {}) {
 }
 
 async function renderSystemMaintenancePage(req, res, options = {}) {
-  const isSystemAdmin = String(req.adminRole || "").toLowerCase() === "admin";
+  const isSystemAdmin = accessControl.isAdministrator(req.adminRole);
   const users = isSystemAdmin ? (options.users || await listAdminUsers()) : [];
   const backups = isSystemAdmin ? (options.backups || await loadBackupsForMaintenancePage()) : [];
   const currentSystemFont = options.currentSystemFont || await getUserSystemFontKey(req.adminUsername || "");
@@ -1037,6 +1105,9 @@ async function renderSystemMaintenancePage(req, res, options = {}) {
     systemDatetimeNow,
     timezoneOffsetLabel,
     timezoneOptions: COMMON_TIMEZONES,
+    roleOptions: accessControl.listRoles(),
+    passwordRequirements: describePasswordRequirements(),
+    passwordMinLength: PASSWORD_MIN_LENGTH,
     envAdminUser: env.admin.user,
     maintenanceCards: [
       {
@@ -2108,7 +2179,11 @@ function renderAdminModuleHubPage(req, res) {
   const canAccessSpecflow = hasModuleAccess(req.adminRole, req.adminModuleAccess, "specflow");
   const canAccessModuleSpec = hasModuleAccess(req.adminRole, req.adminModuleAccess, "module-spec");
   const canAccessReportService = hasModuleAccess(req.adminRole, req.adminModuleAccess, "report-service");
-  const canAccessSentinelGrid = hasModuleAccess(req.adminRole, req.adminModuleAccess, "sentinelgrid");
+  // Duas condições: o perfil precisa ter a capacidade E o módulo precisa estar
+  // liberado para o usuário no cadastro. Antes o SentinelGrid nem existia em
+  // MODULE_ACCESS_KEYS, então hasModuleAccess sempre negava para não-admin.
+  const canAccessSentinelGrid = accessControl.hasCapability(req.adminRole, accessControl.CAPABILITIES.SENTINELGRID_READ)
+    && hasModuleAccess(req.adminRole, req.adminModuleAccess, "sentinelgrid");
   const canAccessSystemMaintenance = Boolean(String(req.adminUsername || "").trim());
 
   const moduleCards = [
@@ -2165,10 +2240,10 @@ function renderAdminModuleHubPage(req, res) {
       name: "Manutencao do Sistema",
       description: "Central administrativa. Perfil user acessa apenas senha e tipografia.",
       status: canAccessSystemMaintenance
-        ? (String(req.adminRole || "").toLowerCase() === "admin" ? "Ativo" : "Limitado")
+        ? (accessControl.isAdministrator(req.adminRole) ? "Ativo" : "Limitado")
         : "Sem acesso",
       statusVariant: canAccessSystemMaintenance
-        ? (String(req.adminRole || "").toLowerCase() === "admin" ? "primary" : "warning")
+        ? (accessControl.isAdministrator(req.adminRole) ? "primary" : "warning")
         : "secondary",
       moduleVersion: "admin",
       href: canAccessSystemMaintenance ? "/admin/maintenance/system" : "",
@@ -2295,6 +2370,7 @@ app.get("/admin/login", csrfProtection, (req, res) => {
     pageTitle: req.t("admin.loginTitle"),
     loginRateLimited: req.query.rate === "1",
     invalidCredentials: req.query.error === "1",
+    passwordChanged: req.query.senha === "1",
     csrfToken: req.csrfToken()
   });
 });
@@ -2310,7 +2386,9 @@ const adminLoginLimiter = createResettableRateLimit("admin-login", {
 
 app.post("/admin/login", csrfProtection, adminLoginLimiter,  asyncHandler(async (req, res) => {
   const username = sanitizeInput(req.body.username);
-  const password = sanitizeInput(req.body.password);
+  // Senhas são dados opacos: sanitização HTML altera caracteres válidos como
+  // &, < e > e fazia a senha criada pelo link nunca conferir no login.
+  const password = String(req.body.password ?? "");
 
   const isPrimaryAdmin = safeTimingEqual(username, String(env.admin.user || "").trim()) && safeTimingEqual(password, env.admin.pass);
   const registeredAdmin = isPrimaryAdmin ? null : await verifyAdminUserCredentials(username, password);
@@ -2328,6 +2406,88 @@ app.post("/admin/login", csrfProtection, adminLoginLimiter,  asyncHandler(async 
   });
   return res.redirect("/admin/hub");
 }));
+
+// ---- Acesso por e-mail: convite e recuperação de senha --------------------
+// Rotas públicas por natureza: quem chega aqui está justamente sem conseguir
+// entrar. Protegidas por CSRF e rate limit.
+
+const passwordEmailLimiter = createResettableRateLimit("admin-password-email", {
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.redirect("/admin/esqueci-senha?rate=1")
+});
+
+app.get("/admin/esqueci-senha", csrfProtection, (req, res) => {
+  res.render("admin-forgot-password", {
+    pageTitle: "Esqueci minha senha",
+    submitted: req.query.enviado === "1",
+    rateLimited: req.query.rate === "1",
+    csrfToken: req.csrfToken()
+  });
+});
+
+app.post("/admin/esqueci-senha", csrfProtection, passwordEmailLimiter, asyncHandler(async (req, res) => {
+  const email = sanitizeInput(req.body.email);
+  try {
+    await sendPasswordReset({ email });
+  } catch (err) {
+    // Falha de SMTP não pode virar sinal para quem está sondando e-mails.
+    console.error("[auth] falha ao enviar recuperacao de senha:", err.message);
+  }
+  // Resposta sempre idêntica: não revela se o e-mail existe na base.
+  return res.redirect("/admin/esqueci-senha?enviado=1");
+}));
+
+// Convite (primeira senha) e redefinição compartilham a mesma tela e o mesmo
+// POST; muda apenas o tipo do token.
+function renderSetPassword(req, res, { kind, owner, errorMessage = null, token }) {
+  const isInvite = kind === TOKEN_KINDS.INVITE;
+  return res.render("admin-set-password", {
+    pageTitle: isInvite ? "Criar senha" : "Redefinir senha",
+    isInvite,
+    tokenValid: Boolean(owner),
+    accountLabel: owner ? (owner.email || owner.username) : "",
+    token: token || "",
+    formAction: isInvite ? "/admin/definir-senha" : "/admin/redefinir-senha",
+    requirements: describePasswordRequirements(),
+    minLength: PASSWORD_MIN_LENGTH,
+    errorMessage,
+    csrfToken: req.csrfToken()
+  });
+}
+
+function registerSetPasswordRoutes(routePath, kind) {
+  app.get(routePath, csrfProtection, asyncHandler(async (req, res) => {
+    const token = String(req.query.token || "");
+    const owner = await peekUserToken(token, kind);
+    return renderSetPassword(req, res, { kind, owner, token });
+  }));
+
+  app.post(routePath, csrfProtection, passwordEmailLimiter, asyncHandler(async (req, res) => {
+    const token = String(req.body.token || "");
+    const password = String(req.body.password || "");
+    const passwordConfirm = String(req.body.passwordConfirm || "");
+    const owner = await peekUserToken(token, kind);
+
+    if (!owner) return renderSetPassword(req, res, { kind, owner: null, token });
+    if (password !== passwordConfirm) {
+      return renderSetPassword(req, res, { kind, owner, token, errorMessage: "As senhas não conferem." });
+    }
+
+    try {
+      await setPasswordWithToken({ token, kind, newPassword: password });
+    } catch (err) {
+      if (err.code === "invalid_token") return renderSetPassword(req, res, { kind, owner: null, token });
+      return renderSetPassword(req, res, { kind, owner, token, errorMessage: err.message });
+    }
+    return res.redirect("/admin/login?senha=1");
+  }));
+}
+
+registerSetPasswordRoutes("/admin/definir-senha", TOKEN_KINDS.INVITE);
+registerSetPasswordRoutes("/admin/redefinir-senha", TOKEN_KINDS.RESET);
 
 app.post("/admin/logout", csrfProtection, (req, res) => {
   res.clearCookie(ADMIN_SESSION_COOKIE_NAME, {
@@ -2563,7 +2723,7 @@ app.post("/admin/maintenance/system/font", csrfProtection, requireAdminAuth, asy
 }));
 
 app.post("/admin/maintenance/system/datetime", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
-  if (String(req.adminRole || "").toLowerCase() !== "admin") {
+  if (!accessControl.isAdministrator(req.adminRole)) {
     return res.status(403).send("Acesso negado.");
   }
   const timezone = sanitizeInput(String(req.body.timezone || "")).trim();
@@ -2582,9 +2742,9 @@ app.post("/admin/maintenance/system/datetime", csrfProtection, requireAdminAuth,
 app.post("/admin/maintenance/system/password", csrfProtection, requireAdminAuth, asyncHandler(async (req, res) => {
   const adminUsername = String(req.adminUsername || "").trim();
   const adminUser = await getAdminUserByUsername(adminUsername);
-  const currentPassword = sanitizeInput(req.body.current_password);
-  const newPassword = sanitizeInput(req.body.new_password);
-  const newPasswordConfirm = sanitizeInput(req.body.new_password_confirm);
+  const currentPassword = String(req.body.current_password ?? "");
+  const newPassword = String(req.body.new_password ?? "");
+  const newPasswordConfirm = String(req.body.new_password_confirm ?? "");
   let selfPasswordResult;
   let statusCode = 200;
 
@@ -3590,28 +3750,49 @@ app.post(
 
 app.post(["/admin/maintenance/system/admin-users/create", "/admin/maintenance/admin-users/create"], csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
   const username = sanitizeInput(req.body.username);
-  const password = sanitizeInput(req.body.password);
-  const passwordConfirm = sanitizeInput(req.body.passwordConfirm);
-  const role = sanitizeInput(req.body.role).toLowerCase();
+  const email = sanitizeInput(req.body.email);
+  const password = String(req.body.password ?? "");
+  const passwordConfirm = String(req.body.passwordConfirm ?? "");
+  const role = accessControl.normalizeRole(sanitizeInput(req.body.role));
   const moduleAccess = normalizeModuleAccessInput(req.body.module_access);
+  // Sem senha digitada + e-mail informado = convite: o próprio usuário cria a senha.
+  const useInvite = !password && Boolean(email);
 
   let userCreateResult = null;
   if (!username || username.length < 3) {
-    userCreateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
-  } else if (!password || password.length < 8) {
-    userCreateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
-  } else if (password !== passwordConfirm) {
-    userCreateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
-  } else if (!["admin", "user"].includes(role)) {
-    userCreateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
+    userCreateResult = { ok: false, message: "Informe um usuário com ao menos 3 caracteres." };
+  } else if (!password && !email) {
+    userCreateResult = { ok: false, message: "Informe um e-mail para enviar o convite ou defina uma senha." };
+  } else if (password && password !== passwordConfirm) {
+    userCreateResult = { ok: false, message: "As senhas não conferem." };
   } else if (safeTimingEqual(username, String(env.admin.user || "").trim())) {
     userCreateResult = { ok: false, message: getStandardStatusMessage(req, 409) };
   } else {
     try {
-      await createAdminUser({ username, password, role, moduleAccess });
-      userCreateResult = { ok: true, message: `Usuario criado: ${username} (${role})` };
+      const created = await createAdminUser({ username, email, password, role, moduleAccess });
+      const roleLabel = accessControl.roleLabel(role);
+      if (useInvite) {
+        try {
+          const { link } = await sendInvite({ userId: created.id, email: created.email, username: created.username });
+          userCreateResult = {
+            ok: true,
+            message: `Usuário criado: ${username} (${roleLabel}). Convite enviado para ${created.email}.`,
+            link
+          };
+        } catch (mailErr) {
+          // A conta existe, mas o convite não saiu — precisa aparecer, senão o
+          // admin acha que está tudo certo e o usuário nunca recebe o link.
+          userCreateResult = {
+            ok: false,
+            message: `Usuário criado, mas o convite não pôde ser enviado (${mailErr.message}). Use "Reenviar convite".`
+          };
+        }
+      } else {
+        userCreateResult = { ok: true, message: `Usuário criado: ${username} (${roleLabel})` };
+      }
     } catch (err) {
-      userCreateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
+      // Mensagem real: com senha forte obrigatória, esconder o motivo trava o admin.
+      userCreateResult = { ok: false, message: sanitizeInput(err.message || "") || getStandardStatusMessage(req, 422) };
     }
   }
 
@@ -3624,20 +3805,19 @@ app.post(["/admin/maintenance/system/admin-users/create", "/admin/maintenance/ad
 app.post(["/admin/maintenance/system/admin-users/:id/update", "/admin/maintenance/admin-users/:id/update"], csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
   const id = sanitizeInput(req.params.id);
   const username = sanitizeInput(req.body.username);
-  const role = sanitizeInput(req.body.role).toLowerCase();
-  const password = sanitizeInput(req.body.password);
-  const passwordConfirm = sanitizeInput(req.body.passwordConfirm);
+  const email = sanitizeInput(req.body.email);
+  const role = accessControl.normalizeRole(sanitizeInput(req.body.role));
+  const password = String(req.body.password ?? "");
+  const passwordConfirm = String(req.body.passwordConfirm ?? "");
   const moduleAccess = normalizeModuleAccessInput(req.body.module_access);
 
   let userUpdateResult = null;
   if (!id) {
     userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 400) };
   } else if (!username || username.length < 3) {
-    userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
-  } else if (!["admin", "user"].includes(role)) {
-    userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
+    userUpdateResult = { ok: false, message: "Informe um usuário com ao menos 3 caracteres." };
   } else if (password && password !== passwordConfirm) {
-    userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
+    userUpdateResult = { ok: false, message: "As senhas não conferem." };
   } else if (safeTimingEqual(username, String(env.admin.user || "").trim())) {
     userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 409) };
   } else {
@@ -3645,19 +3825,50 @@ app.post(["/admin/maintenance/system/admin-users/:id/update", "/admin/maintenanc
       await updateAdminUser({
         id,
         username,
+        email,
         role,
         password: password || "",
         moduleAccess
       });
-      userUpdateResult = { ok: true, message: `Usuario atualizado: ${username} (${role})` };
+      userUpdateResult = { ok: true, message: `Usuário atualizado: ${username} (${accessControl.roleLabel(role)})` };
     } catch (err) {
-      userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 422) };
+      userUpdateResult = { ok: false, message: sanitizeInput(err.message || "") || getStandardStatusMessage(req, 422) };
     }
   }
 
   await renderSystemMaintenancePage(req, res, {
     statusCode: userUpdateResult.ok ? 200 : 422,
     userUpdateResult,
+  });
+}));
+
+// Reenvia o convite (ou manda um link de definição de senha para quem já é
+// ativo mas perdeu o acesso). Invalida qualquer convite anterior.
+app.post(["/admin/maintenance/system/admin-users/:id/invite", "/admin/maintenance/admin-users/:id/invite"], csrfProtection, requireAdminAuth, requireMaintenanceAdmin, asyncHandler(async (req, res) => {
+  const id = sanitizeInput(req.params.id);
+  let userUpdateResult = null;
+
+  const target = (await listAdminUsers()).find((user) => user.id === id);
+  if (!target) {
+    userUpdateResult = { ok: false, message: getStandardStatusMessage(req, 404) };
+  } else if (!target.email) {
+    userUpdateResult = { ok: false, message: `${target.username} não tem e-mail cadastrado. Informe um e-mail antes de enviar o convite.` };
+  } else {
+    try {
+      const { link } = await sendInvite({ userId: target.id, email: target.email, username: target.username });
+      userUpdateResult = {
+        ok: true,
+        message: `Convite enviado para ${target.email}. O link vale por 72 horas.`,
+        link
+      };
+    } catch (err) {
+      userUpdateResult = { ok: false, message: `Falha ao enviar o convite: ${sanitizeInput(err.message || "")}` };
+    }
+  }
+
+  await renderSystemMaintenancePage(req, res, {
+    statusCode: userUpdateResult.ok ? 200 : 422,
+    userUpdateResult
   });
 }));
 
@@ -5382,6 +5593,29 @@ app.use("/admin/api/v2", apiV2Limiter, (req, res, next) => {
 });
 
 if (env.reportServiceEnabled) {
+  // Gates por capacidade na façade JSON consumida pelo SPA. Registrados ANTES
+  // do router do módulo, então valem para todas as rotas de cada prefixo.
+  // Leitura é liberada para os quatro perfis; o que muda é quem pode gravar.
+  const CAP = accessControl.CAPABILITIES;
+
+  // Cadastros gerais: Técnico e Gestor leem, mas não alteram.
+  for (const prefix of ["/admin/api/v2/customers", "/admin/api/v2/equipments", "/admin/api/v2/spare-parts", "/admin/api/v2/assets"]) {
+    app.use(prefix, requireAdminAuth, requireReadWriteCapability(CAP.RECORDS_READ, CAP.RECORDS_WRITE));
+  }
+
+  // Abrir e excluir OS é do Coordenador para cima — o Técnico edita a OS que
+  // já existe, mas não cria nem apaga. Estes gates são mais específicos que o
+  // de baixo e por isso vêm antes; ambos seguem para o router com next().
+  app.post("/admin/api/v2/orders", requireAdminAuth, requireCapability(CAP.ORDERS_CREATE));
+  app.delete("/admin/api/v2/orders/:id", requireAdminAuth, requireCapability(CAP.ORDERS_DELETE));
+
+  // OS e relatórios: Técnico edita; Gestor só visualiza.
+  app.use("/admin/api/v2/orders", requireAdminAuth, requireReadWriteCapability(CAP.ORDERS_READ, CAP.ORDERS_EDIT));
+  app.use("/admin/api/v2/reports", requireAdminAuth, requireReadWriteCapability(CAP.ORDERS_READ, CAP.ORDERS_EDIT));
+
+  // Configuração do módulo é administração do sistema.
+  app.use("/admin/api/v2/config", requireAdminAuth, requireReadWriteCapability(CAP.ORDERS_READ, CAP.SYSTEM_MANAGE));
+
   registerReportService(app, {
     asyncHandler,
     sanitizeInput,
@@ -5397,6 +5631,14 @@ if (env.reportServiceEnabled) {
 }
 
 if (env.sentinelgridEnabled && registerSentinelGrid) {
+  // Técnico não tem acesso ao SentinelGrid; Gestor entra somente para consulta.
+  app.use("/admin/api/v2/sentinelgrid", requireAdminAuth, (req, res, next) => {
+    const isRead = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+    const capability = isRead
+      ? accessControl.CAPABILITIES.SENTINELGRID_READ
+      : accessControl.CAPABILITIES.SENTINELGRID_WRITE;
+    return requireSentinelGridAccess(capability)(req, res, next);
+  });
   registerSentinelGrid(app, {
     asyncHandler,
     sanitizeInput,

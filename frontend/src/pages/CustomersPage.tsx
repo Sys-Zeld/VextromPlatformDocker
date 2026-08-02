@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
+import { CAP, useCan } from "../api/session";
 import {
   CUSTOMER_TYPES,
   Customer,
@@ -35,6 +36,7 @@ const EMPTY_SITE: SiteInput = {
 
 export default function CustomersPage() {
   const qc = useQueryClient();
+  const can = useCan();
   const { data, isLoading, error } = useQuery({ queryKey: ["customers"], queryFn: listCustomers });
   // Na tela do Service Report, a sugestão exibe somente clientes do outro módulo.
   const sgClients = useQuery({ queryKey: ["sentinelgrid", "clients", "suggest"], queryFn: () => listClients({ pageSize: 500 }) });
@@ -126,8 +128,10 @@ export default function CustomersPage() {
       {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
 
       {/* ---- Clientes ---- */}
+      {/* Só o formulário de criação depende da permissão; a lista abaixo
+          permanece visível para os perfis de leitura. */}
       <Card>
-        <Card.Header>Novo cliente</Card.Header>
+        {can(CAP.RECORDS_WRITE) && <><Card.Header>Novo cliente</Card.Header>
         <Card.Body>
           <Form
             className="row g-2 align-items-end"
@@ -164,7 +168,7 @@ export default function CustomersPage() {
               <Button type="submit" disabled={mCreateCustomer.isPending}>Adicionar</Button>
             </div>
           </Form>
-        </Card.Body>
+        </Card.Body></>}
         <Table striped responsive hover className="mb-0">
           <thead>
             <tr><th>Nome</th><th>Tipo</th><th>Observações</th><th className="text-end">Ações</th></tr>
@@ -178,7 +182,7 @@ export default function CustomersPage() {
                 <td>{c.notes}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingCustomer(c)} />
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingCustomer(c)} />}
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCustomer.isPending} onClick={async () => { if (await confirmDialog(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }} />
                   </div>
                 </td>
@@ -190,7 +194,7 @@ export default function CustomersPage() {
 
       {/* ---- Sites ---- */}
       <Card>
-        <Card.Header>Novo site</Card.Header>
+        {can(CAP.RECORDS_WRITE) && <><Card.Header>Novo site</Card.Header>
         <Card.Body>
           <Form
             className="row g-2 align-items-end"
@@ -223,7 +227,7 @@ export default function CustomersPage() {
               <Button type="submit" disabled={mCreateSite.isPending}>Adicionar</Button>
             </div>
           </Form>
-        </Card.Body>
+        </Card.Body></>}
         <Table striped responsive hover className="mb-0">
           <thead>
             <tr><th>Site</th><th>Cliente</th><th>Código</th><th>Local</th><th className="text-end">Ações</th></tr>
@@ -238,7 +242,7 @@ export default function CustomersPage() {
                 <td>{s.location}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingSite(s)} />
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingSite(s)} />}
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteSite.isPending} onClick={async () => { if (await confirmDialog(`Excluir o site "${s.site_name}"?`)) mDeleteSite.mutate(s.id); }} />
                   </div>
                 </td>

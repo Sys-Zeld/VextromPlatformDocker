@@ -36,10 +36,28 @@
   </div>
 <% } %>
 <% if (userCreateResult) { %>
-  <div class="alert <%= userCreateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= userCreateResult.message %></div>
+  <div class="alert <%= userCreateResult.ok ? 'alert-success' : 'alert-danger' %>">
+    <%= userCreateResult.message %>
+    <% if (userCreateResult.link) { %>
+      <hr class="my-2">
+      <div class="small">
+        Se o e-mail não chegar, entregue este link ao usuário (vale uma única vez):
+        <div class="mt-1"><code class="user-select-all" style="word-break:break-all;"><%= userCreateResult.link %></code></div>
+      </div>
+    <% } %>
+  </div>
 <% } %>
 <% if (userUpdateResult) { %>
-  <div class="alert <%= userUpdateResult.ok ? 'alert-success' : 'alert-danger' %>"><%= userUpdateResult.message %></div>
+  <div class="alert <%= userUpdateResult.ok ? 'alert-success' : 'alert-danger' %>">
+    <%= userUpdateResult.message %>
+    <% if (userUpdateResult.link) { %>
+      <hr class="my-2">
+      <div class="small">
+        Se o e-mail não chegar, entregue este link ao usuário (vale uma única vez):
+        <div class="mt-1"><code class="user-select-all" style="word-break:break-all;"><%= userUpdateResult.link %></code></div>
+      </div>
+    <% } %>
+  </div>
 <% } %>
 <% if (userDeleteResult) { %>
   <div class="alert <%= userDeleteResult.ok ? 'alert-success' : 'alert-danger' %>"><%= userDeleteResult.message %></div>
@@ -350,11 +368,22 @@
         <small class="text-muted"><%= t("admin.sys.usernameHint") %></small>
       </div>
       <div class="col-12 col-md-3">
+        <label class="form-label">E-mail</label>
+        <input class="form-control" type="email" name="email" placeholder="pessoa@empresa.com" />
+        <small class="text-muted">Usado para login e para o convite de criação de senha.</small>
+      </div>
+      <div class="col-12 col-md-3">
         <label class="form-label"><%= t("admin.sys.roleLabel") %></label>
         <select class="form-select" name="role" required>
-          <option value="user">user</option>
-          <option value="admin">admin</option>
+          <% (roleOptions || []).forEach((option) => { %>
+            <option value="<%= option.value %>" title="<%= option.description %>"><%= option.label %></option>
+          <% }) %>
         </select>
+        <small class="text-muted d-block mt-1">
+          <% (roleOptions || []).forEach((option) => { %>
+            <strong><%= option.label %>:</strong> <%= option.description %><br>
+          <% }) %>
+        </small>
       </div>
       <div class="col-12">
         <label class="form-label d-block mb-2"><%= t("admin.sys.allowedModulesLabel") %></label>
@@ -371,16 +400,30 @@
             <input class="form-check-input" type="checkbox" name="module_access" id="create_module_report_service" value="report-service" checked />
             <label class="form-check-label" for="create_module_report_service">Report Service</label>
           </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="module_access" id="create_module_sentinelgrid" value="sentinelgrid" checked />
+            <label class="form-check-label" for="create_module_sentinelgrid">SentinelGrid</label>
+          </div>
         </div>
         <small class="text-muted"><%= t("admin.sys.adminAlwaysFullAccess") %></small>
       </div>
+      <div class="col-12">
+        <div class="alert alert-light border py-2 mb-0 small">
+          <strong>Deixe a senha em branco</strong> para enviar um convite por e-mail — o próprio usuário
+          define a senha e o e-mail é verificado no processo. Preencha a senha só se precisar criar o acesso na hora.
+        </div>
+      </div>
       <div class="col-12 col-md-3">
         <label class="form-label"><%= t("admin.sys.passwordLabel") %></label>
-        <input class="form-control" type="password" name="password" minlength="8" required />
+        <input class="form-control" type="password" name="password" minlength="<%= passwordMinLength %>" autocomplete="new-password" />
       </div>
       <div class="col-12 col-md-3">
         <label class="form-label"><%= t("admin.sys.passwordConfirmLabel") %></label>
-        <input class="form-control" type="password" name="passwordConfirm" minlength="8" required />
+        <input class="form-control" type="password" name="passwordConfirm" minlength="<%= passwordMinLength %>" autocomplete="new-password" />
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label d-none d-md-block">&nbsp;</label>
+        <small class="text-muted"><%= passwordRequirements %></small>
       </div>
       <div class="col-12">
         <button class="btn btn-primary" type="submit"><%= t("admin.sys.createUserButton") %></button>
@@ -397,6 +440,7 @@
         <thead>
           <tr>
             <th><%= t("admin.sys.colUsername") %></th>
+            <th>E-mail</th>
             <th><%= t("admin.sys.colRole") %></th>
             <th><%= t("admin.sys.colModules") %></th>
             <th><%= t("admin.sys.colCreatedAt") %></th>
@@ -407,7 +451,8 @@
         <tbody>
           <tr>
             <td><code><%= envAdminUser || "admin" %></code> <span class="badge text-bg-secondary"><%= t("admin.sys.principalBadge") %></span></td>
-            <td><span class="badge text-bg-danger">admin</span></td>
+            <td><small class="text-muted">definido no .env</small></td>
+            <td><span class="badge text-bg-danger">Administrador</span></td>
             <td><small>SpecFlow, ModuleSpec, Report Service</small></td>
             <td>-</td>
             <td>-</td>
@@ -415,14 +460,30 @@
           </tr>
           <% if (!users || !users.length) { %>
             <tr>
-              <td colspan="6" class="text-muted"><%= t("admin.sys.noAdditionalUsers") %></td>
+              <td colspan="7" class="text-muted"><%= t("admin.sys.noAdditionalUsers") %></td>
             </tr>
           <% } %>
           <% (users || []).forEach((user) => { %>
+            <% var isAdminUser = user.role === "administrator"; %>
             <tr>
               <td><code><%= user.username %></code></td>
-              <td><span class="badge <%= user.role === "admin" ? "text-bg-danger" : "text-bg-secondary" %>"><%= user.role %></span></td>
-              <td><small><%= user.role === "admin" ? "SpecFlow, ModuleSpec, Report Service" : ((user.moduleAccess || []).join(", ") || "-") %></small></td>
+              <td>
+                <% if (user.email) { %>
+                  <small><%= user.email %></small>
+                  <% if (user.emailVerifiedAt) { %>
+                    <span class="badge text-bg-success" title="E-mail verificado pelo próprio usuário">verificado</span>
+                  <% } else { %>
+                    <span class="badge text-bg-warning" title="O usuário ainda não clicou no link enviado">não verificado</span>
+                  <% } %>
+                <% } else { %>
+                  <small class="text-muted">sem e-mail</small>
+                <% } %>
+                <% if (user.status === "invited") { %>
+                  <div><span class="badge text-bg-info">aguardando criar senha</span></div>
+                <% } %>
+              </td>
+              <td><span class="badge <%= isAdminUser ? "text-bg-danger" : "text-bg-secondary" %>"><%= user.roleLabel || user.role %></span></td>
+              <td><small><%= isAdminUser ? "SpecFlow, ModuleSpec, Report Service" : ((user.moduleAccess || []).join(", ") || "-") %></small></td>
               <td><%= user.createdAt ? new Date(user.createdAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td><%= user.updatedAt ? new Date(user.updatedAt).toLocaleString(lang === "pt" ? "pt-BR" : "en-US") : "-" %></td>
               <td>
@@ -432,31 +493,44 @@
                     <div class="d-flex flex-column gap-2">
                       <input class="form-control form-control-sm" type="text" name="username" value="<%= user.username %>" minlength="3" required />
                       <small class="text-muted"><%= t("admin.sys.usernameHint") %></small>
+                      <input class="form-control form-control-sm" type="email" name="email" value="<%= user.email || "" %>" placeholder="E-mail (login e recuperação)" />
                       <select class="form-select form-select-sm" name="role" required>
-                        <option value="user" <%= user.role === "user" ? "selected" : "" %>>user</option>
-                        <option value="admin" <%= user.role === "admin" ? "selected" : "" %>>admin</option>
+                        <% (roleOptions || []).forEach((option) => { %>
+                          <option value="<%= option.value %>" <%= user.role === option.value ? "selected" : "" %>><%= option.label %></option>
+                        <% }) %>
                       </select>
                       <div class="border rounded p-2">
                         <div class="small fw-semibold mb-1"><%= t("admin.sys.editUserModulesLabel") %></div>
                         <div class="d-flex gap-2 flex-wrap">
                           <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_specflow" value="specflow" <%= user.role === "admin" || (user.moduleAccess || []).includes("specflow") ? "checked" : "" %> />
+                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_specflow" value="specflow" <%= isAdminUser || (user.moduleAccess || []).includes("specflow") ? "checked" : "" %> />
                             <label class="form-check-label" for="user_<%= user.id %>_specflow">SpecFlow</label>
                           </div>
                           <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_module_spec" value="module-spec" <%= user.role === "admin" || (user.moduleAccess || []).includes("module-spec") ? "checked" : "" %> />
+                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_module_spec" value="module-spec" <%= isAdminUser || (user.moduleAccess || []).includes("module-spec") ? "checked" : "" %> />
                             <label class="form-check-label" for="user_<%= user.id %>_module_spec">ModuleSpec</label>
                           </div>
                           <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_report_service" value="report-service" <%= user.role === "admin" || (user.moduleAccess || []).includes("report-service") ? "checked" : "" %> />
+                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_report_service" value="report-service" <%= isAdminUser || (user.moduleAccess || []).includes("report-service") ? "checked" : "" %> />
                             <label class="form-check-label" for="user_<%= user.id %>_report_service">Report Service</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="module_access" id="user_<%= user.id %>_sentinelgrid" value="sentinelgrid" <%= isAdminUser || (user.moduleAccess || []).includes("sentinelgrid") ? "checked" : "" %> />
+                            <label class="form-check-label" for="user_<%= user.id %>_sentinelgrid">SentinelGrid</label>
                           </div>
                         </div>
                       </div>
-                      <input class="form-control form-control-sm" type="password" name="password" minlength="8" placeholder="<%= t('admin.sys.newPasswordPh') %>" />
-                      <input class="form-control form-control-sm" type="password" name="passwordConfirm" minlength="8" placeholder="<%= t('admin.sys.confirmPasswordPh') %>" />
+                      <input class="form-control form-control-sm" type="password" name="password" minlength="<%= passwordMinLength %>" placeholder="<%= t('admin.sys.newPasswordPh') %>" autocomplete="new-password" />
+                      <input class="form-control form-control-sm" type="password" name="passwordConfirm" minlength="<%= passwordMinLength %>" placeholder="<%= t('admin.sys.confirmPasswordPh') %>" autocomplete="new-password" />
                       <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.saveUserButton") %></button>
                     </div>
+                  </form>
+                  <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/invite" class="maintenance-user-update-form" data-confirm="Enviar um link de criação de senha para <%= user.email || "este usuário" %>?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <button class="btn btn-outline-secondary btn-sm" type="submit" <%= user.email ? "" : "disabled" %>
+                            title="<%= user.email ? "Envia um link para o usuário criar a senha (vale 72h)" : "Cadastre um e-mail primeiro" %>">
+                      <%= user.status === "invited" ? "Reenviar convite" : "Enviar link de senha" %>
+                    </button>
                   </form>
                   <form method="post" action="/admin/maintenance/system/admin-users/<%= user.id %>/delete" class="maintenance-user-update-form" data-confirm="<%= t('admin.sys.confirmDeleteUser') %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />

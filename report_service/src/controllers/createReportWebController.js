@@ -7,6 +7,7 @@ const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
 const { parseEventLogWorkbook } = require("../services/eventLogParser");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../../db");
+const accessControl = require("../../../specflow/services/accessControl");
 const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
 const {
@@ -677,7 +678,7 @@ function createReportWebController(deps) {
   }
 
   function isSystemAdminUser(res) {
-    return String(res.locals.adminRole || "").toLowerCase() === "admin";
+    return accessControl.isAdministrator(res.locals.adminRole);
   }
 
   async function ensureOrderEditable(req, res, orderId, options = {}) {
@@ -1238,7 +1239,8 @@ function createReportWebController(deps) {
     },
 
     async createOrder(req, res) {
-      if (!isSystemAdminUser(res)) {
+      // Espelha a regra da façade v2: abrir OS é do Coordenador para cima.
+      if (!accessControl.hasCapability(res.locals.adminRole, accessControl.CAPABILITIES.ORDERS_CREATE)) {
         return res.redirect("/admin/report-service/orders?create_error=forbidden_admin");
       }
       const created = await service.createOrder({
@@ -2917,7 +2919,7 @@ function createReportWebController(deps) {
       if (!data) return res.status(404).send("OS nao encontrada.");
 
       const redirectBase = buildOrderEditorRedirect(req, orderId);
-      if (!isSystemAdminUser(res)) {
+      if (!accessControl.hasCapability(res.locals.adminRole, accessControl.CAPABILITIES.ORDERS_DELETE)) {
         return res.redirect(`${redirectBase}?revalidate_error=forbidden_admin`);
       }
       if (!isOrderApproved(data.order)) {

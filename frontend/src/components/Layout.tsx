@@ -10,6 +10,8 @@ interface SessionInfo {
   authenticated: boolean;
   username: string | null;
   role: string | null;
+  roleLabel: string | null;
+  capabilities: string[];
   lang: string;
 }
 
@@ -18,6 +20,8 @@ interface NavItem {
   label: string;
   icon: string;
   end?: boolean;
+  /** Se informada, o item só aparece para quem tem esta capacidade. */
+  capability?: string;
 }
 
 interface NavGroup {
@@ -25,6 +29,7 @@ interface NavGroup {
   label: string;
   icon: string;
   children: NavEntry[];
+  capability?: string;
 }
 
 type NavEntry = NavItem | NavGroup;
@@ -39,14 +44,16 @@ interface ModuleNav {
   footer: { href: string; label: string; icon: string };
 }
 
+// `capability` opcional: quando presente, o item só aparece para quem a possui.
+// É conveniência visual — o bloqueio real está no servidor.
 const SERVICE_REPORT_NAV: NavItem[] = [
   { to: "/", label: "Ordens de Serviço", icon: "receipt_long", end: true },
   { to: "/customers", label: "Clientes", icon: "groups" },
   { to: "/equipments", label: "Equipamentos", icon: "precision_manufacturing" },
   { to: "/spare-parts", label: "Peças", icon: "inventory_2" },
   { to: "/assets", label: "Equipe & Instrumentos", icon: "engineering" },
-  { to: "/table-styles", label: "Estilos de tabela", icon: "table_chart" },
-  { to: "/config", label: "Configuração", icon: "settings" },
+  { to: "/table-styles", label: "Estilos de tabela", icon: "table_chart", capability: "system:manage" },
+  { to: "/config", label: "Configuração", icon: "settings", capability: "system:manage" },
   { to: "/analytics", label: "Analytics", icon: "insights" }
 ];
 
@@ -121,6 +128,19 @@ function resolveModule(pathname: string): ModuleNav {
   return SERVICE_REPORT_MODULE;
 }
 
+// Remove da nav o que o perfil não pode acessar. Grupos que ficam sem nenhum
+// filho visível somem junto, para não sobrar menu vazio.
+function filterNavByCapabilities(entries: NavEntry[], capabilities: string[]): NavEntry[] {
+  const allowed = new Set(capabilities);
+  const permitted = (entry: NavEntry) => !entry.capability || allowed.has(entry.capability);
+  return entries.flatMap<NavEntry>((entry) => {
+    if (!permitted(entry)) return [];
+    if (!isNavGroup(entry)) return [entry];
+    const children = filterNavByCapabilities(entry.children, capabilities);
+    return children.length ? [{ ...entry, children }] : [];
+  });
+}
+
 function isNavGroup(entry: NavEntry): entry is NavGroup {
   return "children" in entry;
 }
@@ -187,6 +207,10 @@ export default function Layout() {
   const mod = resolveModule(location.pathname);
   const sgIcon = activeSgIcon(location.pathname);
   const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
+  const capabilities = session?.capabilities ?? [];
+  // Enquanto a sessão não chega, capabilities está vazio e itens com exigência
+  // ficam ocultos — some por um instante em vez de piscar e sumir.
+  const visibleNav = filterNavByCapabilities(mod.nav, capabilities);
   const [theme, setTheme] = useState<AppTheme>(getStoredTheme());
   const [open, setOpen] = useState(false); // drawer mobile
   const [collapsed, setCollapsed] = useState<boolean>(readPreferredCollapsed);
@@ -299,7 +323,7 @@ export default function Layout() {
 
         <nav className="vx-nav">
           <span className="vx-nav__section">{mod.section}</span>
-          {mod.nav.map((entry) => renderNavEntry(entry, 0))}
+          {visibleNav.map((entry) => renderNavEntry(entry, 0))}
           <div className="vx-nav__spacer" />
           <a href={mod.footer.href} className="vx-nav__link vx-nav__link--muted" title={mod.footer.label}>
             <span className="material-symbols-outlined">{mod.footer.icon}</span>
@@ -343,9 +367,12 @@ export default function Layout() {
               {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             {session?.username && (
-              <span className="vx-user">
+              <span className="vx-user" title={session.roleLabel || undefined}>
                 <span className="vx-user__avatar">{initials}</span>
-                <span className="vx-user__name">{session.username}</span>
+                <span className="vx-user__name">
+                  {session.username}
+                  {session.roleLabel && <small className="d-block text-muted lh-1">{session.roleLabel}</small>}
+                </span>
               </span>
             )}
           </div>

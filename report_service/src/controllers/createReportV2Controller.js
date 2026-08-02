@@ -8,6 +8,7 @@ const repo = require("../repositories/serviceReportRepository");
 const service = require("../services/serviceReportService");
 const analyticsService = require("../services/analyticsService");
 const objectStorage = require("../../../specflow/services/objectStorage");
+const accessControl = require("../../../specflow/services/accessControl");
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
 const { sanitizeReportSectionHtml } = require("../services/quillContentService");
 const { buildPreviewModel } = require("../services/reportPreviewService");
@@ -345,10 +346,15 @@ function createReportServiceV2Controller(deps) {
   return {
     // Espelho leve da sessão de admin legada — valida que o cookie é reconhecido.
     async session(req, res) {
+      const role = req.adminRole ? accessControl.normalizeRole(req.adminRole) : null;
       return res.json({
         authenticated: Boolean(req.adminUsername),
         username: req.adminUsername || null,
-        role: req.adminRole || null,
+        role,
+        roleLabel: role ? accessControl.roleLabel(role) : null,
+        // O SPA usa isto para esconder ações que o perfil não pode executar.
+        // É conveniência de UI: quem barra de verdade é o servidor.
+        capabilities: role ? accessControl.capabilitiesForRole(role) : [],
         lang: req.lang || "pt",
         reactAppEnabled: true
       });
@@ -470,8 +476,9 @@ function createReportServiceV2Controller(deps) {
     },
 
     async createOrder(req, res) {
-      if (String(req.adminRole || "").toLowerCase() !== "admin") {
-        return res.status(403).json({ error: "Apenas administradores do sistema podem criar OS." });
+      // Abrir OS é do Coordenador para cima (antes era exclusivo do admin).
+      if (!accessControl.hasCapability(req.adminRole, accessControl.CAPABILITIES.ORDERS_CREATE)) {
+        return res.status(403).json({ error: "Seu perfil não permite abrir OS." });
       }
       const created = await service.createOrder({
         customerId: req.body.customerId || req.body.customer_id,
@@ -553,7 +560,7 @@ function createReportServiceV2Controller(deps) {
       const linkedInstrIds = new Set(linkedInstruments.map((i) => Number(i.id)));
       const locked = String(order.status || "").toLowerCase() === "approved";
       const validation = buildOrderValidationSummary({ orderEquipments, timesheet, dailyLogs, technicians: linkedTechnicians });
-      const isSystemAdmin = String(res.locals.adminRole || "").toLowerCase() === "admin";
+      const isSystemAdmin = accessControl.isAdministrator(res.locals.adminRole);
       return res.json({
         validation, isSystemAdmin,
         order, report, timesheet, dailyLogs, locked,
@@ -593,8 +600,10 @@ function createReportServiceV2Controller(deps) {
       const orderId = Number(req.params.id);
       const order = await repo.getOrderById(orderId);
       if (!order) return res.status(404).json({ error: "OS não encontrada." });
-      if (String(res.locals.adminRole || "").toLowerCase() !== "admin") {
-        return res.status(403).json({ error: "Apenas administradores do sistema podem revalidar.", errorCode: "forbidden_admin" });
+      // Reabrir uma OS aprovada é operação destrutiva sobre a OS — Coordenador
+      // para cima, junto com a permissão de excluir.
+      if (!accessControl.hasCapability(res.locals.adminRole, accessControl.CAPABILITIES.ORDERS_DELETE)) {
+        return res.status(403).json({ error: "Seu perfil não permite revalidar uma OS aprovada.", errorCode: "forbidden_admin" });
       }
       if (String(order.status || "").toLowerCase() !== "approved") {
         return res.status(409).json({ error: "A OS precisa estar aprovada para ser revalidada.", errorCode: "invalid_state" });

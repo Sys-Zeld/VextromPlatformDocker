@@ -186,9 +186,62 @@ async function sendSmtpTestEmail({ to }) {
   });
 }
 
+/**
+ * Envio transacional simples (convite, recuperação de senha).
+ * Não usa os templates configuráveis de propósito: e-mail de acesso não pode
+ * depender de um modelo que alguém editou, senão o usuário fica sem entrar.
+ */
+async function sendTransactionalEmail({ to, subject, heading, bodyLines = [], actionUrl, actionLabel, footNote }) {
+  const settings = await getEmailSettings();
+  const transporter = nodemailer.createTransport({
+    host: settings.smtp.host,
+    port: settings.smtp.port,
+    secure: settings.smtp.secure,
+    auth: settings.smtp.user ? { user: settings.smtp.user, pass: settings.smtp.pass } : undefined
+  });
+
+  const safeLines = bodyLines.map((line) => `<p style="margin:0 0 12px;line-height:1.5;">${escapeHtml(line)}</p>`).join("");
+  const button = actionUrl
+    ? `<p style="margin:24px 0;">
+         <a href="${escapeHtml(actionUrl)}"
+            style="display:inline-block;padding:12px 22px;border-radius:8px;background:#176b49;color:#ffffff;
+                   font-weight:700;text-decoration:none;">${escapeHtml(actionLabel || "Continuar")}</a>
+       </p>
+       <p style="margin:0 0 12px;font-size:12px;color:#5a6e64;line-height:1.5;">
+         Se o botão não funcionar, copie e cole este endereço no navegador:<br>
+         <span style="word-break:break-all;">${escapeHtml(actionUrl)}</span>
+       </p>`
+    : "";
+
+  const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f4f6f5;">
+    <div style="max-width:560px;margin:0 auto;padding:28px;border-radius:12px;background:#ffffff;
+                font-family:Segoe UI,Inter,Arial,sans-serif;color:#16211b;">
+      <h1 style="margin:0 0 18px;font-size:19px;color:#123b2b;">${escapeHtml(heading || subject)}</h1>
+      ${safeLines}
+      ${button}
+      ${footNote ? `<p style="margin:18px 0 0;font-size:12px;color:#5a6e64;line-height:1.5;">${escapeHtml(footNote)}</p>` : ""}
+      <p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #dfe7e3;font-size:11px;color:#7b8a83;">
+        Vextrom Platform — mensagem automática, não responda.
+      </p>
+    </div>
+  </body></html>`;
+
+  const text = [heading || subject, "", ...bodyLines, actionUrl ? `\n${actionLabel || "Acesse"}: ${actionUrl}` : "", footNote || ""]
+    .filter(Boolean).join("\n");
+
+  return transporter.sendMail({
+    from: settings.smtp.from,
+    to,
+    subject: sanitizeSubjectHeaderValue(subject),
+    html,
+    text
+  });
+}
+
 module.exports = {
   sendSubmissionEmail,
   sendSmtpTestEmail,
+  sendTransactionalEmail,
   buildSummaryHtml,
   buildSummaryHtmlFromSections
 };

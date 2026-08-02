@@ -23,6 +23,7 @@ import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/Regi
 import { exportEquipmentToReportService, listSgExportableEquipment } from "../api/sentinelgrid/integration";
 import { EquipmentSpare, getEquipmentSpares } from "../api/spareParts";
 import PrintSheet, { PrintColumn } from "../components/PrintSheet";
+import { CAP, useCan } from "../api/session";
 
 // Colunas da lista de peças impressa a partir da tela de equipamentos.
 const SPARES_PRINT_COLUMNS: PrintColumn[] = [
@@ -84,6 +85,7 @@ function toInput(e: Equipment): EquipmentInput {
 
 export default function EquipmentsPage() {
   const qc = useQueryClient();
+  const can = useCan();
   const { data, isLoading, error } = useQuery({ queryKey: ["equipments"], queryFn: listEquipments });
   // Sugestões de TAG cruzando os módulos (cada API lê seu banco — isolamento mantido).
   const sgEquip = useQuery({ queryKey: ["sentinelgrid", "equipment", "suggest"], queryFn: () => listEquipment({ pageSize: 500 }) });
@@ -309,9 +311,9 @@ export default function EquipmentsPage() {
               <td>{e.customer_name || "—"}</td>
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
-                  <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
+                  {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />}
                   <IconAction icon="print" label="Imprimir lista de peças" variant="outline-secondary" disabled={mPrintSpares.isPending} onClick={() => mPrintSpares.mutate(e)} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />
+                  {can(CAP.RECORDS_DELETE) && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />}
                 </div>
               </td>
             </tr>

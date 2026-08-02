@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
-import { api } from "../api/client";
+import { CAP, useCan } from "../api/session";
 import {
   ORDER_STATUSES,
   Order,
@@ -41,8 +41,7 @@ function fmtDate(value: string | null): string {
 export default function OrdersPage() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["orders"], queryFn: listOrders });
-  const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<{ role: string | null }>("/session") });
-  const isAdmin = String(session?.role || "").toLowerCase() === "admin";
+  const can = useCan();
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [show, setShow] = useState(false);
@@ -105,7 +104,7 @@ export default function OrdersPage() {
     <Card>
       <Card.Header className="d-flex justify-content-between align-items-center">
         <span>Ordens de Serviço <Badge bg="light" text="dark" className="ms-2">{orders.length}</Badge></span>
-        {isAdmin && <Button size="sm" onClick={openNew}>Nova OS</Button>}
+        {can(CAP.ORDERS_CREATE) && <Button size="sm" onClick={openNew}>Nova OS</Button>}
       </Card.Header>
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Table striped responsive hover className="mb-0 align-middle">
@@ -124,11 +123,11 @@ export default function OrdersPage() {
               <td>{fmtDate(o.opening_date)}</td>
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
-                  <IconAction icon="edit" label="Editar cadastro" variant="outline-secondary" onClick={() => openEdit(o)} />
-                  <IconAction icon="edit_note" label="Editor (novo)" variant="outline-primary" as={Link} to={`/orders/${o.id}/editor`} />
+                  {can(CAP.ORDERS_EDIT) && <IconAction icon="edit" label="Editar cadastro" variant="outline-secondary" onClick={() => openEdit(o)} />}
+                  <IconAction icon="edit_note" label={can(CAP.ORDERS_EDIT) ? "Editor (novo)" : "Abrir (somente leitura)"} variant="outline-primary" as={Link} to={`/orders/${o.id}/editor`} />
                   <IconAction icon="open_in_new" label="Editor completo (legado)" variant="outline-secondary" href={`/admin/report-service/orders/${o.id}`} />
                   <IconAction icon="picture_as_pdf" label="Histórico de PDFs" variant="outline-secondary" as={Link} to={`/orders/${o.id}/pdf-history`} />
-                  <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />
+                  {can(CAP.ORDERS_DELETE) && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir a OS "${o.title || o.id}"? Esta ação remove todos os dados vinculados.`)) mDelete.mutate(o.id); }} />}
                 </div>
               </td>
             </tr>

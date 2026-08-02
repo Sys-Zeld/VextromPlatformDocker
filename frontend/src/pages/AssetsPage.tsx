@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import IconAction from "../components/IconAction";
+import { CAP, useCan } from "../api/session";
 import {
   Instrument,
   InstrumentInput,
@@ -40,6 +41,7 @@ function instrToInput(i: Instrument): InstrumentInput {
 
 export default function AssetsPage() {
   const qc = useQueryClient();
+  const can = useCan();
   const { data, isLoading, error } = useQuery({ queryKey: ["assets"], queryFn: listAssets });
   const [actionError, setActionError] = useState<string | null>(null);
   const [techModal, setTechModal] = useState<{ id: number | null; form: TechnicianInput } | null>(null);
@@ -87,7 +89,7 @@ export default function AssetsPage() {
       <Card>
         <Card.Header className="d-flex justify-content-between align-items-center">
           <span>Equipe técnica</span>
-          <Button size="sm" onClick={() => setTechModal({ id: null, form: EMPTY_TECH })}>Novo técnico</Button>
+          {can(CAP.RECORDS_WRITE) && <Button size="sm" onClick={() => setTechModal({ id: null, form: EMPTY_TECH })}>Novo técnico</Button>}
         </Card.Header>
         <Table striped responsive hover className="mb-0 align-middle">
           <thead><tr><th>Nome</th><th>Função</th><th>Empresa</th><th>E-mail</th><th>Lead</th><th className="text-end">Ações</th></tr></thead>
@@ -99,7 +101,7 @@ export default function AssetsPage() {
                 <td>{t.is_lead ? <Badge bg="primary">Lead</Badge> : ""}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })} />
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setTechModal({ id: t.id, form: techToInput(t) })} />}
                     <IconAction icon="handyman" label="Ferramentas" variant="outline-primary" as={Link} to={`/assets/technicians/${t.id}/tools`} />
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mTechDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o técnico "${t.name}"?`)) mTechDelete.mutate(t.id); }} />
                   </div>
@@ -114,7 +116,7 @@ export default function AssetsPage() {
       <Card>
         <Card.Header className="d-flex justify-content-between align-items-center">
           <span>Instrumentos</span>
-          <Button size="sm" onClick={() => setInstrModal({ id: null, form: EMPTY_INSTR })}>Novo instrumento</Button>
+          {can(CAP.RECORDS_WRITE) && <Button size="sm" onClick={() => setInstrModal({ id: null, form: EMPTY_INSTR })}>Novo instrumento</Button>}
         </Card.Header>
         <Table striped responsive hover className="mb-0 align-middle">
           <thead><tr><th>Nome</th><th>Modelo</th><th>Nº de série</th><th>Certificado</th><th>Responsável</th><th>Próx. calibração</th><th className="text-end">Ações</th></tr></thead>
@@ -126,7 +128,7 @@ export default function AssetsPage() {
                 <td>{techName(i.responsible_technician_id)}</td><td>{i.calibration_due_date?.slice(0, 10) ?? "—"}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
-                    <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setInstrModal({ id: i.id, form: instrToInput(i) })} />
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setInstrModal({ id: i.id, form: instrToInput(i) })} />}
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mInstrDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o instrumento "${i.name}"?`)) mInstrDelete.mutate(i.id); }} />
                   </div>
                 </td>
