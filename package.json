@@ -1,12 +1,12 @@
 {
   "name": "VextromPlatform",
-  "version": "1.5.1",
+  "version": "2.0.1",
   "description": "System VextromPlatform",
   "moduleVersions": {
     "specflow": "beta",
     "module_spec": "0.0.1",
-    "report_service": "0.2.1",
-    "sentinelgrid": "0.1.0"
+    "report_service": "1.0.1",
+    "sentinelgrid": "0.2.0"
   },
   "moduleStatuses": {
     "specflow": "active",
@@ -98,6 +98,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
+    "makerjs": "^0.19.2",
     "nodemailer": "^6.10.0",
     "pdfkit": "^0.15.0",
     "pg": "^8.19.0",

@@ -78,10 +78,42 @@ export function getEquipmentSpares(equipmentId: number) {
   return api<EquipmentSparesPayload>(`/spare-parts/equipment/${equipmentId}`);
 }
 
+/** Consolidado para impressão: peças agrupadas por equipamento. */
+export interface EquipmentSparesGroup {
+  equipment: Equipment;
+  spares: EquipmentSpare[];
+}
+
+export function listSparesGroupedByEquipment(params: { customerId?: number; siteId?: number; includeEmpty?: boolean } = {}) {
+  const query = new URLSearchParams();
+  if (params.customerId) query.set("customerId", String(params.customerId));
+  if (params.siteId) query.set("siteId", String(params.siteId));
+  if (params.includeEmpty) query.set("includeEmpty", "true");
+  const suffix = query.toString();
+  return api<{ groups: EquipmentSparesGroup[] }>(`/spare-parts/by-equipment${suffix ? `?${suffix}` : ""}`);
+}
+
 export function linkSparePartToEquipment(equipmentId: number, sparePartId: number, quantity: number) {
   return api<{ ok: boolean }>(`/spare-parts/equipment/${equipmentId}/link`, {
     method: "POST",
     body: JSON.stringify({ sparePartId, quantity })
+  });
+}
+
+export interface CopySparesResult {
+  ok: boolean;
+  /** Peças existentes na origem. */
+  total: number;
+  inserted: number;
+  skipped: number;
+  removed: number;
+}
+
+/** Copia a lista de peças de outro equipamento do MESMO site (validado no servidor). */
+export function copyEquipmentSpares(targetEquipmentId: number, sourceEquipmentId: number, replace = false) {
+  return api<CopySparesResult>(`/spare-parts/equipment/${targetEquipmentId}/copy-from`, {
+    method: "POST",
+    body: JSON.stringify({ sourceEquipmentId, replace })
   });
 }
 
@@ -126,6 +158,8 @@ export interface ExtractedSparePart {
 export interface BulkImportResult {
   ok: boolean;
   scope: "catalog" | "equipment";
+  /** Itens repetidos no documento que o servidor consolidou somando a quantidade. */
+  merged?: number;
   inserted: number;
   updated?: number;
   linked?: number;

@@ -21,6 +21,20 @@ import { listEquipment } from "../api/sentinelgrid/equipment";
 import RegistrySuggestField, { RegistrySuggestItem } from "../components/sentinelgrid/RegistrySuggestField";
 import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/RegistrySyncModal";
 import { exportEquipmentToReportService, listSgExportableEquipment } from "../api/sentinelgrid/integration";
+import { EquipmentSpare, getEquipmentSpares } from "../api/spareParts";
+import PrintSheet, { PrintColumn } from "../components/PrintSheet";
+
+// Colunas da lista de peças impressa a partir da tela de equipamentos.
+const SPARES_PRINT_COLUMNS: PrintColumn[] = [
+  { key: "idx", label: "#", width: "8mm", align: "end" },
+  { key: "description", label: "Descrição" },
+  { key: "partNumber", label: "Part Number", width: "32mm" },
+  { key: "manufacturer", label: "Fabricante", width: "28mm" },
+  { key: "family", label: "Família", width: "24mm" },
+  { key: "leadTime", label: "Lead time", width: "20mm" },
+  { key: "quantity", label: "Qtd.", width: "14mm", align: "end" },
+  { key: "status", label: "Status", width: "18mm" }
+];
 
 const EMPTY: EquipmentInput = {
   customerId: "",
@@ -78,6 +92,7 @@ export default function EquipmentsPage() {
   const [form, setForm] = useState<EquipmentInput>(EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showImportEq, setShowImportEq] = useState(false);
+  const [printSpares, setPrintSpares] = useState<{ equipment: Equipment; spares: EquipmentSpare[] } | null>(null);
   const [importInfo, setImportInfo] = useState<string | null>(null);
   // Filtros do cadastro (client-side — o payload já traz todos os equipamentos, clientes e sites).
   const [fCustomer, setFCustomer] = useState<number | "">("");
@@ -107,6 +122,19 @@ export default function EquipmentsPage() {
     onError
   });
   const mDelete = useMutation({ mutationFn: deleteEquipment, onSuccess: invalidate, onError });
+
+  // Atalho de impressão: busca as peças do equipamento sob demanda e monta a folha.
+  const mPrintSpares = useMutation({
+    mutationFn: async (equipment: Equipment) => ({ equipment, data: await getEquipmentSpares(equipment.id) }),
+    onSuccess: ({ equipment, data }) => {
+      if (!data.linkedSpares.length) {
+        setActionError(`O equipamento "${equipment.type}" não possui peças vinculadas.`);
+        return;
+      }
+      setPrintSpares({ equipment, spares: data.linkedSpares });
+    },
+    onError
+  });
 
   // Anexos: lista sob demanda ao abrir a edição; upload/remoção invalidam a lista.
   const attachmentsQ = useQuery({
@@ -282,6 +310,7 @@ export default function EquipmentsPage() {
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />
+                  <IconAction icon="print" label="Imprimir lista de peças" variant="outline-secondary" disabled={mPrintSpares.isPending} onClick={() => mPrintSpares.mutate(e)} />
                   <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDelete.isPending} onClick={async () => { if (await confirmDialog(`Excluir o equipamento "${e.type}"?`)) mDelete.mutate(e.id); }} />
                 </div>
               </td>
@@ -487,6 +516,35 @@ export default function EquipmentsPage() {
           qc.invalidateQueries({ queryKey: ["sentinelgrid", "integration", "sg-exportable-equipment"] });
         }}
       />
+
+      {printSpares && (
+        <PrintSheet
+          title="Lista de peças por equipamento"
+          subtitle={[printSpares.equipment.type, printSpares.equipment.serial_number && `S/N ${printSpares.equipment.serial_number}`]
+            .filter(Boolean).join(" · ") || "Equipamento"}
+          meta={[
+            { label: "Cliente", value: printSpares.equipment.customer_name || "—" },
+            { label: "Site", value: printSpares.equipment.site_name || "—" },
+            { label: "Tag", value: printSpares.equipment.tag_number || "—" },
+            {
+              label: "Itens / Quantidade",
+              value: `${printSpares.spares.length} / ${printSpares.spares.reduce((n, s) => n + (Number(s.quantity) || 0), 0)}`
+            }
+          ]}
+          columns={SPARES_PRINT_COLUMNS}
+          rows={printSpares.spares.map((s, i) => ({
+            idx: String(i + 1),
+            description: s.description ?? "",
+            partNumber: s.part_number ?? "",
+            manufacturer: s.manufacturer ?? "",
+            family: s.equipment_family ?? "",
+            leadTime: s.lead_time ?? "",
+            quantity: String(s.quantity ?? 1),
+            status: s.is_obsolete ? "Obsoleta" : "Ativa"
+          }))}
+          onClose={() => setPrintSpares(null)}
+        />
+      )}
     </>
   );
 }

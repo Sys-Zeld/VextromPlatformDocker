@@ -5,8 +5,20 @@ import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Tab, Tabl
 import EquipmentSparesPanel from "../components/EquipmentSparesPanel";
 import SparePartsImportModal from "../components/SparePartsImportModal";
 import IconAction from "../components/IconAction";
+import PrintSheet, { PrintColumn } from "../components/PrintSheet";
 
 const PAGE_SIZE = 20;
+
+// Colunas da lista de peças impressa (catálogo).
+const PRINT_COLUMNS: PrintColumn[] = [
+  { key: "idx", label: "#", width: "8mm", align: "end" },
+  { key: "description", label: "Descrição" },
+  { key: "partNumber", label: "Part Number", width: "32mm" },
+  { key: "manufacturer", label: "Fabricante", width: "30mm" },
+  { key: "family", label: "Família", width: "26mm" },
+  { key: "leadTime", label: "Lead time", width: "22mm" },
+  { key: "status", label: "Status", width: "20mm" }
+];
 
 // Gera os números de página com reticências (janela ao redor da página atual).
 function pageWindow(current: number, total: number): (number | "…")[] {
@@ -63,6 +75,7 @@ export default function SparePartsPage() {
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
   const [showImport, setShowImport] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["spare-parts"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -113,6 +126,9 @@ export default function SparePartsPage() {
         <span>Spare Parts (catálogo)</span>
         <div className="d-flex gap-2">
           <Form.Control size="sm" placeholder="Filtrar…" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} style={{ maxWidth: 220 }} />
+          <Button size="sm" variant="outline-secondary" disabled={spareParts.length === 0} onClick={() => setPrinting(true)} title="Imprimir a lista completa (respeita o filtro)">
+            <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>print</span>Imprimir lista
+          </Button>
           <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>Importar IA/PDF</Button>
           <Button size="sm" onClick={openNew}>Nova peça</Button>
         </div>
@@ -215,6 +231,31 @@ export default function SparePartsPage() {
       </Modal>
 
       <SparePartsImportModal show={showImport} onHide={() => setShowImport(false)} onImported={invalidate} customers={data?.customers ?? []} equipments={data?.equipments ?? []} />
+
+      {/* Imprime a lista inteira já filtrada, não apenas a página visível. */}
+      {printing && (
+        <PrintSheet
+          title="Lista de peças"
+          subtitle="Catálogo de spare parts"
+          meta={[
+            { label: "Filtro", value: filter.trim() || "Sem filtro" },
+            { label: "Itens", value: String(spareParts.length) },
+            { label: "Ativas", value: String(spareParts.filter((s) => !s.is_obsolete).length) },
+            { label: "Obsoletas", value: String(spareParts.filter((s) => s.is_obsolete).length) }
+          ]}
+          columns={PRINT_COLUMNS}
+          rows={spareParts.map((s, i) => ({
+            idx: String(i + 1),
+            description: s.description ?? "",
+            partNumber: s.part_number ?? "",
+            manufacturer: s.manufacturer ?? "",
+            family: s.equipment_family ?? "",
+            leadTime: s.lead_time ?? "",
+            status: s.is_obsolete ? "Obsoleta" : "Ativa"
+          }))}
+          onClose={() => setPrinting(false)}
+        />
+      )}
         </Card>
       </Tab>
       <Tab eventKey="equipment" title="Por equipamento">

@@ -1607,6 +1607,7 @@ function createReportWebController(deps) {
           ok: true,
           inserted: result.inserted,
           updated: result.updated,
+          merged: result.merged,
           skipped: 0,
           skippedIntraJson: 0,
           skippedExisting: 0,

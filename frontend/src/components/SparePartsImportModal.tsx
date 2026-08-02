@@ -42,16 +42,52 @@ function formatElapsed(ms: number): string {
   return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
-interface JsonInfo { valid: boolean; count: number; withDesc: number; error: string | null }
+interface JsonInfo { valid: boolean; count: number; withDesc: number; totalQty: number; duplicates: number; error: string | null }
+
+const EMPTY_INFO = { valid: false, count: 0, withDesc: 0, totalQty: 0, duplicates: 0 };
+
+/** Chave de consolidação: PN quando houver, senão a descrição (igual ao servidor). */
+function itemKey(item: ExtractedSparePart): string {
+  const pn = String(item.part_number || "").trim().toLowerCase();
+  return pn ? `pn:${pn}` : `desc:${String(item.description || "").trim().toLowerCase()}`;
+}
+
+function itemQty(item: ExtractedSparePart): number {
+  const n = Number(item.quantity);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+}
+
+/** Junta itens repetidos somando a quantidade — o mesmo critério do backend. */
+function consolidate(items: ExtractedSparePart[]): ExtractedSparePart[] {
+  const byKey = new Map<string, ExtractedSparePart>();
+  for (const item of items) {
+    const key = itemKey(item);
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, { ...item, quantity: itemQty(item) });
+      continue;
+    }
+    current.quantity = itemQty(current) + itemQty(item);
+    // Ocorrências seguintes preenchem o que veio vazio na primeira.
+    for (const field of ["manufacturer", "equipment_model", "equipment_family", "lead_time", "replaced_by_part_number"] as const) {
+      if (!current[field] && item[field]) current[field] = item[field];
+    }
+    current.is_obsolete = Boolean(current.is_obsolete) || Boolean(item.is_obsolete);
+  }
+  return [...byKey.values()];
+}
 
 function inspectJson(raw: string): JsonInfo {
   const text = raw.trim();
-  if (!text) return { valid: false, count: 0, withDesc: 0, error: null };
+  if (!text) return { ...EMPTY_INFO, error: null };
   let parsed: unknown;
-  try { parsed = JSON.parse(text); } catch (e) { return { valid: false, count: 0, withDesc: 0, error: (e as Error).message }; }
-  if (!Array.isArray(parsed)) return { valid: false, count: 0, withDesc: 0, error: "O JSON deve ser um array [ ]." };
-  const withDesc = parsed.filter((it) => String((it as ExtractedSparePart).description || "").trim()).length;
-  return { valid: true, count: parsed.length, withDesc, error: null };
+  try { parsed = JSON.parse(text); } catch (e) { return { ...EMPTY_INFO, error: (e as Error).message }; }
+  if (!Array.isArray(parsed)) return { ...EMPTY_INFO, error: "O JSON deve ser um array [ ]." };
+  const items = parsed as ExtractedSparePart[];
+  const withDesc = items.filter((it) => String(it.description || "").trim()).length;
+  const totalQty = items.reduce((sum, it) => sum + itemQty(it), 0);
+  const duplicates = items.length - new Set(items.map(itemKey)).size;
+  return { valid: true, count: items.length, withDesc, totalQty, duplicates, error: null };
 }
 
 export default function SparePartsImportModal({ show, onHide, equipmentId, onImported, customers = [], equipments = [] }: Props) {
@@ -98,8 +134,13 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
       const res = await aiExtractSpareParts({
         fileBase64, fileName: file.name, mimeType: file.type || "application/pdf", promptTemplate: prompt.trim()
       });
-      setJsonText(JSON.stringify(res.spareParts, null, 2));
-      setStatus(res.spareParts.length ? "Concluído" : "Nenhuma peça identificada.");
+      // Já entrega consolidado: repetidos viram um item com a quantidade somada.
+      const items = consolidate(res.spareParts);
+      const mergedCount = res.spareParts.length - items.length;
+      setJsonText(JSON.stringify(items, null, 2));
+      setStatus(items.length
+        ? `Concluído${mergedCount ? ` — ${mergedCount} duplicado(s) consolidado(s) na quantidade` : ""}`
+        : "Nenhuma peça identificada.");
     } catch (e) {
       setStatus("Falha");
       setError((e as Error).message);
@@ -115,6 +156,17 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
     if (jsonFileRef.current) jsonFileRef.current.value = "";
   };
 
+  // Aplica a consolidação no JSON em revisão (para JSON colado ou editado à mão).
+  const consolidateJson = () => {
+    try {
+      const items = JSON.parse(jsonText) as ExtractedSparePart[];
+      if (!Array.isArray(items)) return;
+      setJsonText(JSON.stringify(consolidate(items), null, 2));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const importItems = async () => {
     const info = inspectJson(jsonText);
     if (!info.valid || info.withDesc === 0) { setError("Revise o JSON: precisa ser um array com ao menos 1 item com descrição."); return; }
@@ -124,6 +176,7 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
     try {
       const res = await bulkImportSpareParts(items, effectiveEquipmentId);
       const parts = [`${res.inserted} inserida(s)`];
+      if (res.merged) parts.push(`${res.merged} duplicada(s) somada(s) na quantidade`);
       if (res.updated) parts.push(`${res.updated} atualizada(s)`);
       if (res.linked) parts.push(`${res.linked} vinculada(s)`);
       if (res.skipped) parts.push(`${res.skipped} ignorada(s)`);
@@ -160,7 +213,8 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
         <div className="mb-4">
           <div className="d-flex align-items-center gap-2 mb-2"><Badge bg="secondary" pill>1</Badge><strong className="small">Modelo JSON (schema da tabela spare_parts)</strong></div>
           <p className="text-muted small mb-2">Estrutura que a IA vai preencher para cada peça encontrada no documento.</p>
-          <pre className="border rounded p-2 small" style={{ background: "#f8f9fa", maxHeight: 160, overflow: "auto", fontSize: "0.76rem" }}>{schema || "—"}</pre>
+          {/* Cores vêm do tema — fundo fixo claro deixava o texto ilegível no DarkVextrom. */}
+          <pre className="border rounded p-2 small vx-code-block" style={{ maxHeight: 160, overflow: "auto", fontSize: "0.76rem" }}>{schema || "—"}</pre>
         </div>
 
         {/* 2) Prompt editável */}
@@ -186,7 +240,7 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
               {extracting ? <><Spinner animation="border" size="sm" className="me-1" /> Extraindo…</> : "Extrair com IA"}
             </Button>
           </div>
-          {(status || extracting) && <div className={`mt-2 small ${status === "Falha" ? "text-danger" : status === "Concluído" ? "text-success" : "text-warning"}`}>Status: {status} | Tempo: {formatElapsed(elapsed)}</div>}
+          {(status || extracting) && <div className={`mt-2 small ${status === "Falha" ? "text-danger" : status.startsWith("Concluído") ? "text-success" : "text-warning"}`}>Status: {status} | Tempo: {formatElapsed(elapsed)}</div>}
         </div>
 
         {/* 4) Revisar JSON */}
@@ -194,15 +248,30 @@ export default function SparePartsImportModal({ show, onHide, equipmentId, onImp
           <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
             <Badge bg="success" pill>4</Badge><strong className="small">Revisar JSON</strong>
             {jsonInfo.valid && <Badge bg="success">{jsonInfo.count} itens</Badge>}
+            {jsonInfo.valid && <Badge bg="info">qt. total {jsonInfo.totalQty}</Badge>}
+            {jsonInfo.duplicates > 0 && (
+              <Button size="sm" variant="outline-warning" onClick={consolidateJson}>
+                Consolidar {jsonInfo.duplicates} duplicado(s)
+              </Button>
+            )}
             {!jsonInfo.valid && jsonText.trim() && <Badge bg="danger">inválido</Badge>}
             <span className="text-muted small ms-auto">ou carregue um .json:</span>
             <Form.Control ref={jsonFileRef} type="file" size="sm" accept="application/json,.json" style={{ maxWidth: 200 }} onChange={(e) => loadJsonFile((e.target as HTMLInputElement).files?.[0] ?? null)} />
           </div>
-          <p className="text-muted small mb-2">Revise/edite os dados antes de importar. Você pode editar o JSON manualmente, colar ou carregar um arquivo.</p>
+          <p className="text-muted small mb-2">
+            Revise/edite os dados antes de importar. Você pode editar o JSON manualmente, colar ou carregar um arquivo.
+            O campo <code>quantity</code> é a quantidade da peça — itens repetidos são somados nele em vez de duplicar a linha.
+          </p>
           <Form.Control as="textarea" rows={12} className="font-monospace" style={{ fontSize: "0.76rem" }} spellCheck={false} value={jsonText} onChange={(e) => setJsonText(e.target.value)} placeholder="JSON gerado pela IA ou colado/carregado diretamente…" />
           <div className="mt-2 small">
             {jsonInfo.error && <span className="text-danger">❌ JSON inválido: {jsonInfo.error}</span>}
-            {jsonInfo.valid && <span className="text-success">✅ JSON válido — <strong>{jsonInfo.count}</strong> item(s), <strong>{jsonInfo.withDesc}</strong> com descrição.</span>}
+            {jsonInfo.valid && (
+              <span className="text-success">
+                ✅ JSON válido — <strong>{jsonInfo.count}</strong> item(s), <strong>{jsonInfo.withDesc}</strong> com descrição,
+                quantidade total <strong>{jsonInfo.totalQty}</strong>.
+                {jsonInfo.duplicates > 0 && <span className="text-warning"> Há {jsonInfo.duplicates} repetido(s) — serão somados na quantidade ao importar.</span>}
+              </span>
+            )}
           </div>
         </div>
 

@@ -117,7 +117,8 @@ const SENTINELGRID_MODULE: ModuleNav = {
 };
 
 function resolveModule(pathname: string): ModuleNav {
-  return pathname.startsWith("/sentinelgrid") ? SENTINELGRID_MODULE : SERVICE_REPORT_MODULE;
+  if (pathname.startsWith("/sentinelgrid")) return SENTINELGRID_MODULE;
+  return SERVICE_REPORT_MODULE;
 }
 
 function isNavGroup(entry: NavEntry): entry is NavGroup {

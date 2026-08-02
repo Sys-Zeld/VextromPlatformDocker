@@ -1298,6 +1298,37 @@ async function deleteEquipmentSpare(id) {
   return result.rowCount > 0;
 }
 
+// Itens repetidos na MESMA importação viram um só, somando quantity — um PN que
+// aparece 3x no documento entra como um item com quantidade 3, não como 3 linhas.
+// Chave: PN quando houver (é o que é único por equipamento), senão a descrição.
+function consolidateImportItems(items = []) {
+  const byKey = new Map();
+  let merged = 0;
+
+  for (const raw of items) {
+    const description = String(raw.description || "").trim();
+    if (!description) continue;
+    const pn = String(raw.partNumber || "").trim().toLowerCase();
+    const key = pn ? `pn:${pn}` : `desc:${description.toLowerCase()}`;
+    const quantity = Number.isInteger(Number(raw.quantity)) && Number(raw.quantity) > 0 ? Number(raw.quantity) : 1;
+
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, { ...raw, description, quantity });
+      continue;
+    }
+    current.quantity += quantity;
+    // Ocorrências seguintes completam o que veio vazio na primeira.
+    for (const field of ["manufacturer", "equipmentModel", "equipmentFamily", "leadTime", "replacedByPartNumber"]) {
+      if (!current[field] && raw[field]) current[field] = raw[field];
+    }
+    current.isObsolete = Boolean(current.isObsolete) || Boolean(raw.isObsolete);
+    merged++;
+  }
+
+  return { items: [...byKey.values()], merged };
+}
+
 // Bulk upsert for AI/XLSX import: writes to the equipment's own list AND upserts
 // the global catalog (so the library keeps growing with imported data).
 async function bulkUpsertEquipmentSpares(equipmentId, items) {
@@ -1305,7 +1336,9 @@ async function bulkUpsertEquipmentSpares(equipmentId, items) {
   let inserted = 0;
   let linked = 0;
 
-  for (const raw of items) {
+  const { items: consolidated, merged } = consolidateImportItems(items);
+
+  for (const raw of consolidated) {
     const item = {
       description: String(raw.description || "").trim(),
       manufacturer: String(raw.manufacturer || "").trim(),
@@ -1388,7 +1421,93 @@ async function bulkUpsertEquipmentSpares(equipmentId, items) {
     linked++;
   }
 
-  return { updated, inserted, linked };
+  return { updated, inserted, linked, merged };
+}
+
+// Chave de deduplicação dentro de um equipamento: PN quando houver (é o que o
+// banco já trata como único por equipamento), senão a descrição.
+function equipmentSpareKey(spare) {
+  const pn = String(spare.part_number || "").trim().toLowerCase();
+  return pn ? `pn:${pn}` : `desc:${String(spare.description || "").trim().toLowerCase()}`;
+}
+
+// Copia a lista de peças de um equipamento para outro. Os snapshots do destino
+// são independentes do de origem — editar um não mexe no outro.
+// replace=true limpa a lista do destino antes; senão as repetidas são puladas.
+async function copyEquipmentSpares(sourceEquipmentId, targetEquipmentId, { replace = false } = {}) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const sourceRes = await client.query(
+      `
+        SELECT *
+        FROM service_report_equipment_spares
+        WHERE equipment_id = $1
+        ORDER BY description ASC, id ASC
+      `,
+      [sourceEquipmentId]
+    );
+    const source = sourceRes.rows;
+
+    let removed = 0;
+    if (replace) {
+      const deleted = await client.query(
+        `DELETE FROM service_report_equipment_spares WHERE equipment_id = $1`,
+        [targetEquipmentId]
+      );
+      removed = deleted.rowCount;
+    }
+
+    const existingRes = await client.query(
+      `SELECT part_number, description FROM service_report_equipment_spares WHERE equipment_id = $1`,
+      [targetEquipmentId]
+    );
+    const taken = new Set(existingRes.rows.map(equipmentSpareKey));
+
+    let inserted = 0;
+    let skipped = 0;
+    for (const spare of source) {
+      const key = equipmentSpareKey(spare);
+      if (taken.has(key)) {
+        skipped++;
+        continue;
+      }
+      await client.query( // eslint-disable-line no-await-in-loop
+        `
+          INSERT INTO service_report_equipment_spares (
+            equipment_id, source_spare_part_id, description, manufacturer, equipment_model,
+            part_number, lead_time, is_obsolete, replaced_by_part_number, equipment_family,
+            quantity, created_at, updated_at
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+        `,
+        [
+          targetEquipmentId,
+          spare.source_spare_part_id,
+          spare.description,
+          spare.manufacturer,
+          spare.equipment_model,
+          spare.part_number,
+          spare.lead_time,
+          spare.is_obsolete,
+          spare.replaced_by_part_number,
+          spare.equipment_family,
+          spare.quantity
+        ]
+      );
+      taken.add(key);
+      inserted++;
+    }
+
+    await client.query("COMMIT");
+    return { total: source.length, inserted, skipped, removed };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function attachEquipmentToOrder(serviceOrderId, equipmentId, notes = "") {
@@ -3796,6 +3915,7 @@ module.exports = {
   updateEquipmentSpareQuantity,
   deleteEquipmentSpare,
   bulkUpsertEquipmentSpares,
+  copyEquipmentSpares,
   attachEquipmentToOrder,
   listOrderEquipments,
   detachEquipmentFromOrder,

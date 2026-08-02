@@ -2130,6 +2130,71 @@ ${bodyHtml}
       return res.json({ equipment, linkedSpares, availableSpares });
     },
 
+    // Consolidado para impressão: peças agrupadas por equipamento, com filtro
+    // opcional de cliente/site. Equipamentos sem peças só entram com includeEmpty.
+    async listSparesGroupedByEquipment(req, res) {
+      const customerId = Number(req.query.customerId) || 0;
+      const siteId = Number(req.query.siteId) || 0;
+      const includeEmpty = String(req.query.includeEmpty || "") === "true";
+
+      const equipments = await repo.listEquipments();
+      const scoped = equipments.filter((e) =>
+        (!customerId || Number(e.customer_id) === customerId) &&
+        (!siteId || Number(e.site_id) === siteId));
+
+      const spares = await repo.listEquipmentSparesByEquipmentIds(scoped.map((e) => e.id));
+      const byEquipment = new Map();
+      for (const spare of spares) {
+        const key = Number(spare.equipment_id);
+        if (!byEquipment.has(key)) byEquipment.set(key, []);
+        byEquipment.get(key).push(spare);
+      }
+
+      const groups = scoped
+        .map((equipment) => ({ equipment, spares: byEquipment.get(Number(equipment.id)) || [] }))
+        .filter((group) => includeEmpty || group.spares.length > 0);
+
+      return res.json({ groups });
+    },
+
+    // Copia a lista de peças de outro equipamento — restrito ao mesmo site, para
+    // não misturar parque de instalações diferentes.
+    async copyEquipmentSpares(req, res) {
+      const targetId = Number(req.params.equipmentId);
+      const sourceId = Number(req.body.sourceEquipmentId || req.body.source_equipment_id);
+      const replace = Boolean(req.body.replace);
+
+      if (!Number.isInteger(sourceId) || sourceId <= 0) {
+        return res.status(422).json({ error: "Equipamento de origem inválido." });
+      }
+      if (sourceId === targetId) {
+        return res.status(422).json({ error: "Origem e destino são o mesmo equipamento." });
+      }
+
+      const [target, source] = await Promise.all([
+        repo.getEquipmentById(targetId),
+        repo.getEquipmentById(sourceId)
+      ]);
+      if (!target) return res.status(404).json({ error: "Equipamento de destino não encontrado." });
+      if (!source) return res.status(404).json({ error: "Equipamento de origem não encontrado." });
+
+      if (!target.site_id || !source.site_id) {
+        return res.status(422).json({
+          error: "Os dois equipamentos precisam ter um site definido para a cópia.",
+          errorCode: "SITE_REQUIRED"
+        });
+      }
+      if (Number(target.site_id) !== Number(source.site_id)) {
+        return res.status(422).json({
+          error: "A cópia só é permitida entre equipamentos do mesmo site.",
+          errorCode: "SITE_MISMATCH"
+        });
+      }
+
+      const result = await repo.copyEquipmentSpares(sourceId, targetId, { replace });
+      return res.json({ ok: true, ...result });
+    },
+
     async linkSparePart(req, res) {
       const equipmentId = Number(req.params.equipmentId);
       const sparePartId = Number(req.body.sparePartId || req.body.spare_part_id);
@@ -2239,8 +2304,9 @@ ${bodyHtml}
       if (Number.isInteger(equipmentId) && equipmentId > 0) {
         const equipment = await repo.getEquipmentById(equipmentId);
         if (!equipment) return res.status(404).json({ error: "Equipamento não encontrado." });
+        // O repositório consolida os repetidos somando quantity e devolve quantos juntou.
         const result = await repo.bulkUpsertEquipmentSpares(equipmentId, normalized);
-        return res.json({ ok: true, scope: "equipment", inserted: result.inserted, updated: result.updated, linked: result.linked });
+        return res.json({ ok: true, scope: "equipment", merged: result.merged, inserted: result.inserted, updated: result.updated, linked: result.linked });
       }
       const result = await repo.bulkCreateSpareParts(normalized);
       return res.json({

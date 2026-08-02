@@ -137,8 +137,10 @@ function createReportServiceV2Router(deps) {
   router.delete("/spare-parts/:id", asyncHandler(controller.deleteSparePart));
 
   // Spare parts: vínculo por equipamento (novo modelo de snapshots editáveis)
+  router.get("/spare-parts/by-equipment", asyncHandler(controller.listSparesGroupedByEquipment));
   router.get("/spare-parts/equipment/:equipmentId", asyncHandler(controller.getEquipmentSpares));
   router.post("/spare-parts/equipment/:equipmentId/link", asyncHandler(controller.linkSparePart));
+  router.post("/spare-parts/equipment/:equipmentId/copy-from", asyncHandler(controller.copyEquipmentSpares));
   router.post("/spare-parts/equipment/:equipmentId/spares", asyncHandler(controller.createEquipmentSpare));
   router.put("/spare-parts/equipment-spares/:id", asyncHandler(controller.updateEquipmentSpare));
   router.delete("/spare-parts/equipment-spares/:id", asyncHandler(controller.deleteEquipmentSpare));

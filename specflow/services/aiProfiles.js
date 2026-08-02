@@ -600,14 +600,15 @@ const SPARE_PARTS_JSON_SCHEMA = JSON.stringify([
     equipment_model: "Modelo do equipamento",
     lead_time: "Prazo de entrega (ex: 4 weeks)",
     is_obsolete: false,
-    replaced_by_part_number: ""
+    replaced_by_part_number: "",
+    quantity: 1
   }
 ], null, 2);
 
 const SPARE_PARTS_DEFAULT_PROMPT = `
 Analise o documento enviado e extraia TODAS os componentes encontrados. 
 
-Lembre-se de tirar todos os componentes duplicado a chave unica é PN (part_number). Se o mesmo PN aparecer mais de uma vez, mantenha somente a primeira ocorrencia e descarte as demais.
+A chave unica do item é o PN (part_number). Se o mesmo PN aparecer mais de uma vez no documento, NAO repita o item e NAO descarte as ocorrencias: consolide tudo em um unico item e some as ocorrencias no campo quantity. Itens sem PN sao consolidados pela description.
 
 Igualdade de campos:
 Chloride Reference = Part No, Part Number, PN => part_number
@@ -630,6 +631,9 @@ Regras:
 - lead_time: prazo de entrega (string vazia "" se não informado)
 - is_obsolete: true somente se explicitamente marcado como obsoleto/descontinuado
 - replaced_by_part_number: PN da peça substituta (string vazia "" se não aplicável)
+- quantity: número inteiro >= 1. Se o documento informar a quantidade, use-a; se o mesmo item aparecer
+  várias vezes, some as ocorrências (2 linhas do mesmo PN sem quantidade explícita => quantity 2);
+  se não houver nenhuma indicação, use 1
 - Inclua absolutamente TODAS as peças encontradas no documento, sem omitir nenhuma
 - JSON deve estar completo, válido e sintaticamente correto`;
 
