@@ -869,7 +869,7 @@ function extractBackupFileNameFromOutput(output) {
   const matches = text.match(/Backup(?:\s+[a-z-]+)?\s+concluido:\s*([^\r\n]+\.sql)/i);
   if (!matches || !matches[1]) return "";
   const candidate = path.basename(matches[1].trim());
-  if (!/^(db-backup|specflow-backup|config-backup|module-spec-backup|report-service-backup|db-import)-.*\.sql$/i.test(candidate)) return "";
+  if (!/^(db-backup|specflow-backup|config-backup|module-spec-backup|report-service-backup|sentinelgrid-backup|db-import)-.*\.sql$/i.test(candidate)) return "";
   return candidate;
 }
 
@@ -884,12 +884,14 @@ function resolveRestoreModuleFromBackupPath(backupFilePath) {
   if (!fileName.endsWith(".sql")) return "";
   if (fileName.startsWith("module-spec-backup-")) return "module-spec";
   if (fileName.startsWith("report-service-backup-")) return "report-service";
+  if (fileName.startsWith("sentinelgrid-backup-")) return "sentinelgrid";
   if (fileName.startsWith("config-backup-")) return "config";
   if (fileName.startsWith("specflow-backup-") || fileName.startsWith("db-backup-")) return "specflow";
   if (fileName.startsWith("db-import-")) {
     // O nome original do arquivo fica embutido apos o timestamp: db-import-<ts>-<nome-original>
     if (fileName.includes("-module-spec-backup-")) return "module-spec";
     if (fileName.includes("-report-service-backup-")) return "report-service";
+    if (fileName.includes("-sentinelgrid-backup-")) return "sentinelgrid";
     if (fileName.includes("-config-backup-")) return "config";
     return "specflow";
   }
@@ -2794,6 +2796,9 @@ app.post("/admin/maintenance/system/command", csrfProtection, requireAdminAuth, 
   if (action === "backup_all") {
     label = "node scripts/backup-module-database.js all";
     execution = await runNodeScripts([{ script: "scripts/backup-module-database.js", args: ["all"] }]);
+  } else if (action === "backup_sentinelgrid") {
+    label = "npm run db:backup:sentinelgrid";
+    execution = await runNodeScripts([{ script: "scripts/backup-module-database.js", args: ["sentinelgrid"] }]);
   } else if (action === "migrate_all") {
     label = "npm run db:migrate + npm run db:migrate:config + npm run db:migrate:module-spec + npm run db:migrate:report-service";
     execution = await runNodeScripts([

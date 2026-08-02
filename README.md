@@ -179,11 +179,13 @@ App local: `http://localhost:3000`
 - `npm run db:backup:report-service`
 - `npm run db:backup:config`
 - `npm run db:backup:module-spec`
+- `npm run db:backup:sentinelgrid`
 - `npm run db:backup:all`
 - `npm run db:restore:specflow`
 - `npm run db:restore:report-service`
 - `npm run db:restore:config`
 - `npm run db:restore:module-spec`
+- `npm run db:restore:sentinelgrid`
 - `npm run db:restore-database`
 - `npm run assets:backup`
 - `npm run assets:clean`

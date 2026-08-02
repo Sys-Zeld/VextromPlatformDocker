@@ -167,6 +167,11 @@
         <input type="hidden" name="action" value="backup_all" />
         <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.backupAllButton") %></button>
       </form>
+      <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.backupSentinelGridConfirm') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="action" value="backup_sentinelgrid" />
+        <button class="btn btn-outline-primary btn-sm" type="submit"><%= t("admin.sys.backupSentinelGridButton") %></button>
+      </form>
       <form method="post" action="/admin/maintenance/system/command" class="maintenance-command-form" data-confirm="<%= t('admin.sys.migrateAllConfirm') %>">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="action" value="migrate_all" />

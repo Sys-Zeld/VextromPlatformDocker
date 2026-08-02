@@ -24,6 +24,10 @@ const MODULE_CONFIG = {
   "report-service": {
     dbUrl: env.databases.reportService.url,
     filePrefix: "report-service-backup"
+  },
+  sentinelgrid: {
+    dbUrl: env.databases.sentinelgrid.url,
+    filePrefix: "sentinelgrid-backup"
   }
 };
 
@@ -72,16 +76,17 @@ function runPgDump(databaseUrl, outputFile) {
 function normalizeTargets(rawTarget) {
   const target = String(rawTarget || "").trim().toLowerCase();
   if (!target || target === "all") {
-    return ["specflow", "config", "module-spec", "report-service"];
+    return ["specflow", "config", "module-spec", "report-service", "sentinelgrid"];
   }
   if (!Object.prototype.hasOwnProperty.call(MODULE_CONFIG, target)) {
-    throw new Error("Modulo invalido. Use: specflow | config | module-spec | report-service | all.");
+    throw new Error("Modulo invalido. Use: specflow | config | module-spec | report-service | sentinelgrid | all.");
   }
   return [target];
 }
 
 async function run() {
   const targets = normalizeTargets(process.argv[2]);
+  let remoteUploadEnabled = true;
 
   for (const target of targets) {
     const config = MODULE_CONFIG[target];
@@ -90,11 +95,6 @@ async function run() {
     }
     const outputFile = buildBackupPath(config.filePrefix);
     await runPgDump(config.dbUrl, outputFile);
-    await objectStorage.uploadLocalFile(
-      objectStorage.normalizeKey(path.relative(process.cwd(), outputFile)),
-      outputFile,
-      { contentType: "application/sql" }
-    );
     try {
       const backupRow = await upsertBackupFileRecord(outputFile, { backupTimestamp: new Date() });
       // eslint-disable-next-line no-console
@@ -104,6 +104,23 @@ async function run() {
       console.log(`Backup ${target} concluido: ${outputFile}`);
       // eslint-disable-next-line no-console
       console.warn(`Aviso: falha ao registrar no catalogo: ${catalogErr.message}`);
+    }
+    if (remoteUploadEnabled) {
+      try {
+        await objectStorage.uploadLocalFile(
+          objectStorage.normalizeKey(path.relative(process.cwd(), outputFile)),
+          outputFile,
+          { contentType: "application/sql" }
+        );
+      } catch (storageErr) {
+        // O dump local já está íntegro e catalogado. Indisponibilidade temporária
+        // do MinIO/S3 não deve interromper backup:all nem impedir os próximos bancos.
+        remoteUploadEnabled = false;
+        // eslint-disable-next-line no-console
+        console.warn(`Aviso: backup local concluido, mas o envio ao storage remoto falhou: ${storageErr.message}`);
+        // eslint-disable-next-line no-console
+        console.warn("Aviso: uploads remotos restantes foram ignorados nesta execucao; os dumps locais continuarao normalmente.");
+      }
     }
   }
 }

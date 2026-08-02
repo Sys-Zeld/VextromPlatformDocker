@@ -24,6 +24,10 @@ const MODULE_CONFIG = {
   "report-service": {
     dbUrl: env.databases.reportService.url,
     ssl: env.databases.reportService.ssl
+  },
+  sentinelgrid: {
+    dbUrl: env.databases.sentinelgrid.url,
+    ssl: env.databases.sentinelgrid.ssl
   }
 };
 
@@ -31,7 +35,8 @@ const MODULE_FILE_PREFIXES = {
   specflow: ["db-backup-", "specflow-backup-"],
   config: ["config-backup-"],
   "module-spec": ["module-spec-backup-"],
-  "report-service": ["report-service-backup-"]
+  "report-service": ["report-service-backup-"],
+  sentinelgrid: ["sentinelgrid-backup-"]
 };
 
 const MODULE_SQL_SIGNATURES = {
@@ -55,12 +60,18 @@ const MODULE_SQL_SIGNATURES = {
     "create table public.service_report_reports",
     "create table public.service_report_sections",
     "create table public.service_report_app_settings"
+  ],
+  sentinelgrid: [
+    "create table public.sg_module_meta",
+    "create table public.sg_clients",
+    "create table public.sg_equipment",
+    "create table public.sg_maintenance_orders"
   ]
 };
 
 function normalizeModuleName(value) {
   const text = String(value || "").trim().toLowerCase();
-  if (text === "specflow" || text === "config" || text === "module-spec" || text === "report-service") return text;
+  if (["specflow", "config", "module-spec", "report-service", "sentinelgrid"].includes(text)) return text;
   return "";
 }
 
@@ -102,7 +113,7 @@ function resolveTargetModule({ moduleFromFlag, backupFilePath, strict = true }) 
   if (strict) {
     throw new Error(
       "Nao foi possivel identificar o modulo pelo nome do arquivo. "
-      + "Use --module=specflow|config|module-spec|report-service."
+      + "Use --module=specflow|config|module-spec|report-service|sentinelgrid."
     );
   }
   return "specflow";
@@ -160,15 +171,17 @@ function detectModuleFromSqlFile(filePath) {
   }
 
   const hasReportService = hits["report-service"] >= 1;
+  const hasSentinelGrid = hits.sentinelgrid >= 1;
   const hasModuleSpec = hits["module-spec"] >= 1;
   const hasSpecflow = hits.specflow >= 2;
-  const hasConfigOnly = hits.config >= 1 && !hasReportService && !hasModuleSpec && !hasSpecflow;
+  const hasConfigOnly = hits.config >= 1 && !hasReportService && !hasSentinelGrid && !hasModuleSpec && !hasSpecflow;
   const detectedModules = [];
 
   if (hasSpecflow) detectedModules.push("specflow");
   if (hasConfigOnly) detectedModules.push("config");
   if (hasModuleSpec) detectedModules.push("module-spec");
   if (hasReportService) detectedModules.push("report-service");
+  if (hasSentinelGrid) detectedModules.push("sentinelgrid");
 
   if (detectedModules.length === 1) {
     return {
@@ -207,7 +220,7 @@ function validateRestoreModule({ moduleFromFlag, targetModule, backupFilePath })
     if (!hasExplicitModule) {
       throw new Error(
         `Backup misto detectado em ${displayName}: assinaturas de ${signatureResult.detectedModules.join(", ")}. `
-        + "Use --module=specflow|config|module-spec|report-service para identificar o modulo alvo."
+        + "Use --module=specflow|config|module-spec|report-service|sentinelgrid para identificar o modulo alvo."
       );
     }
 
@@ -244,7 +257,7 @@ function validateRestoreModule({ moduleFromFlag, targetModule, backupFilePath })
     if (!moduleByFileName && !normalizedFlag) {
       throw new Error(
         `Nao foi possivel identificar o modulo de ${displayName} pelo conteudo SQL nem pelo nome do arquivo. `
-        + "Use --module=specflow|config|module-spec|report-service."
+        + "Use --module=specflow|config|module-spec|report-service|sentinelgrid."
       );
     }
     // eslint-disable-next-line no-console

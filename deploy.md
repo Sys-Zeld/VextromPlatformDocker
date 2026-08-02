@@ -245,6 +245,7 @@ Voce deve ter, no minimo:
 - `config-backup-*.sql`
 - `module-spec-backup-*.sql`
 - `report-service-backup-*.sql`
+- `sentinelgrid-backup-*.sql`
 - `assets-backup-*.zip`
 
 ### B. Enviar backups para o servidor
@@ -322,6 +323,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:config
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:module-spec
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:report-service
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod exec app npm run db:restore:sentinelgrid
 ```
 
 ### F. Restaurar assets
