@@ -169,6 +169,8 @@ export default function OrderEditorPage() {
   const [cmpShow, setCmpShow] = useState(false);
   const [cmpEditId, setCmpEditId] = useState<number | null>(null);
   const [cmpForm, setCmpForm] = useState<ComponentInput>(EMPTY_COMPONENT);
+  const [pnSuggestionsOpen, setPnSuggestionsOpen] = useState(false);
+  const [activePnIndex, setActivePnIndex] = useState(-1);
   const mCreateCmp = useMutation({ mutationFn: (input: ComponentInput) => addComponent(orderId, input), onSuccess: () => { setCmpShow(false); invalidate(); }, onError });
   const mUpdateCmp = useMutation({ mutationFn: (p: { id: number; input: ComponentInput }) => updateComponent(orderId, p.id, p.input), onSuccess: () => { setCmpShow(false); invalidate(); }, onError });
   const mDeleteCmp = useMutation({ mutationFn: (componentId: number) => deleteComponent(orderId, componentId), onSuccess: invalidate, onError });
@@ -229,14 +231,44 @@ export default function OrderEditorPage() {
   };
   const totalHours = timesheet.reduce((sum, t) => sum + (Number(t.worked_hours) || 0), 0);
 
-  const openNewCmp = () => { setCmpEditId(null); setCmpForm({ ...EMPTY_COMPONENT, category: componentCategories[0] ?? "" }); setActionError(null); setCmpShow(true); };
-  const openEditCmp = (c: Component) => { setCmpEditId(c.id); setCmpForm(toComponentInput(c)); setActionError(null); setCmpShow(true); };
+  const openNewCmp = () => { setCmpEditId(null); setCmpForm({ ...EMPTY_COMPONENT, category: componentCategories[0] ?? "" }); setPnSuggestionsOpen(false); setActivePnIndex(-1); setActionError(null); setCmpShow(true); };
+  const openEditCmp = (c: Component) => { setCmpEditId(c.id); setCmpForm(toComponentInput(c)); setPnSuggestionsOpen(false); setActivePnIndex(-1); setActionError(null); setCmpShow(true); };
   const submitCmp = (ev: React.FormEvent) => {
     ev.preventDefault();
     if (cmpEditId) mUpdateCmp.mutate({ id: cmpEditId, input: cmpForm });
     else mCreateCmp.mutate(cmpForm);
   };
   const savingCmp = mCreateCmp.isPending || mUpdateCmp.isPending;
+  const normalizedPnSearch = cmpForm.partNumber.trim().toLocaleLowerCase("pt-BR");
+  const pnSuggestions = spareParts
+    .filter((spare) => {
+      if (!spare.part_number) return false;
+      if (!normalizedPnSearch) return true;
+      return spare.part_number.toLocaleLowerCase("pt-BR").includes(normalizedPnSearch)
+        || String(spare.description || "").toLocaleLowerCase("pt-BR").includes(normalizedPnSearch);
+    })
+    .slice(0, 50);
+  const selectPnSuggestion = (index: number) => {
+    const spare = pnSuggestions[index];
+    if (!spare?.part_number) return;
+    setCmpForm((current) => ({
+      ...current,
+      partNumber: spare.part_number || current.partNumber,
+      description: spare.description || current.description
+    }));
+    setPnSuggestionsOpen(false);
+    setActivePnIndex(-1);
+  };
+  const closePnSuggestions = () => {
+    const exactIndex = pnSuggestions.findIndex(
+      (spare) => String(spare.part_number || "").trim().toLocaleLowerCase("pt-BR") === normalizedPnSearch
+    );
+    if (exactIndex >= 0) selectPnSuggestion(exactIndex);
+    else {
+      setPnSuggestionsOpen(false);
+      setActivePnIndex(-1);
+    }
+  };
   const eqTag = (equipmentId: number | null): string => {
     if (equipmentId == null) return "—";
     const e = orderEquipments.find((x) => x.equipment_id === equipmentId);
@@ -611,10 +643,68 @@ export default function OrderEditorPage() {
               </div>
               <div className="col-md-6">
                 <Form.Label>Part Number</Form.Label>
-                <Form.Control list="cmp-part-numbers" value={cmpForm.partNumber} onChange={(e) => setCmpForm({ ...cmpForm, partNumber: e.target.value })} />
-                <datalist id="cmp-part-numbers">
-                  {spareParts.filter((s) => s.part_number).map((s) => <option key={`p${s.id}`} value={s.part_number as string} />)}
-                </datalist>
+                <div className="position-relative">
+                  <Form.Control
+                    value={cmpForm.partNumber}
+                    placeholder="Digite para pesquisar na base"
+                    autoComplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={pnSuggestionsOpen}
+                    aria-controls="cmp-part-number-suggestions"
+                    onFocus={() => { setPnSuggestionsOpen(true); setActivePnIndex(-1); }}
+                    onBlur={closePnSuggestions}
+                    onChange={(e) => {
+                      setCmpForm({ ...cmpForm, partNumber: e.target.value });
+                      setPnSuggestionsOpen(true);
+                      setActivePnIndex(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setPnSuggestionsOpen(true);
+                        if (pnSuggestions.length) setActivePnIndex((current) => (current + 1) % pnSuggestions.length);
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setPnSuggestionsOpen(true);
+                        if (pnSuggestions.length) setActivePnIndex((current) => (current - 1 + pnSuggestions.length) % pnSuggestions.length);
+                      } else if (e.key === "Enter" && pnSuggestionsOpen && activePnIndex >= 0) {
+                        e.preventDefault();
+                        selectPnSuggestion(activePnIndex);
+                      } else if (e.key === "Escape") {
+                        setPnSuggestionsOpen(false);
+                        setActivePnIndex(-1);
+                      }
+                    }}
+                  />
+                  {pnSuggestionsOpen && (
+                    <div
+                      id="cmp-part-number-suggestions"
+                      className="list-group position-absolute start-0 end-0 mt-1 shadow overflow-auto"
+                      role="listbox"
+                      style={{ zIndex: 1080, maxHeight: 260 }}
+                    >
+                      {pnSuggestions.length === 0 && (
+                        <div className="list-group-item small text-muted">Nenhum PN encontrado. O valor digitado será mantido.</div>
+                      )}
+                      {pnSuggestions.map((spare, index) => (
+                        <button
+                          key={spare.id}
+                          className={`list-group-item list-group-item-action text-start ${index === activePnIndex ? "active" : ""}`}
+                          type="button"
+                          role="option"
+                          aria-selected={index === activePnIndex}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectPnSuggestion(index)}
+                          onMouseEnter={() => setActivePnIndex(index)}
+                        >
+                          <span className="fw-semibold">{spare.part_number}</span>
+                          <span className={`d-block small ${index === activePnIndex ? "text-white-50" : "text-muted"}`}>{spare.description || "Sem descrição"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="col-12">
                 <Form.Label>Notas</Form.Label>

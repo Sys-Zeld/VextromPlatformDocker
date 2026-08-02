@@ -152,7 +152,7 @@
 </style>
 
 <section class="token-console">
-  <% const isSystemAdmin = String(adminRole || "").toLowerCase() === "admin"; %>
+  <% const canCreateOrder = typeof can === "function" && can("orders:create"); %>
   <div class="card app-card token-hero-card">
     <div class="card-body token-hero-body">
       <div class="token-hero-copy">
@@ -232,7 +232,7 @@
     </div>
   </div>
 
-  <% if (isSystemAdmin) { %>
+  <% if (canCreateOrder) { %>
     <div class="card app-card">
       <div class="card-body">
         <h2 class="h6 app-card-title mb-3"><%= t("rs.orders.newTitle") %></h2>

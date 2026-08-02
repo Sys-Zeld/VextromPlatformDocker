@@ -64,7 +64,7 @@
 %>
 
 <section class="token-console">
-  <% const isSystemAdmin = String(adminRole || "").toLowerCase() === "admin"; %>
+  <% const canRevalidateOrder = typeof can === "function" && can("orders:delete"); %>
   <div class="card app-card token-hero-card">
     <div class="card-body token-hero-body">
       <div class="token-hero-copy">
@@ -88,7 +88,7 @@
         <% if (String(order.status || "").toLowerCase() === "valid") { %>
           <a class="btn btn-outline-success btn-sm" href="/admin/report-service/orders/<%= order.id %>/sign-report"><%= t("rs.nav.signReport") %></a>
         <% } %>
-        <% if (String(order.status || "").toLowerCase() === "approved" && isSystemAdmin) { %>
+        <% if (String(order.status || "").toLowerCase() === "approved" && canRevalidateOrder) { %>
           <details class="d-inline-block">
             <summary class="btn btn-warning btn-sm">Revalidar OS</summary>
             <form method="post" action="/admin/report-service/orders/<%= order.id %>/revalidate-os" class="d-flex align-items-center gap-2 mt-2 p-2 border rounded bg-light">
