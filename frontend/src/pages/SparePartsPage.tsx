@@ -1,5 +1,5 @@
 import { confirmDialog } from "../components/ConfirmDialog";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form, Modal, Pagination, Spinner, Tab, Table, Tabs } from "react-bootstrap";
 import EquipmentSparesPanel from "../components/EquipmentSparesPanel";
@@ -34,13 +34,132 @@ function pageWindow(current: number, total: number): (number | "…")[] {
   return pages;
 }
 import {
+  EquipmentSparesGroup,
   SparePart,
   SparePartInput,
   createSparePart,
   deleteSparePart,
   listSpareParts,
+  listSparesGroupedByEquipment,
   updateSparePart
 } from "../api/spareParts";
+
+interface SpareApplication {
+  key: string;
+  spare: EquipmentSparesGroup["spares"][number];
+  equipment: EquipmentSparesGroup["equipment"];
+}
+
+function equipmentDisplay(equipment: EquipmentSparesGroup["equipment"]): string {
+  const tag = String(equipment.tag_number || "").trim();
+  return tag ? `TAG ${tag}` : `Equipamento #${equipment.id}`;
+}
+
+function PartNumberLocator(props: { enabled: boolean; catalog: SparePart[] }) {
+  const [pnFilter, setPnFilter] = useState("");
+  const applicationsQuery = useQuery({
+    queryKey: ["spare-part-applications"],
+    queryFn: () => listSparesGroupedByEquipment(),
+    enabled: props.enabled
+  });
+
+  const applications = useMemo<SpareApplication[]>(() => {
+    const rows = (applicationsQuery.data?.groups ?? []).flatMap((group) =>
+      group.spares.map((spare) => ({
+        key: `${group.equipment.id}:${spare.id}`,
+        spare,
+        equipment: group.equipment
+      }))
+    );
+    return rows.sort((a, b) =>
+      String(a.spare.part_number || "").localeCompare(String(b.spare.part_number || ""), "pt-BR", { numeric: true })
+      || String(a.equipment.customer_name || "").localeCompare(String(b.equipment.customer_name || ""), "pt-BR")
+      || String(a.equipment.site_name || "").localeCompare(String(b.equipment.site_name || ""), "pt-BR")
+      || equipmentDisplay(a.equipment).localeCompare(equipmentDisplay(b.equipment), "pt-BR", { numeric: true })
+    );
+  }, [applicationsQuery.data]);
+
+  const search = pnFilter.trim().toLocaleLowerCase("pt-BR");
+  const results = search
+    ? applications.filter(({ spare }) =>
+        String(spare.part_number || "").toLocaleLowerCase("pt-BR").includes(search)
+        || String(spare.description || "").toLocaleLowerCase("pt-BR").includes(search))
+    : [];
+  const equipmentCount = new Set(results.map((row) => Number(row.equipment.id))).size;
+  const pnOptions = [...new Map(
+    props.catalog
+      .filter((spare) => spare.part_number)
+      .map((spare) => [String(spare.part_number).toLocaleLowerCase("pt-BR"), spare] as const)
+  ).values()];
+
+  return (
+    <Card>
+      <Card.Header className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <div className="fw-semibold">Localizar aplicação por Part Number</div>
+          <div className="small text-muted">Encontre em quais equipamentos a peça está cadastrada, incluindo cliente e site.</div>
+        </div>
+        {search && <Badge bg="primary">{equipmentCount} equipamento(s)</Badge>}
+      </Card.Header>
+      <Card.Body className="border-bottom">
+        <div className="row g-2 align-items-end">
+          <div className="col-12 col-lg-8">
+            <Form.Label htmlFor="spare-pn-locator" className="small fw-semibold">Part Number ou descrição</Form.Label>
+            <Form.Control
+              id="spare-pn-locator"
+              list="spare-pn-locator-options"
+              value={pnFilter}
+              onChange={(event) => setPnFilter(event.target.value)}
+              placeholder="Digite o PN específico, por exemplo: BAT-12-100"
+              autoComplete="off"
+            />
+            <datalist id="spare-pn-locator-options">
+              {pnOptions.map((spare) => (
+                <option key={spare.id} value={spare.part_number || ""}>{spare.description}</option>
+              ))}
+            </datalist>
+          </div>
+          <div className="col-12 col-lg-auto">
+            <Button variant="outline-secondary" disabled={!pnFilter} onClick={() => setPnFilter("")}>Limpar</Button>
+          </div>
+        </div>
+      </Card.Body>
+
+      {applicationsQuery.isFetching && <div className="p-3 text-muted"><Spinner animation="border" size="sm" className="me-2" />Carregando aplicações…</div>}
+      {applicationsQuery.error && <Alert variant="danger" className="m-3">Falha ao carregar aplicações: {(applicationsQuery.error as Error).message}</Alert>}
+      {!applicationsQuery.isFetching && !applicationsQuery.error && !search && (
+        <div className="p-4 text-center text-muted">Informe um Part Number para localizar os equipamentos compatíveis.</div>
+      )}
+      {!applicationsQuery.isFetching && !applicationsQuery.error && search && (
+        <Table striped responsive hover className="mb-0 align-middle">
+          <thead>
+            <tr><th>Part Number</th><th>Descrição</th><th>Equipamento</th><th>Cliente</th><th>Site</th><th className="text-end">Qtd.</th></tr>
+          </thead>
+          <tbody>
+            {results.length === 0 && (
+              <tr><td colSpan={6} className="text-muted">Nenhuma aplicação encontrada para “{pnFilter.trim()}”.</td></tr>
+            )}
+            {results.map(({ key, spare, equipment }) => (
+              <tr key={key}>
+                <td><code>{spare.part_number || "—"}</code></td>
+                <td>{spare.description || "—"}</td>
+                <td>
+                  <div className="fw-semibold">{equipmentDisplay(equipment)}</div>
+                  <div className="small text-muted">
+                    {[equipment.type, equipment.manufacturer, equipment.model_family, equipment.serial_number && `S/N ${equipment.serial_number}`].filter(Boolean).join(" · ") || "Sem detalhes"}
+                  </div>
+                </td>
+                <td>{equipment.customer_name || "—"}</td>
+                <td>{equipment.site_name || "—"}</td>
+                <td className="text-end">{spare.quantity ?? 1}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
 
 const EMPTY: SparePartInput = {
   description: "",
@@ -78,6 +197,7 @@ export default function SparePartsPage() {
   const [page, setPage] = useState(1);
   const [showImport, setShowImport] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [activeTab, setActiveTab] = useState("catalog");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["spare-parts"] });
   const onError = (e: unknown) => setActionError((e as Error).message);
@@ -121,7 +241,7 @@ export default function SparePartsPage() {
   const saving = mCreate.isPending || mUpdate.isPending;
 
   return (
-    <Tabs defaultActiveKey="catalog" className="mb-3">
+    <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key || "catalog")} className="mb-3">
       <Tab eventKey="catalog" title="Catálogo">
         <Card>
       <Card.Header className="d-flex justify-content-between align-items-center gap-2">
@@ -264,6 +384,9 @@ export default function SparePartsPage() {
         />
       )}
         </Card>
+      </Tab>
+      <Tab eventKey="locator" title="Localizar PN">
+        <PartNumberLocator enabled={activeTab === "locator"} catalog={all} />
       </Tab>
       <Tab eventKey="equipment" title="Por equipamento">
         <EquipmentSparesPanel />

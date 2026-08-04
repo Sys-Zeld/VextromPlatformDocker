@@ -104,7 +104,10 @@ export default function EquipmentSparesPanel() {
     enabled: eqId > 0
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["equipment-spares", eqId] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["equipment-spares", eqId] });
+    qc.invalidateQueries({ queryKey: ["spare-part-applications"] });
+  };
   const onError = (e: unknown) => setActionError((e as Error).message);
 
   const mLink = useMutation({
