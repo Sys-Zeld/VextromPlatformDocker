@@ -1320,6 +1320,7 @@ function createReportWebController(deps) {
       await service.createCustomer({
         name: req.body.name,
         customerType: req.body.customer_type,
+        area: req.body.area,
         notes: req.body.notes
       });
       return res.redirect("/admin/report-service/customers?created=1");
@@ -1343,6 +1344,7 @@ function createReportWebController(deps) {
       await repo.updateCustomer(id, {
         name: sanitizeInput(req.body.name),
         customerType: req.body.customer_type,
+        area: sanitizeInput(req.body.area),
         notes: sanitizeInput(req.body.notes)
       });
       return res.redirect("/admin/report-service/customers?saved=1");
@@ -1949,6 +1951,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
+        area: req.body.area,
         notes: req.body.notes
       });
       return res.redirect("/admin/report-service/equipments?created=1");
@@ -1987,6 +1990,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
+        area: req.body.area,
         notes: req.body.notes
       });
 
@@ -2029,6 +2033,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
+        area: req.body.area,
         notes: req.body.notes
       });
 
@@ -2068,6 +2073,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
+        area: req.body.area,
         notes: req.body.notes
       });
 

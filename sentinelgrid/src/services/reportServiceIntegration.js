@@ -385,7 +385,8 @@ async function sendOrderGroupToReportService(orderIds, actor = "") {
         serialNumber: eq.serial_number || "",
         tagNumber: eq.tag || "",
         manufacturer: eq.manufacturer_name || "",
-        modelFamily: eq.model_name || ""
+        modelFamily: eq.model_name || "",
+        area: eq.area_name || ""
       });
       await rs.linkOrderEquipment(rsOrder.id, equipment.id);
       await upsertLink(client, "equipment", eq.id, equipment.id);

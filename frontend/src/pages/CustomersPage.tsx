@@ -23,7 +23,7 @@ import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/Regi
 import RegistrySuggestField, { RegistrySuggestItem } from "../components/sentinelgrid/RegistrySuggestField";
 import { exportToReportService, listSgExportable } from "../api/sentinelgrid/integration";
 
-const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", notes: "" };
+const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", area: "", notes: "" };
 const EMPTY_SITE: SiteInput = {
   customerId: 0,
   siteName: "",
@@ -74,7 +74,7 @@ export default function CustomersPage() {
   });
   const mUpdateCustomer = useMutation({
     mutationFn: (c: Customer) =>
-      updateCustomer(c.id, { name: c.name, customerType: c.customer_type || "others", notes: c.notes || "" }),
+      updateCustomer(c.id, { name: c.name, customerType: c.customer_type || "others", area: c.area || "", notes: c.notes || "" }),
     onSuccess: () => { setEditingCustomer(null); invalidate(); },
     onError
   });
@@ -137,7 +137,7 @@ export default function CustomersPage() {
             className="row g-2 align-items-end"
             onSubmit={(e) => { e.preventDefault(); mCreateCustomer.mutate(newCustomer); }}
           >
-            <div className="col-md-4">
+            <div className="col-md-3">
               <Form.Label>Nome</Form.Label>
               <RegistrySuggestField
                 required
@@ -148,7 +148,7 @@ export default function CustomersPage() {
                 onImportPick={(it) => openImport(it.id)}
               />
             </div>
-            <div className="col-md-3">
+            <div className="col-md-2">
               <Form.Label>Tipo</Form.Label>
               <Form.Select
                 value={newCustomer.customerType}
@@ -158,6 +158,14 @@ export default function CustomersPage() {
               </Form.Select>
             </div>
             <div className="col-md-3">
+              <Form.Label>Área</Form.Label>
+              <Form.Control
+                value={newCustomer.area}
+                onChange={(e) => setNewCustomer({ ...newCustomer, area: e.target.value })}
+                placeholder="Ex.: Operações, Datacenter"
+              />
+            </div>
+            <div className="col-md-2">
               <Form.Label>Observações</Form.Label>
               <Form.Control
                 value={newCustomer.notes}
@@ -171,14 +179,15 @@ export default function CustomersPage() {
         </Card.Body></>}
         <Table striped responsive hover className="mb-0">
           <thead>
-            <tr><th>Nome</th><th>Tipo</th><th>Observações</th><th className="text-end">Ações</th></tr>
+            <tr><th>Nome</th><th>Tipo</th><th>Área</th><th>Observações</th><th className="text-end">Ações</th></tr>
           </thead>
           <tbody>
-            {customers.length === 0 && <tr><td colSpan={4} className="text-muted">Nenhum cliente.</td></tr>}
+            {customers.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum cliente.</td></tr>}
             {customers.map((c) => (
               <tr key={c.id}>
                 <td>{c.name}</td>
                 <td>{c.customer_type}</td>
+                <td>{c.area || "—"}</td>
                 <td>{c.notes}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
@@ -274,6 +283,13 @@ export default function CustomersPage() {
                 >
                   {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </Form.Select>
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Área</Form.Label>
+                <Form.Control
+                  value={editingCustomer.area || ""}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, area: e.target.value })}
+                />
               </Form.Group>
               <Form.Group>
                 <Form.Label>Observações</Form.Label>

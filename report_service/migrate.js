@@ -13,11 +13,13 @@ async function migrateServiceReport() {
       id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       customer_type TEXT NOT NULL DEFAULT 'others',
+      area TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await db.query(`ALTER TABLE service_report_customers ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT '';`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_customer_contacts (
@@ -69,12 +71,14 @@ async function migrateServiceReport() {
       tag_number TEXT NOT NULL DEFAULT '',
       manufacturer TEXT NOT NULL DEFAULT '',
       model_family TEXT NOT NULL DEFAULT '',
+      area TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
   await db.query(`ALTER TABLE service_report_equipments ADD COLUMN IF NOT EXISTS power TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_equipments ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT '';`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_customer_id ON service_report_equipments (customer_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_site_id ON service_report_equipments (site_id);`);
 

@@ -10,6 +10,7 @@ export interface Equipment {
   type: string | null;
   manufacturer: string | null;
   model_family: string | null;
+  area: string | null;
   serial_number: string | null;
   tag_number: string | null;
   power: string | null;
@@ -37,6 +38,7 @@ export interface EquipmentInput {
   type: string;
   manufacturer: string;
   modelFamily: string;
+  area: string;
   serialNumber: string;
   tagNumber: string;
   power: string;

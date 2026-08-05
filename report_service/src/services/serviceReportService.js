@@ -203,6 +203,7 @@ async function createCustomer(input = {}) {
   return repo.createCustomer({
     name,
     customerType: sanitizeText(input.customerType || "others").toLowerCase(),
+    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes)
   });
 }
@@ -258,6 +259,7 @@ async function createEquipment(input = {}) {
     tagNumber: sanitizeText(input.tagNumber),
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
+    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes)
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
@@ -290,6 +292,7 @@ async function updateEquipment(id, input = {}) {
     tagNumber: sanitizeText(pick(input.tagNumber, existing.tag_number)),
     manufacturer: sanitizeText(pick(input.manufacturer, existing.manufacturer)),
     modelFamily: sanitizeText(pick(input.modelFamily, existing.model_family)),
+    area: sanitizeText(pick(input.area, existing.area)),
     notes: sanitizeText(pick(input.notes, existing.notes))
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber, id);
@@ -698,6 +701,7 @@ async function ensureCustomerByRef(input = {}) {
   const customer = await repo.createCustomer({
     name,
     customerType: sanitizeText(input.customerType || "others").toLowerCase(),
+    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes),
     externalSource: sanitizeText(input.externalSource),
     externalId: sanitizeText(input.externalId)
@@ -844,6 +848,7 @@ async function ensureEquipmentByRef(input = {}) {
     tagNumber: sanitizeText(input.tagNumber),
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
+    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes),
     externalSource: sanitizeText(input.externalSource),
     externalId: sanitizeText(input.externalId)

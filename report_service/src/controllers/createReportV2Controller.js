@@ -374,6 +374,7 @@ function createReportServiceV2Controller(deps) {
       const created = await service.createCustomer({
         name: sanitize(req.body.name),
         customerType: req.body.customerType || req.body.customer_type,
+        area: sanitize(req.body.area),
         notes: sanitize(req.body.notes)
       });
       return res.status(201).json(created);
@@ -384,6 +385,7 @@ function createReportServiceV2Controller(deps) {
       const updated = await repo.updateCustomer(id, {
         name: sanitize(req.body.name),
         customerType: req.body.customerType || req.body.customer_type,
+        area: sanitize(req.body.area),
         notes: sanitize(req.body.notes)
       });
       if (!updated) return res.status(404).json({ error: "Cliente não encontrado." });
@@ -2447,6 +2449,7 @@ ${bodyHtml}
       tagNumber: sanitize(body.tagNumber || body.tag_number),
       manufacturer: sanitize(body.manufacturer),
       modelFamily: sanitize(body.modelFamily || body.model_family),
+      area: sanitize(body.area),
       notes: sanitize(body.notes)
     };
   }

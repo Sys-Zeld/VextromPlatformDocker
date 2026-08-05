@@ -335,6 +335,7 @@ async function ensureRsEquipmentFromSg(sgEquipment, rsCustomerId, rsSiteId) {
     tagNumber: s(sgEquipment.tag),
     manufacturer: s(sgEquipment.manufacturer_name),
     modelFamily: s(sgEquipment.model_name),
+    area: s(sgEquipment.area_name),
     notes: s(sgEquipment.notes)
   });
   await links.upsertLink("equipment", sgEquipment.id, equipment.id);

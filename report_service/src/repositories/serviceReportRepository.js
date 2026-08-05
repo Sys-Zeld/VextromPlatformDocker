@@ -269,11 +269,11 @@ async function getCustomerById(id) {
 async function createCustomer(payload) {
   const result = await db.query(
     `
-      INSERT INTO service_report_customers (name, customer_type, notes, external_source, external_id, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
+      INSERT INTO service_report_customers (name, customer_type, area, notes, external_source, external_id, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
       RETURNING *
     `,
-    [payload.name, payload.customerType || "others", payload.notes || "", payload.externalSource || "", payload.externalId || ""]
+    [payload.name, payload.customerType || "others", payload.area || "", payload.notes || "", payload.externalSource || "", payload.externalId || ""]
   );
   return result.rows[0];
 }
@@ -448,12 +448,13 @@ async function updateCustomer(id, payload) {
       SET
         name = $2,
         customer_type = $3,
-        notes = $4,
+        area = $4,
+        notes = $5,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
-    [id, payload.name, payload.customerType || "others", payload.notes || ""]
+    [id, payload.name, payload.customerType || "others", payload.area || "", payload.notes || ""]
   );
   return result.rows[0] || null;
 }
@@ -625,13 +626,14 @@ async function createEquipment(payload) {
         tag_number,
         manufacturer,
         model_family,
+        area,
         notes,
         external_source,
         external_id,
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW(),NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -652,6 +654,7 @@ async function createEquipment(payload) {
       payload.tagNumber || "",
       payload.manufacturer || "",
       payload.modelFamily || "",
+      payload.area || "",
       payload.notes || "",
       payload.externalSource || "",
       payload.externalId || ""
@@ -682,7 +685,8 @@ async function updateEquipment(id, payload) {
         tag_number = $16,
         manufacturer = $17,
         model_family = $18,
-        notes = $19,
+        area = $19,
+        notes = $20,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
@@ -706,6 +710,7 @@ async function updateEquipment(id, payload) {
       payload.tagNumber || "",
       payload.manufacturer || "",
       payload.modelFamily || "",
+      payload.area || "",
       payload.notes || ""
     ]
   );

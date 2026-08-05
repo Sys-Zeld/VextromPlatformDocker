@@ -4,6 +4,7 @@ export interface Customer {
   id: number;
   name: string;
   customer_type: string | null;
+  area: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -29,6 +30,7 @@ export interface CustomersPayload {
 export interface CustomerInput {
   name: string;
   customerType: string;
+  area: string;
   notes: string;
 }
 

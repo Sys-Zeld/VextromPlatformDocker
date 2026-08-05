@@ -87,6 +87,7 @@ function createReportApiController(deps) {
       const updated = await repo.updateCustomer(id, {
         name: sanitizeInput(req.body.name || current.name),
         customerType: sanitizeInput(req.body.customerType || current.customer_type),
+        area: sanitizeInput(req.body.area === undefined ? current.area : req.body.area),
         notes: sanitizeInput(req.body.notes || current.notes)
       });
       return ok(res, updated);

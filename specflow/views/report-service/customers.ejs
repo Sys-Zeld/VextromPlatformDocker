@@ -81,6 +81,7 @@
                 <% }) %>
               </select>
             </div>
+            <div class="col-12"><input class="form-control" name="area" id="editCustomerArea" placeholder="Área" /></div>
             <div class="col-12"><textarea class="form-control" name="notes" id="editCustomerNotes" rows="2" placeholder="<%= t('rs.observations') %>"></textarea></div>
           </div>
           <div class="modal-footer">
@@ -147,6 +148,7 @@
                 <% }) %>
               </select>
             </div>
+            <div class="col-12"><input class="form-control" name="area" placeholder="Área" /></div>
             <div class="col-12"><textarea class="form-control" name="notes" rows="2" placeholder="<%= t('rs.observations') %>"></textarea></div>
             <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary btn-sm" type="submit"><%= t("rs.customers.registerCustomer") %></button></div>
           </form>
@@ -232,6 +234,7 @@
       colId:      "ID",
       colName:    <%- JSON.stringify(t("rs.name")) %>,
       colType:    "Tipo",
+      colArea:    "Área",
       colNotes:   <%- JSON.stringify(t("rs.observations")) %>,
       colActions: <%- JSON.stringify(t("rs.actions")) %>,
       colCustomer:<%- JSON.stringify(t("rs.customer")) %>,
@@ -242,7 +245,7 @@
     };
 
     var customers = <%- JSON.stringify((customers || []).map(function(c) {
-      return { id: c.id, name: c.name, type: c.customer_type, notes: c.notes || "" };
+      return { id: c.id, name: c.name, type: c.customer_type, area: c.area || "", notes: c.notes || "" };
     })).replace(/</g, "\\u003c") %>;
 
     var sites = <%- JSON.stringify((sites || []).map(function(s) {
@@ -263,6 +266,7 @@
         + " data-id=\"" + c.id + "\""
         + " data-name=\"" + escAttr(c.name) + "\""
         + " data-type=\"" + escAttr(c.type) + "\""
+        + " data-area=\"" + escAttr(c.area) + "\""
         + " data-notes=\"" + escAttr(c.notes) + "\""
         + ">" + escHtml(i18n.edit) + "</button>";
       var delForm = "<form method=\"post\" action=\"/admin/report-service/customers/" + c.id + "/delete\" class=\"m-0\" onsubmit=\"return confirm(" + JSON.stringify(i18n.confirmDeleteCustomer) + ")\">"
@@ -315,11 +319,12 @@
             { id: "id", name: i18n.colId, width: "60px" },
             { id: "name", name: i18n.colName },
             { id: "type", name: i18n.colType },
+            { id: "area", name: i18n.colArea },
             { id: "notes", name: i18n.colNotes },
             { id: "actions", name: i18n.colActions, sort: false, formatter: function(cell) { return window.gridjs.html(cell); } }
           ],
           data: customers.map(function(c) {
-            return { id: c.id, name: escHtml(c.name), type: escHtml(c.type), notes: escHtml(c.notes) || "-", actions: customerActions(c) };
+            return { id: c.id, name: escHtml(c.name), type: escHtml(c.type), area: escHtml(c.area) || "-", notes: escHtml(c.notes) || "-", actions: customerActions(c) };
           }),
           search: true, sort: true,
           pagination: { limit: 15, summary: false },
@@ -371,6 +376,7 @@
       document.getElementById("editCustomerForm").action = "/admin/report-service/customers/" + btn.dataset.id + "/update";
       document.getElementById("editCustomerName").value = btn.dataset.name || "";
       document.getElementById("editCustomerType").value = btn.dataset.type || "others";
+      document.getElementById("editCustomerArea").value = btn.dataset.area || "";
       document.getElementById("editCustomerNotes").value = btn.dataset.notes || "";
       var modal = new bootstrap.Modal(document.getElementById("editCustomerModal"));
       modal.show();

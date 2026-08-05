@@ -43,6 +43,7 @@ const EMPTY: EquipmentInput = {
   type: "",
   manufacturer: "",
   modelFamily: "",
+  area: "",
   serialNumber: "",
   tagNumber: "",
   power: "",
@@ -67,6 +68,7 @@ function toInput(e: Equipment): EquipmentInput {
     type: e.type ?? "",
     manufacturer: e.manufacturer ?? "",
     modelFamily: e.model_family ?? "",
+    area: e.area ?? "",
     serialNumber: e.serial_number ?? "",
     tagNumber: e.tag_number ?? "",
     power: e.power ?? "",
@@ -297,10 +299,10 @@ export default function EquipmentsPage() {
       {actionError && !show && <Alert variant="danger" className="m-3" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
       <Table striped responsive hover className="mb-0 align-middle">
         <thead>
-          <tr><th>Tipo</th><th>Fabricante</th><th>Família</th><th>Nº de série</th><th>TAG</th><th>Cliente</th><th className="text-end">Ações</th></tr>
+          <tr><th>Tipo</th><th>Fabricante</th><th>Família</th><th>Nº de série</th><th>TAG</th><th>Cliente</th><th>Área</th><th className="text-end">Ações</th></tr>
         </thead>
         <tbody>
-          {filteredEquipments.length === 0 && <tr><td colSpan={7} className="text-muted">{hasFilter ? "Nenhum equipamento corresponde aos filtros." : "Nenhum equipamento."}</td></tr>}
+          {filteredEquipments.length === 0 && <tr><td colSpan={8} className="text-muted">{hasFilter ? "Nenhum equipamento corresponde aos filtros." : "Nenhum equipamento."}</td></tr>}
           {filteredEquipments.map((e: Equipment) => (
             <tr key={e.id}>
               <td>{e.type}</td>
@@ -309,6 +311,7 @@ export default function EquipmentsPage() {
               <td>{e.serial_number}</td>
               <td>{e.tag_number}</td>
               <td>{e.customer_name || "—"}</td>
+              <td>{e.area || "—"}</td>
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />}
@@ -327,18 +330,22 @@ export default function EquipmentsPage() {
           <Modal.Body>
             {actionError && <Alert variant="danger" dismissible onClose={() => setActionError(null)}>{actionError}</Alert>}
             <div className="row g-3">
-              <div className="col-md-6">
+              <div className="col-md-4">
                 <Form.Label>Cliente</Form.Label>
                 <Form.Select
                   required
                   value={form.customerId === "" ? "" : form.customerId}
-                  onChange={(e) => setForm({ ...form, customerId: e.target.value ? Number(e.target.value) : "", siteId: "" })}
+                  onChange={(e) => {
+                    const customerId = e.target.value ? Number(e.target.value) : "";
+                    const customer = customers.find((item) => Number(item.id) === Number(customerId));
+                    setForm({ ...form, customerId, siteId: "", area: customer?.area || "" });
+                  }}
                 >
                   <option value="">Selecione…</option>
                   {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Form.Select>
               </div>
-              <div className="col-md-6">
+              <div className="col-md-4">
                 <Form.Label>Site</Form.Label>
                 <Form.Select
                   required
@@ -348,6 +355,14 @@ export default function EquipmentsPage() {
                   <option value="">Selecione…</option>
                   {sitesForCustomer(form.customerId).map((s) => <option key={s.id} value={s.id}>{s.site_name}</option>)}
                 </Form.Select>
+              </div>
+              <div className="col-md-4">
+                <Form.Label>Área</Form.Label>
+                <Form.Control
+                  value={form.area}
+                  onChange={(e) => setForm({ ...form, area: e.target.value })}
+                  placeholder="Área do equipamento"
+                />
               </div>
               <div className="col-md-6">
                 <Form.Label>Tipo</Form.Label>
