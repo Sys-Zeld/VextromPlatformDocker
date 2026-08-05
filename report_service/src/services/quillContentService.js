@@ -72,8 +72,30 @@ function extractTextFromHtml(html) {
     .trim();
 }
 
+// Conteudo colado do Word/PDF costuma trazer NBSP (U+00A0) no lugar de
+// espaco normal entre todas as palavras. sanitize-html decodifica a
+// entidade "&nbsp;" para esse caractere literal, que impede a quebra de
+// linha do paragrafo inteiro no preview/PDF. Normaliza ocorrencias isoladas
+// de NBSP (nao precedidas/seguidas por outro NBSP) de volta para espaco
+// quebravel, preservando sequencias de 2+ que costumam ser espacamento
+// intencional.
+const NBSP_CHAR = String.fromCharCode(160);
+function normalizeBreakableSpaces(html) {
+  const str = String(html || "");
+  let result = "";
+  for (let i = 0; i < str.length; i += 1) {
+    const ch = str[i];
+    if (ch === NBSP_CHAR && str[i - 1] !== NBSP_CHAR && str[i + 1] !== NBSP_CHAR) {
+      result += " ";
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+
 function sanitizeReportSectionHtml(inputHtml) {
-  return sanitizeHtml(String(inputHtml || ""), {
+  return normalizeBreakableSpaces(sanitizeHtml(String(inputHtml || ""), {
     allowedTags: [
       "p",
       "br",
@@ -202,11 +224,11 @@ function sanitizeReportSectionHtml(inputHtml) {
         return { tagName, attribs };
       }
     }
-  }).trim();
+  })).trim();
 }
 
 function sanitizeReportTitleHtml(inputHtml) {
-  return sanitizeHtml(String(inputHtml || ""), {
+  return normalizeBreakableSpaces(sanitizeHtml(String(inputHtml || ""), {
     allowedTags: ["p", "strong", "em", "u", "a", "img", "span", "br"],
     allowedAttributes: {
       a: ["href", "target", "rel"],
@@ -258,7 +280,7 @@ function sanitizeReportTitleHtml(inputHtml) {
         return { tagName, attribs };
       }
     }
-  }).trim();
+  })).trim();
 }
 
 function sanitizeImagePath(value) {
