@@ -56,17 +56,30 @@ function sanitizeText(value) {
 }
 
 function equipmentDuplicateError() {
-  const err = new Error("TAG ja cadastrada neste site.");
+  const err = new Error("TAG já cadastrada para este cliente, site e área.");
   err.statusCode = 409;
   err.errorCode = "EQUIPMENT_TAG_DUPLICATE";
   return err;
 }
 
-async function ensureEquipmentTagUnique(siteId, tagNumber, excludeId = null) {
+async function ensureEquipmentTagUnique(customerId, siteId, areaId, tagNumber, excludeId = null) {
   const tag = sanitizeText(tagNumber);
   if (!tag) return;
-  const duplicate = await repo.findEquipmentBySiteTag(repo.toInt(siteId), tag, excludeId);
+  const duplicate = await repo.findEquipmentByLocationTag(
+    repo.toInt(customerId),
+    repo.toInt(siteId),
+    repo.toInt(areaId),
+    tag,
+    excludeId
+  );
   if (duplicate) throw equipmentDuplicateError();
+}
+
+function rethrowEquipmentTagConstraint(err) {
+  if (err && err.code === "23505" && err.constraint === "idx_sr_equipments_location_tag_unique") {
+    throw equipmentDuplicateError();
+  }
+  throw err;
 }
 
 function normalizeComponentCategory(value) {
@@ -325,8 +338,12 @@ async function createEquipment(input = {}) {
     modelFamily: sanitizeText(input.modelFamily),
     notes: sanitizeText(input.notes)
   };
-  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
-  return repo.createEquipment(payload);
+  await ensureEquipmentTagUnique(payload.customerId, payload.siteId, payload.areaId, payload.tagNumber);
+  try {
+    return await repo.createEquipment(payload);
+  } catch (err) {
+    return rethrowEquipmentTagConstraint(err);
+  }
 }
 
 async function updateEquipment(id, input = {}) {
@@ -359,8 +376,12 @@ async function updateEquipment(id, input = {}) {
     modelFamily: sanitizeText(pick(input.modelFamily, existing.model_family)),
     notes: sanitizeText(pick(input.notes, existing.notes))
   };
-  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber, id);
-  return repo.updateEquipment(id, payload);
+  await ensureEquipmentTagUnique(payload.customerId, payload.siteId, payload.areaId, payload.tagNumber, id);
+  try {
+    return await repo.updateEquipment(id, payload);
+  } catch (err) {
+    return rethrowEquipmentTagConstraint(err);
+  }
 }
 
 async function deleteEquipment(id) {
@@ -887,17 +908,18 @@ async function ensureEquipmentByRef(input = {}) {
   }
   // Chave natural: a TAG dentro do cliente (o RS já a trata como única por site). A série vem
   // depois e só quando é inequívoca — na base real o mesmo serial aparece em unidades distintas.
-  const byTag = await repo.getEquipmentByTagForCustomer(input.customerId, input.tagNumber);
+  const customerId = repo.toInt(input.customerId);
+  const areaId = await resolveEquipmentAreaId(customerId, input.areaId, input.area);
+  const byTag = await repo.findEquipmentByLocationTag(customerId, input.siteId, areaId, input.tagNumber);
   if (byTag) return adoptEquipment(byTag);
 
   const bySerial = await repo.getEquipmentBySerialForCustomer(input.customerId, input.serialNumber);
   if (bySerial) return adoptEquipment(bySerial);
 
-  const customerId = repo.toInt(input.customerId);
   const payload = {
     customerId,
     siteId: repo.toInt(input.siteId),
-    areaId: await resolveEquipmentAreaId(customerId, input.areaId, input.area),
+    areaId,
     type,
     yearOfManufacture: sanitizeText(input.yearOfManufacture),
     serialNumber: sanitizeText(input.serialNumber),
@@ -917,8 +939,13 @@ async function ensureEquipmentByRef(input = {}) {
     externalSource: sanitizeText(input.externalSource),
     externalId: sanitizeText(input.externalId)
   };
-  await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
-  const equipment = await repo.createEquipment(payload);
+  await ensureEquipmentTagUnique(payload.customerId, payload.siteId, payload.areaId, payload.tagNumber);
+  let equipment;
+  try {
+    equipment = await repo.createEquipment(payload);
+  } catch (err) {
+    equipment = rethrowEquipmentTagConstraint(err);
+  }
   return { equipment: await attachSentinelGridLink("equipment", equipment, input.sentinelgridId), created: true };
 }
 

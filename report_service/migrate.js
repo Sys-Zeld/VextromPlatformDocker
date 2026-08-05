@@ -148,6 +148,14 @@ async function migrateServiceReport() {
 
   await db.query(`ALTER TABLE service_report_customers DROP COLUMN IF EXISTS area;`);
   await db.query(`ALTER TABLE service_report_equipments DROP COLUMN IF EXISTS area;`);
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_equipments_location_tag_unique
+    ON service_report_equipments (customer_id, site_id, area_id, LOWER(TRIM(tag_number)))
+    WHERE customer_id IS NOT NULL
+      AND site_id IS NOT NULL
+      AND area_id IS NOT NULL
+      AND TRIM(tag_number) <> '';
+  `);
 
   // Fase 11.1 — Referência externa (ADR-004) para integração idempotente com o SentinelGrid.
   // Correlaciona cliente/site/equipamento sem duplicar (external_source + external_id únicos).

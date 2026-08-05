@@ -363,18 +363,23 @@ async function getCustomerByNormalizedName(name) {
   return result.rows[0] || null;
 }
 
-// Chave natural do equipamento: a TAG dentro do cliente — é o que o RS já trata como única por site
-// (ensureEquipmentTagUnique). O número de série NÃO serve sozinho: na base real o mesmo serial
-// aparece em unidades diferentes (L13-0640 em duas, L07-0515 em três).
-async function getEquipmentByTagForCustomer(customerId, tagNumber) {
-  const id = toInt(customerId);
+// A TAG identifica o equipamento somente dentro da localização completa.
+// O mesmo texto pode existir em outro cliente, site ou área.
+async function findEquipmentByLocationTag(customerId, siteId, areaId, tagNumber, excludeId = null) {
   const tag = String(tagNumber || "").trim();
-  if (!id || !tag) return null;
+  if (!tag) return null;
+  const params = [toInt(customerId), toInt(siteId), toInt(areaId), tag.toLowerCase()];
+  let where = `customer_id IS NOT DISTINCT FROM $1
+    AND site_id IS NOT DISTINCT FROM $2
+    AND area_id IS NOT DISTINCT FROM $3
+    AND LOWER(TRIM(tag_number)) = $4`;
+  if (excludeId) {
+    params.push(excludeId);
+    where += ` AND id <> $${params.length}`;
+  }
   const result = await db.query(
-    `SELECT * FROM service_report_equipments
-      WHERE customer_id = $1 AND LOWER(TRIM(tag_number)) = LOWER($2)
-      ORDER BY id LIMIT 1`,
-    [id, tag]
+    `SELECT * FROM service_report_equipments WHERE ${where} ORDER BY id LIMIT 1`,
+    params
   );
   return result.rows[0] || null;
 }
@@ -651,22 +656,6 @@ async function getEquipmentById(id) {
       LIMIT 1
     `,
     [id]
-  );
-  return result.rows[0] || null;
-}
-
-async function findEquipmentBySiteTag(siteId, tagNumber, excludeId = null) {
-  const cleanTag = String(tagNumber || "").trim();
-  if (!cleanTag) return null;
-  const params = [siteId, cleanTag.toLowerCase()];
-  let where = "site_id = $1 AND LOWER(TRIM(tag_number)) = $2";
-  if (excludeId) {
-    params.push(excludeId);
-    where += ` AND id <> $${params.length}`;
-  }
-  const result = await db.query(
-    `SELECT * FROM service_report_equipments WHERE ${where} LIMIT 1`,
-    params
   );
   return result.rows[0] || null;
 }
@@ -3943,7 +3932,7 @@ module.exports = {
   backfillExternalRef,
   getCustomerByNormalizedName,
   getSiteByNameForCustomer,
-  getEquipmentByTagForCustomer,
+  findEquipmentByLocationTag,
   getEquipmentBySerialForCustomer,
   backfillEquipmentOwner,
   createCustomer,
@@ -3965,7 +3954,6 @@ module.exports = {
   getEquipmentById,
   getEquipmentByExternalRef,
   createEquipment,
-  findEquipmentBySiteTag,
   updateEquipment,
   deleteEquipment,
   listSpareParts,
