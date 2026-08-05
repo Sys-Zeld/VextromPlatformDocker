@@ -232,7 +232,6 @@ async function callAiApi({ systemPrompt, userParts, maxTokens, temperature = 0.1
     const body = {
       model: cfg.model,
       max_tokens: maxTokens,
-      temperature,
       system: systemPrompt,
       messages: [{ role: "user", content }]
     };
