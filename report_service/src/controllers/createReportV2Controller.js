@@ -689,7 +689,11 @@ function createReportServiceV2Controller(deps) {
 
       const report = await service.ensureReportForOrder(orderId, order.title);
       const components = await repo.listComponents(report.id);
-      const document = buildComponentSpareList(order, components);
+      const categories = String(req.query.categories || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const document = buildComponentSpareList(order, components, { categories });
       const format = String(req.query.format || "json").trim().toLowerCase();
 
       if (format === "json") return res.json(document);

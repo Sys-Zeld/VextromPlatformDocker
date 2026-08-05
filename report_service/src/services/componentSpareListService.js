@@ -1,5 +1,7 @@
 const XLSX = require("xlsx");
 
+const SPARE_CATEGORY_KEYS = ["recommended", "required", "replaced"];
+
 function cleanText(value) {
   return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
 }
@@ -13,13 +15,28 @@ function positiveQuantity(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function categoryKey(value) {
+  const normalized = cleanText(value).toLocaleLowerCase("pt-BR");
+  if (["substituidos", "substituído", "substituido", "replaced"].includes(normalized)) return "replaced";
+  if (["para_troca", "para troca", "required"].includes(normalized)) return "required";
+  if (["recomendados", "recomendado", "recomendável", "recomendavel", "spare", "spare_recommended", "recommended"].includes(normalized)) return "recommended";
+  return "";
+}
+
 function categoryLabel(value) {
-  const clean = cleanText(value);
-  const normalized = clean.toLocaleLowerCase("pt-BR");
-  if (["substituidos", "substituído", "substituido"].includes(normalized)) return "Substituídos";
-  if (["para_troca", "para troca", "required"].includes(normalized)) return "Para troca";
-  if (["recomendados", "recomendado", "spare", "spare_recommended"].includes(normalized)) return "Recomendados para spare";
-  return clean;
+  switch (categoryKey(value)) {
+    case "replaced": return "Substituído";
+    case "required": return "Para troca";
+    case "recommended": return "Recomendável";
+    default: return cleanText(value);
+  }
+}
+
+function normalizeCategorySelection(values) {
+  const selected = [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => categoryKey(value))
+    .filter((value) => SPARE_CATEGORY_KEYS.includes(value)))];
+  return selected.length ? selected : [...SPARE_CATEGORY_KEYS];
 }
 
 function uniquePush(list, value) {
@@ -34,11 +51,18 @@ function preferredDescription(counts) {
     .sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0], "pt-BR", { sensitivity: "base" }))[0]?.[0] || "";
 }
 
-function buildComponentSpareList(order, components = []) {
+function buildComponentSpareList(order, components = [], options = {}) {
+  const selectedCategories = normalizeCategorySelection(options.categories);
   const grouped = new Map();
   let omittedMissingPartNumber = 0;
+  let omittedByCategory = 0;
 
   (Array.isArray(components) ? components : []).forEach((component) => {
+    const componentCategory = categoryKey(component && component.category);
+    if (!componentCategory || !selectedCategories.includes(componentCategory)) {
+      omittedByCategory += 1;
+      return;
+    }
     const partNumber = cleanText(component && component.part_number);
     const key = normalizePartNumber(partNumber);
     if (!key) {
@@ -98,11 +122,16 @@ function buildComponentSpareList(order, components = []) {
       site: cleanText(order && order.site_name)
     },
     generatedAt: new Date().toISOString(),
+    filters: {
+      categories: selectedCategories,
+      categoryLabels: selectedCategories.map(categoryLabel)
+    },
     summary: {
       distinctPartNumbers: items.length,
       sourceComponents: items.reduce((sum, item) => sum + item.sourceRows, 0),
       totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-      omittedMissingPartNumber
+      omittedMissingPartNumber,
+      omittedByCategory
     },
     items
   };
@@ -114,9 +143,11 @@ function buildComponentSpareListWorkbook(document) {
     ["OS", document.order.code, "Cliente", document.order.customer],
     ["Título", document.order.title, "Site", document.order.site],
     ["PN distintos", document.summary.distinctPartNumbers, "Quantidade total", document.summary.totalQuantity],
-    [],
-    ["Item", "Part Number", "Descrição", "Quantidade", "Categorias", "TAGs", "Equipamentos", "Observações"]
+    ["Categorias selecionadas", document.filters.categoryLabels.join(", ")],
+    []
   ];
+  const headerRow = rows.length + 1;
+  rows.push(["Item", "Part Number", "Descrição", "Quantidade", "Categorias", "TAGs", "Equipamentos", "Observações"]);
 
   document.items.forEach((item, index) => {
     rows.push([
@@ -137,7 +168,7 @@ function buildComponentSpareListWorkbook(document) {
     { wch: 8 }, { wch: 22 }, { wch: 52 }, { wch: 14 },
     { wch: 24 }, { wch: 24 }, { wch: 38 }, { wch: 42 }
   ];
-  sheet["!autofilter"] = { ref: `A6:H${Math.max(6, rows.length)}` };
+  sheet["!autofilter"] = { ref: `A${headerRow}:H${Math.max(headerRow, rows.length)}` };
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Lista de spare parts");
@@ -145,7 +176,9 @@ function buildComponentSpareListWorkbook(document) {
 }
 
 module.exports = {
+  SPARE_CATEGORY_KEYS,
   buildComponentSpareList,
   buildComponentSpareListWorkbook,
+  normalizeCategorySelection,
   normalizePartNumber
 };

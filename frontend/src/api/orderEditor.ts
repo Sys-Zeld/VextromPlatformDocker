@@ -166,25 +166,34 @@ export interface ComponentSpareListItem {
   sourceRows: number;
 }
 
+export type ComponentSpareCategory = "recommended" | "required" | "replaced";
+
 export interface ComponentSpareList {
   order: { id: number; code: string; title: string; customer: string; site: string };
   generatedAt: string;
+  filters: {
+    categories: ComponentSpareCategory[];
+    categoryLabels: string[];
+  };
   summary: {
     distinctPartNumbers: number;
     sourceComponents: number;
     totalQuantity: number;
     omittedMissingPartNumber: number;
+    omittedByCategory: number;
   };
   items: ComponentSpareListItem[];
 }
 
-export function getComponentSpareList(id: number) {
-  return api<ComponentSpareList>(`/orders/${id}/components/spare-list?format=json`);
+export function getComponentSpareList(id: number, categories: ComponentSpareCategory[]) {
+  const selected = encodeURIComponent(categories.join(","));
+  return api<ComponentSpareList>(`/orders/${id}/components/spare-list?format=json&categories=${selected}`);
 }
 
-export function downloadComponentSpareList(id: number, orderCode: string) {
+export function downloadComponentSpareList(id: number, orderCode: string, categories: ComponentSpareCategory[]) {
   const safeCode = String(orderCode || `OS-${id}`).replace(/[^a-zA-Z0-9._-]/g, "-");
-  return downloadFile(`/orders/${id}/components/spare-list?format=xlsx`, `lista-spare-parts-${safeCode}.xlsx`);
+  const selected = encodeURIComponent(categories.join(","));
+  return downloadFile(`/orders/${id}/components/spare-list?format=xlsx&categories=${selected}`, `lista-spare-parts-${safeCode}.xlsx`);
 }
 
 // Customização visual da tabela de componentes por IA (chat + preview)

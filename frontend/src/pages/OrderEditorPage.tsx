@@ -14,6 +14,7 @@ import PrintSheet, { PrintColumn } from "../components/PrintSheet";
 import {
   Component,
   ComponentInput,
+  ComponentSpareCategory,
   ComponentSpareList,
   DailyLog,
   DailyLogInput,
@@ -49,6 +50,14 @@ function stripHtml(html: string | null): string {
 const EMPTY_LOG: DailyLogInput = { activityDate: "", title: "", content: "", notes: "", sortOrder: 0 };
 
 const EMPTY_COMPONENT: ComponentInput = { category: "", equipmentId: "", quantity: "", description: "", partNumber: "", notes: "" };
+
+const SPARE_CATEGORY_OPTIONS: { key: ComponentSpareCategory; label: string }[] = [
+  { key: "recommended", label: "Recomendável" },
+  { key: "required", label: "Para troca" },
+  { key: "replaced", label: "Substituído" }
+];
+
+const ALL_SPARE_CATEGORIES = SPARE_CATEGORY_OPTIONS.map((option) => option.key);
 
 const SPARE_PRINT_COLUMNS: PrintColumn[] = [
   { key: "item", label: "Item", width: "7%", align: "center" },
@@ -198,6 +207,7 @@ export default function OrderEditorPage() {
   const [spareListDownloading, setSpareListDownloading] = useState(false);
   const [spareListPrinting, setSpareListPrinting] = useState(false);
   const [spareListError, setSpareListError] = useState<string | null>(null);
+  const [spareCategories, setSpareCategories] = useState<ComponentSpareCategory[]>([...ALL_SPARE_CATEGORIES]);
 
   // Validar / Revalidar OS
   const mValidate = useMutation({
@@ -262,25 +272,40 @@ export default function OrderEditorPage() {
     else mCreateCmp.mutate(cmpForm);
   };
   const savingCmp = mCreateCmp.isPending || mUpdateCmp.isPending;
-  const openSpareList = async () => {
-    setSpareListShow(true);
-    setSpareList(null);
+  const loadSpareList = async (categories: ComponentSpareCategory[]) => {
     setSpareListError(null);
+    setSpareList(null);
     setSpareListLoading(true);
     try {
-      setSpareList(await getComponentSpareList(orderId));
+      setSpareList(await getComponentSpareList(orderId, categories));
     } catch (err) {
       setSpareListError((err as Error).message);
     } finally {
       setSpareListLoading(false);
     }
   };
+  const openSpareList = () => {
+    const categories = [...ALL_SPARE_CATEGORIES];
+    setSpareCategories(categories);
+    setSpareListShow(true);
+    setSpareList(null);
+    void loadSpareList(categories);
+  };
+  const toggleSpareCategory = (category: ComponentSpareCategory) => {
+    const selected = spareCategories.includes(category);
+    if (selected && spareCategories.length === 1) return;
+    const categories = selected
+      ? spareCategories.filter((item) => item !== category)
+      : ALL_SPARE_CATEGORIES.filter((item) => item === category || spareCategories.includes(item));
+    setSpareCategories(categories);
+    void loadSpareList(categories);
+  };
   const downloadSpareList = async () => {
     if (!spareList) return;
     setSpareListError(null);
     setSpareListDownloading(true);
     try {
-      await downloadComponentSpareList(orderId, spareList.order.code);
+      await downloadComponentSpareList(orderId, spareList.order.code, spareList.filters.categories);
     } catch (err) {
       setSpareListError((err as Error).message);
     } finally {
@@ -776,6 +801,28 @@ export default function OrderEditorPage() {
         </Modal.Header>
         <Modal.Body>
           {spareListError && <Alert variant="danger">{spareListError}</Alert>}
+          <div className="border rounded p-3 mb-3 bg-light">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+              <strong>Filtrar categorias</strong>
+              <span className="small text-muted">A lista e os totais são recalculados ao selecionar.</span>
+            </div>
+            <div className="d-flex flex-wrap gap-3">
+              {SPARE_CATEGORY_OPTIONS.map((option) => {
+                const checked = spareCategories.includes(option.key);
+                return (
+                  <Form.Check
+                    key={option.key}
+                    type="checkbox"
+                    id={`spare-category-${option.key}`}
+                    label={option.label}
+                    checked={checked}
+                    disabled={spareListLoading || (checked && spareCategories.length === 1)}
+                    onChange={() => toggleSpareCategory(option.key)}
+                  />
+                );
+              })}
+            </div>
+          </div>
           {spareListLoading && (
             <div className="d-flex align-items-center justify-content-center gap-2 py-5">
               <Spinner animation="border" size="sm" /> Consolidando os Part Numbers…
@@ -809,7 +856,7 @@ export default function OrderEditorPage() {
                 </thead>
                 <tbody>
                   {spareList.items.length === 0 && (
-                    <tr><td colSpan={6} className="text-center text-muted py-4">Nenhum componente com Part Number cadastrado.</td></tr>
+                    <tr><td colSpan={6} className="text-center text-muted py-4">Nenhum componente com Part Number nas categorias selecionadas.</td></tr>
                   )}
                   {spareList.items.map((item, index) => (
                     <tr key={item.partNumber.toLocaleUpperCase("pt-BR")}>
@@ -844,6 +891,7 @@ export default function OrderEditorPage() {
           meta={[
             { label: "Cliente", value: spareList.order.customer || "—" },
             { label: "Site", value: spareList.order.site || "—" },
+            { label: "Categorias", value: spareList.filters.categoryLabels.join(", ") },
             { label: "PN distintos", value: String(spareList.summary.distinctPartNumbers) },
             { label: "Quantidade total", value: formatQuantity(spareList.summary.totalQuantity) }
           ]}
