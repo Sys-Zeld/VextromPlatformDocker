@@ -19,6 +19,7 @@ const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
 const { parseEventLogWorkbook } = require("../services/eventLogParser");
 const { COMPONENT_CATEGORIES } = require("../constants");
 const { formatServiceOrderColumnNumber } = require("../utils/serviceOrderDisplay");
+const { buildComponentSpareList, buildComponentSpareListWorkbook } = require("../services/componentSpareListService");
 
 function jsonArr(v) {
   if (Array.isArray(v)) return v;
@@ -681,6 +682,27 @@ function createReportServiceV2Controller(deps) {
     },
 
     // ---- Componentes (tabela) -------------------------------------------
+    async getOrderComponentSpareList(req, res) {
+      const orderId = Number(req.params.id);
+      const order = await repo.getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "OS não encontrada." });
+
+      const report = await service.ensureReportForOrder(orderId, order.title);
+      const components = await repo.listComponents(report.id);
+      const document = buildComponentSpareList(order, components);
+      const format = String(req.query.format || "json").trim().toLowerCase();
+
+      if (format === "json") return res.json(document);
+      if (format !== "xlsx") return res.status(422).json({ error: "Formato inválido. Use json ou xlsx." });
+
+      const safeOrderCode = document.order.code.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const workbook = buildComponentSpareListWorkbook(document);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="lista-spare-parts-${safeOrderCode}.xlsx"`);
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(workbook);
+    },
+
     async addOrderComponent(req, res) {
       const orderId = Number(req.params.id);
       const order = await repo.getOrderById(orderId);

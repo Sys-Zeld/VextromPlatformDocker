@@ -32,7 +32,12 @@
 
   .report-page {
     box-shadow: none;
-    border: 0;
+    /*
+     * Preserve the same content box used by the HTML preview.  Removing the
+     * 1px preview border made the printable content 2px wider and changed
+     * table column widths/wrapping in Chromium/Puppeteer.
+     */
+    border: 1px solid transparent;
     border-radius: 0;
     margin: 0;
     width: 210mm;
@@ -64,15 +69,14 @@
     print-color-adjust: exact !important;
   }
 
-  .report-inline-components-table thead th {
-    background: #f4f6f5 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .report-inline-components-table thead tr.report-inline-components-meta th {
-    background: #0d4f20 !important;
-    color: #eff7ef !important;
+  /*
+   * Do not redefine component-table colors in print.  These tables can have
+   * report/default custom CSS and the former !important rules replaced that
+   * styling only in the generated PDF.  Keep the screen cascade intact and
+   * only ask Chromium to print its computed colors exactly.
+   */
+  .report-inline-components-table th,
+  .report-inline-components-table td {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

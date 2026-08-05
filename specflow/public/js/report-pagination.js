@@ -2,6 +2,7 @@
   var rafToken = null;
   var resizeTimer = null;
   var isFirstRunDone = false;
+  var FOOTER_CLEARANCE_PX = 18;
 
   function getContinuationLabel() {
     var doc = document.getElementById("report-pages");
@@ -78,7 +79,10 @@
       var footerRect = footer.getBoundingClientRect();
       var footerTop = footerRect.top - pageRect.top;
       if (Number.isFinite(footerTop) && footerTop > 0) {
-        contentBottom = Math.min(contentBottom, footerTop - 8);
+        // Keep a visible safety zone above the footer. Chromium can shift text
+        // baselines slightly when converting the final layout to PDF; without
+        // this clearance the last line may touch or cross the footer rule.
+        contentBottom = Math.min(contentBottom, footerTop - FOOTER_CLEARANCE_PX);
       }
     }
     var usable = contentBottom - flowTop;
@@ -93,6 +97,16 @@
   function blockIsTable(block) {
     if (!block || block.nodeType !== Node.ELEMENT_NODE) return false;
     return !!block.matches("table") || !!block.querySelector("table");
+  }
+
+  // Só vale tentar dividir por linhas se houver linhas de corpo para distribuir.
+  // Sem isto, um "bloco tabela" sem tbody entraria em ciclo entre as funções de
+  // divisão e a de mover para a próxima página.
+  function tableHasSplittableRows(block) {
+    if (!block || block.nodeType !== Node.ELEMENT_NODE) return false;
+    var table = block.matches("table") ? block : block.querySelector("table");
+    if (!table) return false;
+    return table.querySelectorAll("tbody tr").length > 0;
   }
 
   function blockIsImage(block) {
@@ -625,6 +639,27 @@
       for (var fi = 0; fi < children.length; fi++) {
         if (children[fi].nodeType === Node.ELEMENT_NODE) { firstElem = children[fi]; break; }
       }
+
+      // O primeiro filho é uma tabela que não coube: divide por linhas AQUI.
+      // Sem isto o bloco inteiro seria empurrado para a próxima página e, se for
+      // mais alto que uma página, ficaria desenhado por cima do rodapé — a
+      // .report-page tem overflow:hidden, então nada é cortado nem rolado.
+      // Vale mesmo com avoid-break: preferir não quebrar não pode virar
+      // "invadir o rodapé" quando não existe página que caiba o bloco.
+      if (firstElem && blockIsTable(firstElem) && !blockIsImage(firstElem) && tableHasSplittableRows(firstElem)) {
+        var tablePage = splitTableBlock(firstElem.cloneNode(true), pageEl, reportDoc, sectionMeta);
+        var afterTable = block.cloneNode(false);
+        var seenTable = false;
+        for (var ti2 = 0; ti2 < children.length; ti2++) {
+          if (!seenTable && children[ti2] === firstElem) { seenTable = true; continue; }
+          if (seenTable) afterTable.appendChild(children[ti2].cloneNode(true));
+        }
+        if (afterTable.childNodes.length > 0) {
+          return appendBlockWithPagination(afterTable, tablePage, reportDoc, null, sectionMeta);
+        }
+        return tablePage;
+      }
+
       if (firstElem &&
           findParagraphTarget(firstElem) &&
           !blockIsImage(firstElem) &&
@@ -684,7 +719,16 @@
   function moveWholeBlockToNextPage(block, pageEl, reportDoc, sectionMeta) {
     var nextPage = ensureNextPageForSection(pageEl, reportDoc, sectionMeta, true);
     ensureImageSizeForPage(block, nextPage);
-    appendAndCheck(block, nextPage);
+    if (appendAndCheck(block, nextPage)) return nextPage;
+
+    // Não coube nem sozinho numa página vazia. Deixá-lo aqui significaria
+    // desenhá-lo por cima do rodapé. Se for uma tabela com linhas, dividir é
+    // sempre possível (splitTableBlock força ao menos uma linha por página, o
+    // que garante progresso e impede recursão).
+    if (block.matches && block.matches("table") && tableHasSplittableRows(block) && !blockIsImage(block)) {
+      removeFromFlow(block, nextPage);
+      return splitTableBlock(block, nextPage, reportDoc, sectionMeta);
+    }
     return nextPage;
   }
 

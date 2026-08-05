@@ -1,4 +1,4 @@
-import { api, API_BASE } from "./client";
+import { api, API_BASE, downloadFile } from "./client";
 import type { Order } from "./orders";
 import type { Equipment } from "./equipments";
 import type { Instrument, Technician } from "./assets";
@@ -153,6 +153,38 @@ export function updateComponent(id: number, componentId: number, input: Componen
 }
 export function deleteComponent(id: number, componentId: number) {
   return api<void>(`/orders/${id}/components/${componentId}`, { method: "DELETE" });
+}
+
+export interface ComponentSpareListItem {
+  partNumber: string;
+  description: string;
+  quantity: number;
+  categories: string[];
+  equipmentTags: string[];
+  equipments: string[];
+  notes: string[];
+  sourceRows: number;
+}
+
+export interface ComponentSpareList {
+  order: { id: number; code: string; title: string; customer: string; site: string };
+  generatedAt: string;
+  summary: {
+    distinctPartNumbers: number;
+    sourceComponents: number;
+    totalQuantity: number;
+    omittedMissingPartNumber: number;
+  };
+  items: ComponentSpareListItem[];
+}
+
+export function getComponentSpareList(id: number) {
+  return api<ComponentSpareList>(`/orders/${id}/components/spare-list?format=json`);
+}
+
+export function downloadComponentSpareList(id: number, orderCode: string) {
+  const safeCode = String(orderCode || `OS-${id}`).replace(/[^a-zA-Z0-9._-]/g, "-");
+  return downloadFile(`/orders/${id}/components/spare-list?format=xlsx`, `lista-spare-parts-${safeCode}.xlsx`);
 }
 
 // Customização visual da tabela de componentes por IA (chat + preview)

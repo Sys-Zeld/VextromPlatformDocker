@@ -45,6 +45,7 @@ function createReportServiceV2Router(deps) {
   router.post("/orders/:id/instruments", asyncHandler(controller.linkOrderInstrument));
   router.delete("/orders/:id/instruments/:instrId", asyncHandler(controller.unlinkOrderInstrument));
   router.post("/orders/:id/components", asyncHandler(controller.addOrderComponent));
+  router.get("/orders/:id/components/spare-list", asyncHandler(controller.getOrderComponentSpareList));
   router.put("/orders/:id/components/:componentId", asyncHandler(controller.updateOrderComponent));
   router.delete("/orders/:id/components/:componentId", asyncHandler(controller.deleteOrderComponent));
   // Ensaios / Medições (tabelas @ensaios)

@@ -10,9 +10,11 @@ import AttachmentsPanel from "../components/AttachmentsPanel";
 import SendOsEmailPanel from "../components/SendOsEmailPanel";
 import MeasurementsPanel from "../components/MeasurementsPanel";
 import UpsDataPanel from "../components/UpsDataPanel";
+import PrintSheet, { PrintColumn } from "../components/PrintSheet";
 import {
   Component,
   ComponentInput,
+  ComponentSpareList,
   DailyLog,
   DailyLogInput,
   TimesheetEntry,
@@ -24,7 +26,9 @@ import {
   deleteDailyLog,
   deleteTimesheet,
   detachEquipment,
+  downloadComponentSpareList,
   generateConclusion,
+  getComponentSpareList,
   getOrderEditor,
   linkInstrument,
   linkTechnician,
@@ -45,6 +49,19 @@ function stripHtml(html: string | null): string {
 const EMPTY_LOG: DailyLogInput = { activityDate: "", title: "", content: "", notes: "", sortOrder: 0 };
 
 const EMPTY_COMPONENT: ComponentInput = { category: "", equipmentId: "", quantity: "", description: "", partNumber: "", notes: "" };
+
+const SPARE_PRINT_COLUMNS: PrintColumn[] = [
+  { key: "item", label: "Item", width: "7%", align: "center" },
+  { key: "partNumber", label: "Part Number", width: "19%" },
+  { key: "description", label: "Descrição", width: "34%" },
+  { key: "quantity", label: "Qtd.", width: "10%", align: "center" },
+  { key: "tags", label: "TAGs", width: "15%" },
+  { key: "categories", label: "Categorias", width: "15%" }
+];
+
+function formatQuantity(value: number): string {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(Number(value) || 0);
+}
 
 function toComponentInput(c: Component): ComponentInput {
   return {
@@ -175,6 +192,12 @@ export default function OrderEditorPage() {
   const mUpdateCmp = useMutation({ mutationFn: (p: { id: number; input: ComponentInput }) => updateComponent(orderId, p.id, p.input), onSuccess: () => { setCmpShow(false); invalidate(); }, onError });
   const mDeleteCmp = useMutation({ mutationFn: (componentId: number) => deleteComponent(orderId, componentId), onSuccess: invalidate, onError });
   const [cmpStyleShow, setCmpStyleShow] = useState(false);
+  const [spareListShow, setSpareListShow] = useState(false);
+  const [spareList, setSpareList] = useState<ComponentSpareList | null>(null);
+  const [spareListLoading, setSpareListLoading] = useState(false);
+  const [spareListDownloading, setSpareListDownloading] = useState(false);
+  const [spareListPrinting, setSpareListPrinting] = useState(false);
+  const [spareListError, setSpareListError] = useState<string | null>(null);
 
   // Validar / Revalidar OS
   const mValidate = useMutation({
@@ -239,6 +262,31 @@ export default function OrderEditorPage() {
     else mCreateCmp.mutate(cmpForm);
   };
   const savingCmp = mCreateCmp.isPending || mUpdateCmp.isPending;
+  const openSpareList = async () => {
+    setSpareListShow(true);
+    setSpareList(null);
+    setSpareListError(null);
+    setSpareListLoading(true);
+    try {
+      setSpareList(await getComponentSpareList(orderId));
+    } catch (err) {
+      setSpareListError((err as Error).message);
+    } finally {
+      setSpareListLoading(false);
+    }
+  };
+  const downloadSpareList = async () => {
+    if (!spareList) return;
+    setSpareListError(null);
+    setSpareListDownloading(true);
+    try {
+      await downloadComponentSpareList(orderId, spareList.order.code);
+    } catch (err) {
+      setSpareListError((err as Error).message);
+    } finally {
+      setSpareListDownloading(false);
+    }
+  };
   const normalizedPnSearch = cmpForm.partNumber.trim().toLocaleLowerCase("pt-BR");
   const pnSuggestions = spareParts
     .filter((spare) => {
@@ -468,6 +516,9 @@ export default function OrderEditorPage() {
               <Card.Header className="d-flex justify-content-between align-items-center gap-2">
                 <span>Componentes (tabela) <Badge bg="light" text="dark" className="ms-2">{components.length}</Badge></span>
                 <div className="d-flex gap-2">
+                  <Button size="sm" variant="outline-primary" onClick={openSpareList} disabled={spareListLoading}>
+                    {spareListLoading ? "Gerando…" : "Gerar lista de spare"}
+                  </Button>
                   <Button size="sm" variant="outline-secondary" onClick={() => setCmpStyleShow(true)}>
                     🎨 Visual{componentsHasStyle && <Badge bg="success" className="ms-1" style={{ fontSize: 9 }}>custom</Badge>}
                   </Button>
@@ -718,6 +769,96 @@ export default function OrderEditorPage() {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      <Modal show={spareListShow} onHide={() => setSpareListShow(false)} size="xl" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Lista consolidada de spare parts para compra</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {spareListError && <Alert variant="danger">{spareListError}</Alert>}
+          {spareListLoading && (
+            <div className="d-flex align-items-center justify-content-center gap-2 py-5">
+              <Spinner animation="border" size="sm" /> Consolidando os Part Numbers…
+            </div>
+          )}
+          {!spareListLoading && spareList && (
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex flex-wrap gap-2">
+                <Badge bg="primary">{spareList.summary.distinctPartNumbers} PN distintos</Badge>
+                <Badge bg="success">Quantidade total: {formatQuantity(spareList.summary.totalQuantity)}</Badge>
+                <Badge bg="secondary">{spareList.summary.sourceComponents} componentes consolidados</Badge>
+              </div>
+              <div className="small text-muted">
+                <strong>{spareList.order.code}</strong> · {spareList.order.customer || "Cliente não informado"} · {spareList.order.site || "Site não informado"}
+              </div>
+              {spareList.summary.omittedMissingPartNumber > 0 && (
+                <Alert variant="warning" className="mb-0 py-2">
+                  {spareList.summary.omittedMissingPartNumber} componente(s) sem Part Number não foram incluídos na lista de compra.
+                </Alert>
+              )}
+              <Table striped bordered hover responsive className="mb-0 align-middle">
+                <thead>
+                  <tr>
+                    <th style={{ width: 54 }}>Item</th>
+                    <th>Part Number</th>
+                    <th>Descrição</th>
+                    <th className="text-center">Qtd.</th>
+                    <th>TAGs / Equipamentos</th>
+                    <th>Categorias</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {spareList.items.length === 0 && (
+                    <tr><td colSpan={6} className="text-center text-muted py-4">Nenhum componente com Part Number cadastrado.</td></tr>
+                  )}
+                  {spareList.items.map((item, index) => (
+                    <tr key={item.partNumber.toLocaleUpperCase("pt-BR")}>
+                      <td className="text-center">{index + 1}</td>
+                      <td className="fw-semibold font-monospace">{item.partNumber}</td>
+                      <td>{item.description || "—"}</td>
+                      <td className="text-center fw-semibold">{formatQuantity(item.quantity)}</td>
+                      <td>{item.equipmentTags.join(", ") || item.equipments.join(" | ") || "—"}</td>
+                      <td>{item.categories.join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setSpareListShow(false)}>Fechar</Button>
+          <Button variant="outline-primary" disabled={!spareList?.items.length || spareListDownloading} onClick={downloadSpareList}>
+            {spareListDownloading ? "Baixando…" : "Baixar Excel (.xlsx)"}
+          </Button>
+          <Button variant="primary" disabled={!spareList?.items.length} onClick={() => setSpareListPrinting(true)}>
+            Imprimir lista
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {spareListPrinting && spareList && (
+        <PrintSheet
+          title="Lista consolidada de spare parts para compra"
+          subtitle={`${spareList.order.code}${spareList.order.title ? ` · ${spareList.order.title}` : ""}`}
+          meta={[
+            { label: "Cliente", value: spareList.order.customer || "—" },
+            { label: "Site", value: spareList.order.site || "—" },
+            { label: "PN distintos", value: String(spareList.summary.distinctPartNumbers) },
+            { label: "Quantidade total", value: formatQuantity(spareList.summary.totalQuantity) }
+          ]}
+          columns={SPARE_PRINT_COLUMNS}
+          rows={spareList.items.map((item, index) => ({
+            item: String(index + 1),
+            partNumber: item.partNumber,
+            description: item.description || "—",
+            quantity: formatQuantity(item.quantity),
+            tags: item.equipmentTags.join(", ") || item.equipments.join(" | ") || "—",
+            categories: item.categories.join(", ") || "—"
+          }))}
+          onClose={() => setSpareListPrinting(false)}
+        />
+      )}
 
       <ComponentsStyleModal show={cmpStyleShow} orderId={orderId} onHide={() => setCmpStyleShow(false)} onSaved={invalidate} />
     </div>

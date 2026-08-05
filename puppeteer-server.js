@@ -39,6 +39,18 @@ function readBody(req) {
   });
 }
 
+async function repaginateAfterLayoutSettles(page) {
+  await page.evaluate(async () => {
+    // Wait for Chromium to commit the final font/image/footer geometry before
+    // rebuilding the report pages. Two frames are needed in print media for
+    // absolute-positioned footers to expose their final bounding box.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.__reportPaginationDone = false;
+    window.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 30000 });
+}
+
 async function renderPdf(html, imageCache) {
   const browser = await getBrowser();
   const page = await browser.newPage();
@@ -73,7 +85,13 @@ async function renderPdf(html, imageCache) {
       }));
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
     });
-    await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+
+    // The pagination fired during initial load can use provisional footer
+    // dimensions. Rebuild it after every resource and print style is stable.
+    await repaginateAfterLayoutSettles(page);
+    // Run one final pass after the generated continuation pages themselves
+    // have been laid out; this prevents the last list item crossing the footer.
+    await repaginateAfterLayoutSettles(page);
     await page.evaluate(() => {
       document.documentElement.classList.remove("report-paginating");
       var doc = document.querySelector(".report-doc");

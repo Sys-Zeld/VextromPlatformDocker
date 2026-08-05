@@ -262,6 +262,54 @@ const IMAGE_PRELOAD_CONCURRENCY = Math.max(1, Number.parseInt(process.env.REPORT
 let warnedPlaywrightMissingRuntime = false;
 let warnedPuppeteerMissingRuntime = false;
 
+const PAGINATION_TIMEOUT_MS = Math.max(
+  5000,
+  Number.parseInt(process.env.REPORT_PDF_PAGINATION_TIMEOUT_MS || "", 10) || 30000
+);
+
+/**
+ * Espera a paginação do relatório concluir antes do page.pdf().
+ *
+ * Sem isso o PDF é gerado com o layout pela metade: como .report-page usa
+ * overflow:hidden e o rodapé é position:absolute, o conteúdo que sobra não é
+ * cortado nem rolado — ele aparece desenhado POR CIMA do rodapé.
+ *
+ * Antes o caminho Playwright fazia `.catch(() => {})` aqui e entregava esse PDF
+ * quebrado como se estivesse correto. Agora falha de forma explícita.
+ *
+ * O parâmetro `flavor` existe porque as assinaturas divergem: no Puppeteer as
+ * opções são o 2º argumento; no Playwright o 2º é o argumento repassado à
+ * função e as opções são o 3º. Passar { timeout } na posição errada faz o
+ * timeout ser ignorado em silêncio — era exatamente o caso do Playwright.
+ */
+async function awaitPaginationSettled(page, flavor, label) {
+  const startedAt = Date.now();
+  const isDone = () => window.__reportPaginationDone === true;
+
+  try {
+    if (flavor === "playwright") {
+      await page.waitForFunction(isDone, null, { timeout: PAGINATION_TIMEOUT_MS });
+    } else {
+      await page.waitForFunction(isDone, { timeout: PAGINATION_TIMEOUT_MS });
+    }
+  } catch (_err) {
+    const err = new Error(
+      `A paginacao do relatorio nao concluiu em ${Math.round(PAGINATION_TIMEOUT_MS / 1000)}s (${label}). `
+      + "Gerar o PDF neste estado produziria paginas com conteudo sobre o rodape."
+    );
+    err.code = "REPORT_PAGINATION_TIMEOUT";
+    err.statusCode = 504;
+    throw err;
+  }
+
+  const elapsed = Date.now() - startedAt;
+  // Telemetria: se estamos perto do limite, o proximo relatorio maior estoura.
+  if (elapsed > PAGINATION_TIMEOUT_MS / 2) {
+    console.warn(`[report-pdf] paginacao levou ${elapsed}ms em ${label} (limite ${PAGINATION_TIMEOUT_MS}ms).`);
+  }
+  return elapsed;
+}
+
 function buildImageRouteMap() {
   return [
     { prefix: "/docs/report/img/", dir: path.join(process.cwd(), "dados", "report-img") },
@@ -580,7 +628,13 @@ ${html}
         window.__reportPaginationDone = false;
         window.dispatchEvent(new Event("resize"));
       });
-      await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+      await awaitPaginationSettled(page, "puppeteer", "html/puppeteer passada 1");
+      await page.evaluate(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        window.__reportPaginationDone = false;
+        window.dispatchEvent(new Event("resize"));
+      });
+      await awaitPaginationSettled(page, "puppeteer", "html/puppeteer passada 2");
       await page.evaluate(() => {
         document.documentElement.classList.remove("report-paginating");
         const doc = document.querySelector(".report-doc");
@@ -646,6 +700,11 @@ ${html}
   try {
     return await withPdfPage(playwright, async (page) => {
 
+      // Paginate with the same media rules that page.pdf() will use.  When
+      // pagination ran as "screen", print-only footer dimensions were applied
+      // afterwards and the already-positioned content could overlap the footer.
+      await page.emulateMedia({ media: "print" });
+
       await page.route("**/*", (route) => {
         const reqUrl = route.request().url();
         const cached = imageCache.get(reqUrl);
@@ -679,7 +738,7 @@ ${html}
         window.__reportPaginationDone = false;
         window.dispatchEvent(new Event("resize"));
       });
-      await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+      await awaitPaginationSettled(page, "playwright", "html/playwright");
       await page.evaluate(() => {
         document.documentElement.classList.remove("report-paginating");
         const doc = document.querySelector(".report-doc");
@@ -689,7 +748,8 @@ ${html}
       const buffer = await page.pdf({
         format: "A4",
         printBackground: true,
-        margin: { top: 0, right: 0, bottom: 0, left: 0 }
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        preferCSSPageSize: true
       });
       return Buffer.from(buffer);
     });
@@ -721,6 +781,9 @@ async function buildPdfBufferFromUrl(url, options = {}) {
       width: 1240,
       height: 1754
     });
+    // The target page must calculate its pagination with the final print
+    // footer geometry, before the reportPaginationReady event is emitted.
+    await page.emulateMedia({ media: "print" });
     if (cookieHeader) {
       await page.context().setExtraHTTPHeaders({ Cookie: cookieHeader });
     }
@@ -742,11 +805,12 @@ async function buildPdfBufferFromUrl(url, options = {}) {
       window.__reportPaginationDone = false;
       window.dispatchEvent(new Event("resize"));
     });
-    await page.waitForFunction(() => window.__reportPaginationDone === true, { timeout: 10000 }).catch(() => {});
+    await awaitPaginationSettled(page, "playwright", "url/playwright");
     const buffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      preferCSSPageSize: true
     });
     return Buffer.from(buffer);
   });
