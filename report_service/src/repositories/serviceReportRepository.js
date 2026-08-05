@@ -269,11 +269,11 @@ async function getCustomerById(id) {
 async function createCustomer(payload) {
   const result = await db.query(
     `
-      INSERT INTO service_report_customers (name, customer_type, area, notes, external_source, external_id, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+      INSERT INTO service_report_customers (name, customer_type, notes, external_source, external_id, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
       RETURNING *
     `,
-    [payload.name, payload.customerType || "others", payload.area || "", payload.notes || "", payload.externalSource || "", payload.externalId || ""]
+    [payload.name, payload.customerType || "others", payload.notes || "", payload.externalSource || "", payload.externalId || ""]
   );
   return result.rows[0];
 }
@@ -441,6 +441,69 @@ async function deleteCustomer(id) {
   return result.rowCount > 0;
 }
 
+async function listCustomerAreas(filters = {}) {
+  const values = [];
+  const where = [];
+  if (filters.customerId) {
+    values.push(filters.customerId);
+    where.push(`a.customer_id = $${values.length}`);
+  }
+  const result = await db.query(
+    `SELECT a.*, c.name AS customer_name
+       FROM service_report_customer_areas a
+       INNER JOIN service_report_customers c ON c.id = a.customer_id
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY c.name ASC, a.name ASC, a.id ASC`,
+    values
+  );
+  return result.rows;
+}
+
+async function getCustomerAreaById(id) {
+  const result = await db.query(
+    `SELECT a.*, c.name AS customer_name
+       FROM service_report_customer_areas a
+       INNER JOIN service_report_customers c ON c.id = a.customer_id
+      WHERE a.id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function getCustomerAreaByName(customerId, name) {
+  const result = await db.query(
+    `SELECT * FROM service_report_customer_areas
+      WHERE customer_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2))
+      LIMIT 1`,
+    [customerId, name]
+  );
+  return result.rows[0] || null;
+}
+
+async function createCustomerArea(payload) {
+  const result = await db.query(
+    `INSERT INTO service_report_customer_areas (customer_id, name, notes, created_at, updated_at)
+     VALUES ($1,$2,$3,NOW(),NOW()) RETURNING *`,
+    [payload.customerId, payload.name, payload.notes || ""]
+  );
+  return result.rows[0];
+}
+
+async function updateCustomerArea(id, payload) {
+  const result = await db.query(
+    `UPDATE service_report_customer_areas
+        SET name = $2, notes = $3, updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id, payload.name, payload.notes || ""]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteCustomerArea(id) {
+  const result = await db.query("DELETE FROM service_report_customer_areas WHERE id = $1", [id]);
+  return result.rowCount > 0;
+}
+
 async function updateCustomer(id, payload) {
   const result = await db.query(
     `
@@ -448,13 +511,12 @@ async function updateCustomer(id, payload) {
       SET
         name = $2,
         customer_type = $3,
-        area = $4,
-        notes = $5,
+        notes = $4,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
-    [id, payload.name, payload.customerType || "others", payload.area || "", payload.notes || ""]
+    [id, payload.name, payload.customerType || "others", payload.notes || ""]
   );
   return result.rows[0] || null;
 }
@@ -561,10 +623,12 @@ async function listEquipments() {
       SELECT
         e.*,
         c.name AS customer_name,
-        s.site_name
+        s.site_name,
+        a.name AS area_name
       FROM service_report_equipments e
       LEFT JOIN service_report_customers c ON c.id = e.customer_id
       LEFT JOIN service_report_customer_sites s ON s.id = e.site_id
+      LEFT JOIN service_report_customer_areas a ON a.id = e.area_id
       ORDER BY e.created_at DESC, e.id DESC
     `
   );
@@ -577,10 +641,12 @@ async function getEquipmentById(id) {
       SELECT
         e.*,
         c.name AS customer_name,
-        s.site_name
+        s.site_name,
+        a.name AS area_name
       FROM service_report_equipments e
       LEFT JOIN service_report_customers c ON c.id = e.customer_id
       LEFT JOIN service_report_customer_sites s ON s.id = e.site_id
+      LEFT JOIN service_report_customer_areas a ON a.id = e.area_id
       WHERE e.id = $1
       LIMIT 1
     `,
@@ -611,6 +677,7 @@ async function createEquipment(payload) {
       INSERT INTO service_report_equipments (
         customer_id,
         site_id,
+        area_id,
         type,
         year_of_manufacture,
         serial_number,
@@ -626,7 +693,6 @@ async function createEquipment(payload) {
         tag_number,
         manufacturer,
         model_family,
-        area,
         notes,
         external_source,
         external_id,
@@ -639,6 +705,7 @@ async function createEquipment(payload) {
     [
       payload.customerId,
       payload.siteId,
+      payload.areaId,
       payload.type,
       payload.yearOfManufacture || "",
       payload.serialNumber || "",
@@ -654,7 +721,6 @@ async function createEquipment(payload) {
       payload.tagNumber || "",
       payload.manufacturer || "",
       payload.modelFamily || "",
-      payload.area || "",
       payload.notes || "",
       payload.externalSource || "",
       payload.externalId || ""
@@ -670,22 +736,22 @@ async function updateEquipment(id, payload) {
       SET
         customer_id = $2,
         site_id = $3,
-        type = $4,
-        year_of_manufacture = $5,
-        serial_number = $6,
-        power = $7,
-        rated_ac_input_voltage = $8,
-        input_frequency = $9,
-        rated_dc_voltage = $10,
-        rated_ac_output_voltage = $11,
-        output_frequency = $12,
-        degree_of_protection = $13,
-        main_label = $14,
-        dt_number = $15,
-        tag_number = $16,
-        manufacturer = $17,
-        model_family = $18,
-        area = $19,
+        area_id = $4,
+        type = $5,
+        year_of_manufacture = $6,
+        serial_number = $7,
+        power = $8,
+        rated_ac_input_voltage = $9,
+        input_frequency = $10,
+        rated_dc_voltage = $11,
+        rated_ac_output_voltage = $12,
+        output_frequency = $13,
+        degree_of_protection = $14,
+        main_label = $15,
+        dt_number = $16,
+        tag_number = $17,
+        manufacturer = $18,
+        model_family = $19,
         notes = $20,
         updated_at = NOW()
       WHERE id = $1
@@ -695,6 +761,7 @@ async function updateEquipment(id, payload) {
       id,
       payload.customerId,
       payload.siteId,
+      payload.areaId,
       payload.type,
       payload.yearOfManufacture || "",
       payload.serialNumber || "",
@@ -710,7 +777,6 @@ async function updateEquipment(id, payload) {
       payload.tagNumber || "",
       payload.manufacturer || "",
       payload.modelFamily || "",
-      payload.area || "",
       payload.notes || ""
     ]
   );
@@ -3883,6 +3949,12 @@ module.exports = {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  listCustomerAreas,
+  getCustomerAreaById,
+  getCustomerAreaByName,
+  createCustomerArea,
+  updateCustomerArea,
+  deleteCustomerArea,
   listSites,
   getSiteById,
   getSiteByExternalRef,

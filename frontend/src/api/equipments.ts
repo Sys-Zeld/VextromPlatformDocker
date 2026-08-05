@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Customer, Site } from "./customers";
+import type { Customer, CustomerArea, Site } from "./customers";
 
 export interface Equipment {
   id: number;
@@ -7,10 +7,11 @@ export interface Equipment {
   customer_name: string | null;
   site_id: number | null;
   site_name: string | null;
+  area_id: number | null;
+  area_name: string | null;
   type: string | null;
   manufacturer: string | null;
   model_family: string | null;
-  area: string | null;
   serial_number: string | null;
   tag_number: string | null;
   power: string | null;
@@ -30,15 +31,16 @@ export interface EquipmentsPayload {
   equipments: Equipment[];
   customers: Customer[];
   sites: Site[];
+  areas: CustomerArea[];
 }
 
 export interface EquipmentInput {
   customerId: number | "";
   siteId: number | "";
+  areaId: number | "";
   type: string;
   manufacturer: string;
   modelFamily: string;
-  area: string;
   serialNumber: string;
   tagNumber: string;
   power: string;

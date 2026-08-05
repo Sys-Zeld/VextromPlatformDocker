@@ -114,21 +114,22 @@ async function ensureSgSiteFromRs(rsSite, sgClientId, actor) {
   );
 }
 
-// O RS não tem camada de "Área"; todo equipamento do SG exige `area_id`. Criamos/
-// reusamos uma área "Geral" por site (dedupe por nome dentro do site).
-async function ensureDefaultArea(siteId, actor) {
+// Preserva a área do Service Report no SentinelGrid. Registros antigos sem área
+// continuam usando "Geral" para atender ao vínculo obrigatório do SG.
+async function ensureEquipmentArea(siteId, areaName, actor) {
+  const desiredName = s(areaName) || DEFAULT_AREA_NAME;
   const { areas } = await areasRepo.listAreas({ siteId, search: "", limit: 200, offset: 0 });
-  const found = areas.find((a) => s(a.name).toLowerCase() === DEFAULT_AREA_NAME.toLowerCase());
+  const found = areas.find((a) => s(a.name).toLowerCase() === desiredName.toLowerCase());
   if (found) return found;
   return areasRepo.createArea(
     {
       siteId,
-      name: DEFAULT_AREA_NAME,
+      name: desiredName,
       areaType: "",
       classification: "",
       accessRestrictions: "",
       envConditions: "",
-      notes: "Área padrão criada na importação do Service Report."
+      notes: s(areaName) ? "Área importada do Service Report." : "Área padrão criada na importação do Service Report."
     },
     actor
   );
@@ -154,10 +155,10 @@ function composeEquipmentNotes(rsEquipment) {
   return parts.join(" — ");
 }
 
-// Importa/atualiza UM equipamento do RS num site do SG já resolvido: garante área
-// "Geral" e tipo/fabricante/modelo (ensure-by-name), depois o equipamento.
+// Importa/atualiza UM equipamento do RS num site do SG já resolvido: garante a
+// área correspondente e tipo/fabricante/modelo (ensure-by-name), depois o equipamento.
 async function importOneEquipmentRow(rsEquipment, sgSiteId, actor) {
-  const area = await ensureDefaultArea(sgSiteId, actor);
+  const area = await ensureEquipmentArea(sgSiteId, rsEquipment.area_name, actor);
   const type = await equipmentTypesRepo.ensureByName(rsEquipment.type, actor);
   const manufacturer = await manufacturersRepo.ensureByName(rsEquipment.manufacturer, actor);
   const model = manufacturer && type

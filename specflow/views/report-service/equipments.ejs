@@ -162,16 +162,20 @@
       results:      <%- JSON.stringify(t("admin.grid.paginationResults")) %>
     };
     var customers = <%- JSON.stringify((customers || []).map(function (item) {
-      return { id: item.id, name: item.name || "-", area: item.area || "" };
+      return { id: item.id, name: item.name || "-" };
     })).replace(/</g, "\\u003c") %>;
     var sites = <%- JSON.stringify((sites || []).map(function (item) {
       return { id: item.id, customer_id: item.customer_id, site_name: item.site_name || "-" };
+    })).replace(/</g, "\\u003c") %>;
+    var areas = <%- JSON.stringify((areas || []).map(function (item) {
+      return { id: item.id, customer_id: item.customer_id, name: item.name || "-" };
     })).replace(/</g, "\\u003c") %>;
     var equipments = <%- JSON.stringify((equipments || []).map(function (item) {
       return {
         id: item.id,
         customer_id: item.customer_id,
         site_id: item.site_id,
+        area_id: item.area_id,
         type: item.type || "",
         year_of_manufacture: item.year_of_manufacture || "",
         serial_number: item.serial_number || "",
@@ -187,7 +191,6 @@
         tag_number: item.tag_number || "",
         manufacturer: item.manufacturer || "",
         model_family: item.model_family || "",
-        area: item.area || "",
         notes: item.notes || "",
         created_at: item.created_at || "",
         updated_at: item.updated_at || "",
@@ -258,6 +261,21 @@
       return base + options;
     }
 
+    function buildAreaOptions(currentValue, customerId) {
+      var normalizedCurrent = String(currentValue || "");
+      var normalizedCustomerId = Number(customerId);
+      var filteredAreas = Number.isInteger(normalizedCustomerId) && normalizedCustomerId > 0
+        ? areas.filter(function (item) { return Number(item.customer_id) === normalizedCustomerId; })
+        : [];
+      var baseLabel = normalizedCustomerId > 0 ? "Selecione a área" : i18n.selectFirst;
+      var options = filteredAreas.map(function (item) {
+        var value = String(item.id || "");
+        var selected = value === normalizedCurrent ? " selected" : "";
+        return "<option value=\"" + escapeHtml(value) + "\"" + selected + ">" + escapeHtml(item.name || "-") + "</option>";
+      }).join("");
+      return "<option value=\"\">" + escapeHtml(baseLabel) + "</option>" + options;
+    }
+
     function buildActionsHtml(row) {
       var idSafe = escapeHtml(row.id);
       var primaryLabel = row.__isNew ? i18n.btnCreate : i18n.btnSave;
@@ -323,6 +341,7 @@
       var id = row.id;
       row.customer_id = getFieldValue(id, "customer_id");
       row.site_id = getFieldValue(id, "site_id");
+      row.area_id = getFieldValue(id, "area_id");
       row.type = getFieldValue(id, "type");
       row.year_of_manufacture = getFieldValue(id, "year_of_manufacture");
       row.serial_number = getFieldValue(id, "serial_number");
@@ -338,7 +357,6 @@
       row.tag_number = getFieldValue(id, "tag_number");
       row.manufacturer = getFieldValue(id, "manufacturer");
       row.model_family = getFieldValue(id, "model_family");
-      row.area = getFieldValue(id, "area");
       row.notes = getFieldValue(id, "notes");
     }
 
@@ -347,6 +365,7 @@
       payload.set("_csrf", csrfToken);
       payload.set("customer_id", row.customer_id || "");
       payload.set("site_id", row.site_id || "");
+      payload.set("area_id", row.area_id || "");
       payload.set("type", row.type || "");
       payload.set("year_of_manufacture", row.year_of_manufacture || "");
       payload.set("serial_number", row.serial_number || "");
@@ -362,7 +381,6 @@
       payload.set("tag_number", row.tag_number || "");
       payload.set("manufacturer", row.manufacturer || "");
       payload.set("model_family", row.model_family || "");
-      payload.set("area", row.area || "");
       payload.set("notes", row.notes || "");
       return payload;
     }
@@ -464,6 +482,7 @@
             id: escapeHtml(row.id),
             customer: "<select id=\"eq-" + escapeHtml(row.id) + "-customer_id\" class=\"form-select form-select-sm\"" + disabled + ">" + buildCustomerOptions(row.customer_id) + "</select>",
             site: "<select id=\"eq-" + escapeHtml(row.id) + "-site_id\" class=\"form-select form-select-sm\"" + disabled + ">" + buildSiteOptions(row.site_id, row.customer_id) + "</select>",
+            area: "<select id=\"eq-" + escapeHtml(row.id) + "-area_id\" class=\"form-select form-select-sm\"" + disabled + ">" + buildAreaOptions(row.area_id, row.customer_id) + "</select>",
             type: "<input id=\"eq-" + escapeHtml(row.id) + "-type\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.type || "") + "\"" + disabled + " />",
             year: "<input id=\"eq-" + escapeHtml(row.id) + "-year_of_manufacture\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.year_of_manufacture || "") + "\"" + disabled + " />",
             serial: "<input id=\"eq-" + escapeHtml(row.id) + "-serial_number\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.serial_number || "") + "\"" + disabled + " />",
@@ -479,7 +498,6 @@
             tag: "<input id=\"eq-" + escapeHtml(row.id) + "-tag_number\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.tag_number || "") + "\"" + disabled + " />",
             manufacturer: "<input id=\"eq-" + escapeHtml(row.id) + "-manufacturer\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.manufacturer || "") + "\"" + disabled + " />",
             modelFamily: "<input id=\"eq-" + escapeHtml(row.id) + "-model_family\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.model_family || "") + "\"" + disabled + " />",
-            area: "<input id=\"eq-" + escapeHtml(row.id) + "-area\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.area || "") + "\"" + disabled + " />",
             notes: "<input id=\"eq-" + escapeHtml(row.id) + "-notes\" class=\"form-control form-control-sm\" value=\"" + escapeHtml(row.notes || "") + "\"" + disabled + " />",
             createdAt: escapeHtml(formatDate(row.created_at)),
             updatedAt: escapeHtml(formatDate(row.updated_at)),
@@ -510,6 +528,7 @@
             { id: "id", name: "ID", width: "90px" },
             { id: "customer", name: "Cliente", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "site", name: "Site", formatter: function (cell) { return window.gridjs.html(cell); } },
+            { id: "area", name: "Área", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "type", name: "Type", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "year", name: "Year", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "serial", name: "Serial", formatter: function (cell) { return window.gridjs.html(cell); } },
@@ -525,7 +544,6 @@
             { id: "tag", name: "Tag", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "manufacturer", name: "Manufacturer", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "modelFamily", name: "Model Family", formatter: function (cell) { return window.gridjs.html(cell); } },
-            { id: "area", name: "Área", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "notes", name: "Notes", formatter: function (cell) { return window.gridjs.html(cell); } },
             { id: "createdAt", name: i18n.colCreated },
             { id: "updatedAt", name: i18n.colUpdated },
@@ -581,6 +599,7 @@
         id: tempId,
         customer_id: "",
         site_id: "",
+        area_id: "",
         type: "Novo Equipamento",
         year_of_manufacture: "",
         serial_number: "",
@@ -596,7 +615,6 @@
         tag_number: "",
         manufacturer: "",
         model_family: "",
-        area: "",
         notes: "",
         created_at: "",
         updated_at: "",
@@ -642,10 +660,9 @@
       var row = findRowById(equipmentId);
       if (!row) return;
       row.customer_id = String(customerSelect.value || "");
-      var selectedCustomer = customers.find(function (item) { return Number(item.id) === Number(row.customer_id); });
-      row.area = selectedCustomer ? String(selectedCustomer.area || "") : "";
-      var areaInput = document.getElementById("eq-" + equipmentId + "-area");
-      if (areaInput) areaInput.value = row.area;
+      row.area_id = "";
+      var areaSelect = document.getElementById("eq-" + equipmentId + "-area_id");
+      if (areaSelect) areaSelect.innerHTML = buildAreaOptions("", row.customer_id);
 
       var siteSelect = document.getElementById("eq-" + equipmentId + "-site_id");
       if (!siteSelect) return;

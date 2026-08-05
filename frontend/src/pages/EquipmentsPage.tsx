@@ -40,10 +40,10 @@ const SPARES_PRINT_COLUMNS: PrintColumn[] = [
 const EMPTY: EquipmentInput = {
   customerId: "",
   siteId: "",
+  areaId: "",
   type: "",
   manufacturer: "",
   modelFamily: "",
-  area: "",
   serialNumber: "",
   tagNumber: "",
   power: "",
@@ -65,10 +65,10 @@ function toInput(e: Equipment): EquipmentInput {
     // garante que o Cliente/Site sejam pré-selecionados ao editar.
     customerId: e.customer_id == null ? "" : Number(e.customer_id),
     siteId: e.site_id == null ? "" : Number(e.site_id),
+    areaId: e.area_id == null ? "" : Number(e.area_id),
     type: e.type ?? "",
     manufacturer: e.manufacturer ?? "",
     modelFamily: e.model_family ?? "",
-    area: e.area ?? "",
     serialNumber: e.serial_number ?? "",
     tagNumber: e.tag_number ?? "",
     power: e.power ?? "",
@@ -197,7 +197,7 @@ export default function EquipmentsPage() {
     return <Alert variant="danger">Falha ao carregar equipamentos: {(error as Error).message}</Alert>;
   }
 
-  const { equipments = [], customers = [], sites = [] } = data ?? {};
+  const { equipments = [], customers = [], sites = [], areas = [] } = data ?? {};
   // Caixa de sugestão da TAG rotulada por módulo (só itens com TAG). Item do RS só preenche
   // a TAG; item do SG dispara a importação (traz o equipamento + cliente + site).
   const tagSuggestItems: RegistrySuggestItem[] = [
@@ -213,6 +213,8 @@ export default function EquipmentsPage() {
   const sitesForCustomer = (customerId: number | "") =>
     // customer_id pode vir como string (bigint do Postgres) — coerção numérica nos dois lados.
     sites.filter((s: Site) => !customerId || Number(s.customer_id) === Number(customerId));
+  const areasForCustomer = (customerId: number | "") =>
+    areas.filter((area) => !customerId || Number(area.customer_id) === Number(customerId));
 
   // Opções de Tipo e Família derivadas dos próprios equipamentos (campos livres no cadastro).
   const norm = (v: string | null) => (v || "").trim();
@@ -311,7 +313,7 @@ export default function EquipmentsPage() {
               <td>{e.serial_number}</td>
               <td>{e.tag_number}</td>
               <td>{e.customer_name || "—"}</td>
-              <td>{e.area || "—"}</td>
+              <td>{e.area_name || "—"}</td>
               <td className="text-end">
                 <div className="vx-actions justify-content-end">
                   {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => openEdit(e)} />}
@@ -337,8 +339,7 @@ export default function EquipmentsPage() {
                   value={form.customerId === "" ? "" : form.customerId}
                   onChange={(e) => {
                     const customerId = e.target.value ? Number(e.target.value) : "";
-                    const customer = customers.find((item) => Number(item.id) === Number(customerId));
-                    setForm({ ...form, customerId, siteId: "", area: customer?.area || "" });
+                    setForm({ ...form, customerId, siteId: "", areaId: "" });
                   }}
                 >
                   <option value="">Selecione…</option>
@@ -358,11 +359,18 @@ export default function EquipmentsPage() {
               </div>
               <div className="col-md-4">
                 <Form.Label>Área</Form.Label>
-                <Form.Control
-                  value={form.area}
-                  onChange={(e) => setForm({ ...form, area: e.target.value })}
-                  placeholder="Área do equipamento"
-                />
+                <Form.Select
+                  required
+                  disabled={!form.customerId}
+                  value={form.areaId === "" ? "" : form.areaId}
+                  onChange={(e) => setForm({ ...form, areaId: e.target.value ? Number(e.target.value) : "" })}
+                >
+                  <option value="">{form.customerId ? "Selecione…" : "Selecione o cliente primeiro"}</option>
+                  {areasForCustomer(form.customerId).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                </Form.Select>
+                {form.customerId && areasForCustomer(form.customerId).length === 0 && (
+                  <Form.Text className="text-warning">Cadastre uma área para este cliente antes de salvar o equipamento.</Form.Text>
+                )}
               </div>
               <div className="col-md-6">
                 <Form.Label>Tipo</Form.Label>

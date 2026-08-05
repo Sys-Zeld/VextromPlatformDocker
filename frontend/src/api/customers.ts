@@ -4,10 +4,17 @@ export interface Customer {
   id: number;
   name: string;
   customer_type: string | null;
-  area: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CustomerArea {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  name: string;
+  notes: string | null;
 }
 
 export interface Site {
@@ -25,12 +32,18 @@ export interface Site {
 export interface CustomersPayload {
   customers: Customer[];
   sites: Site[];
+  areas: CustomerArea[];
 }
 
 export interface CustomerInput {
   name: string;
   customerType: string;
-  area: string;
+  notes: string;
+}
+
+export interface CustomerAreaInput {
+  customerId: number;
+  name: string;
   notes: string;
 }
 
@@ -60,6 +73,18 @@ export function updateCustomer(id: number, input: CustomerInput) {
 
 export function deleteCustomer(id: number) {
   return api<void>(`/customers/${id}`, { method: "DELETE" });
+}
+
+export function createCustomerArea(input: CustomerAreaInput) {
+  return api<CustomerArea>("/customer-areas", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateCustomerArea(id: number, input: Omit<CustomerAreaInput, "customerId">) {
+  return api<CustomerArea>(`/customer-areas/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteCustomerArea(id: number) {
+  return api<void>(`/customer-areas/${id}`, { method: "DELETE" });
 }
 
 export function createSite(input: SiteInput) {

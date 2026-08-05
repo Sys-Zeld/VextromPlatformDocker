@@ -7,15 +7,20 @@ import { CAP, useCan } from "../api/session";
 import {
   CUSTOMER_TYPES,
   Customer,
+  CustomerArea,
+  CustomerAreaInput,
   CustomerInput,
   Site,
   SiteInput,
   createCustomer,
+  createCustomerArea,
   createSite,
   deleteCustomer,
+  deleteCustomerArea,
   deleteSite,
   listCustomers,
   updateCustomer,
+  updateCustomerArea,
   updateSite
 } from "../api/customers";
 import { listClients } from "../api/sentinelgrid/clients";
@@ -23,7 +28,8 @@ import RegistrySyncModal, { SyncPickItem } from "../components/sentinelgrid/Regi
 import RegistrySuggestField, { RegistrySuggestItem } from "../components/sentinelgrid/RegistrySuggestField";
 import { exportToReportService, listSgExportable } from "../api/sentinelgrid/integration";
 
-const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", area: "", notes: "" };
+const EMPTY_CUSTOMER: CustomerInput = { name: "", customerType: "others", notes: "" };
+const EMPTY_AREA: CustomerAreaInput = { customerId: 0, name: "", notes: "" };
 const EMPTY_SITE: SiteInput = {
   customerId: 0,
   siteName: "",
@@ -43,6 +49,8 @@ export default function CustomersPage() {
 
   const [newCustomer, setNewCustomer] = useState<CustomerInput>(EMPTY_CUSTOMER);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [newArea, setNewArea] = useState<CustomerAreaInput>(EMPTY_AREA);
+  const [editingArea, setEditingArea] = useState<CustomerArea | null>(null);
   const [newSite, setNewSite] = useState<SiteInput>(EMPTY_SITE);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -74,11 +82,23 @@ export default function CustomersPage() {
   });
   const mUpdateCustomer = useMutation({
     mutationFn: (c: Customer) =>
-      updateCustomer(c.id, { name: c.name, customerType: c.customer_type || "others", area: c.area || "", notes: c.notes || "" }),
+      updateCustomer(c.id, { name: c.name, customerType: c.customer_type || "others", notes: c.notes || "" }),
     onSuccess: () => { setEditingCustomer(null); invalidate(); },
     onError
   });
   const mDeleteCustomer = useMutation({ mutationFn: deleteCustomer, onSuccess: invalidate, onError });
+
+  const mCreateArea = useMutation({
+    mutationFn: createCustomerArea,
+    onSuccess: () => { setNewArea(EMPTY_AREA); invalidate(); },
+    onError
+  });
+  const mUpdateArea = useMutation({
+    mutationFn: (area: CustomerArea) => updateCustomerArea(area.id, { name: area.name, notes: area.notes || "" }),
+    onSuccess: () => { setEditingArea(null); invalidate(); },
+    onError
+  });
+  const mDeleteArea = useMutation({ mutationFn: deleteCustomerArea, onSuccess: invalidate, onError });
 
   const mCreateSite = useMutation({
     mutationFn: createSite,
@@ -109,6 +129,7 @@ export default function CustomersPage() {
 
   const customers = data?.customers ?? [];
   const sites = data?.sites ?? [];
+  const areas = data?.areas ?? [];
 
   // Escolher uma sugestão do SentinelGrid dispara a importação para o Service Report.
   const suggestItems: RegistrySuggestItem[] = (sgClients.data?.clients ?? []).map((c) => ({
@@ -137,7 +158,7 @@ export default function CustomersPage() {
             className="row g-2 align-items-end"
             onSubmit={(e) => { e.preventDefault(); mCreateCustomer.mutate(newCustomer); }}
           >
-            <div className="col-md-3">
+            <div className="col-md-4">
               <Form.Label>Nome</Form.Label>
               <RegistrySuggestField
                 required
@@ -148,7 +169,7 @@ export default function CustomersPage() {
                 onImportPick={(it) => openImport(it.id)}
               />
             </div>
-            <div className="col-md-2">
+            <div className="col-md-3">
               <Form.Label>Tipo</Form.Label>
               <Form.Select
                 value={newCustomer.customerType}
@@ -158,14 +179,6 @@ export default function CustomersPage() {
               </Form.Select>
             </div>
             <div className="col-md-3">
-              <Form.Label>Área</Form.Label>
-              <Form.Control
-                value={newCustomer.area}
-                onChange={(e) => setNewCustomer({ ...newCustomer, area: e.target.value })}
-                placeholder="Ex.: Operações, Datacenter"
-              />
-            </div>
-            <div className="col-md-2">
               <Form.Label>Observações</Form.Label>
               <Form.Control
                 value={newCustomer.notes}
@@ -179,20 +192,79 @@ export default function CustomersPage() {
         </Card.Body></>}
         <Table striped responsive hover className="mb-0">
           <thead>
-            <tr><th>Nome</th><th>Tipo</th><th>Área</th><th>Observações</th><th className="text-end">Ações</th></tr>
+            <tr><th>Nome</th><th>Tipo</th><th>Observações</th><th className="text-end">Ações</th></tr>
           </thead>
           <tbody>
-            {customers.length === 0 && <tr><td colSpan={5} className="text-muted">Nenhum cliente.</td></tr>}
+            {customers.length === 0 && <tr><td colSpan={4} className="text-muted">Nenhum cliente.</td></tr>}
             {customers.map((c) => (
               <tr key={c.id}>
                 <td>{c.name}</td>
                 <td>{c.customer_type}</td>
-                <td>{c.area || "—"}</td>
                 <td>{c.notes}</td>
                 <td className="text-end">
                   <div className="vx-actions justify-content-end">
                     {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingCustomer(c)} />}
                     <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteCustomer.isPending} onClick={async () => { if (await confirmDialog(`Excluir o cliente "${c.name}"?`)) mDeleteCustomer.mutate(c.id); }} />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
+
+      {/* ---- Áreas por cliente ---- */}
+      <Card>
+        {can(CAP.RECORDS_WRITE) && <><Card.Header>Nova área do cliente</Card.Header>
+        <Card.Body>
+          <Form
+            className="row g-2 align-items-end"
+            onSubmit={(e) => { e.preventDefault(); mCreateArea.mutate(newArea); }}
+          >
+            <div className="col-md-4">
+              <Form.Label>Cliente</Form.Label>
+              <Form.Select
+                required
+                value={newArea.customerId || ""}
+                onChange={(e) => setNewArea({ ...newArea, customerId: Number(e.target.value) || 0 })}
+              >
+                <option value="">Selecione…</option>
+                {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+              </Form.Select>
+            </div>
+            <div className="col-md-3">
+              <Form.Label>Área</Form.Label>
+              <Form.Control
+                required
+                value={newArea.name}
+                onChange={(e) => setNewArea({ ...newArea, name: e.target.value })}
+                placeholder="Ex.: Sala UPS, Operações"
+              />
+            </div>
+            <div className="col-md-3">
+              <Form.Label>Observações</Form.Label>
+              <Form.Control value={newArea.notes} onChange={(e) => setNewArea({ ...newArea, notes: e.target.value })} />
+            </div>
+            <div className="col-md-2">
+              <Button type="submit" disabled={mCreateArea.isPending}>Adicionar</Button>
+            </div>
+          </Form>
+        </Card.Body></>}
+        <Table striped responsive hover className="mb-0">
+          <thead>
+            <tr><th>Área</th><th>Cliente</th><th>Observações</th><th className="text-end">Ações</th></tr>
+          </thead>
+          <tbody>
+            {areas.length === 0 && <tr><td colSpan={4} className="text-muted">Nenhuma área cadastrada.</td></tr>}
+            {areas.map((area) => (
+              <tr key={area.id}>
+                <td>{area.name}</td>
+                <td>{area.customer_name}</td>
+                <td>{area.notes || "—"}</td>
+                <td className="text-end">
+                  <div className="vx-actions justify-content-end">
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="edit" label="Editar" variant="outline-secondary" onClick={() => setEditingArea(area)} />}
+                    {can(CAP.RECORDS_WRITE) && <IconAction icon="delete" label="Excluir" variant="outline-danger" disabled={mDeleteArea.isPending} onClick={async () => { if (await confirmDialog(`Excluir a área "${area.name}"? Equipamentos vinculados ficarão sem área.`)) mDeleteArea.mutate(area.id); }} />}
                   </div>
                 </td>
               </tr>
@@ -285,13 +357,6 @@ export default function CustomersPage() {
                 </Form.Select>
               </Form.Group>
               <Form.Group>
-                <Form.Label>Área</Form.Label>
-                <Form.Control
-                  value={editingCustomer.area || ""}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, area: e.target.value })}
-                />
-              </Form.Group>
-              <Form.Group>
                 <Form.Label>Observações</Form.Label>
                 <Form.Control
                   value={editingCustomer.notes || ""}
@@ -302,6 +367,33 @@ export default function CustomersPage() {
             <Modal.Footer>
               <Button variant="secondary" onClick={() => setEditingCustomer(null)}>Cancelar</Button>
               <Button type="submit" disabled={mUpdateCustomer.isPending}>Salvar</Button>
+            </Modal.Footer>
+          </Form>
+        )}
+      </Modal>
+
+      {/* ---- Modal edição de área ---- */}
+      <Modal show={!!editingArea} onHide={() => setEditingArea(null)}>
+        <Modal.Header closeButton><Modal.Title>Editar área</Modal.Title></Modal.Header>
+        {editingArea && (
+          <Form onSubmit={(e) => { e.preventDefault(); mUpdateArea.mutate(editingArea); }}>
+            <Modal.Body className="d-flex flex-column gap-3">
+              <Form.Group>
+                <Form.Label>Cliente</Form.Label>
+                <Form.Control value={editingArea.customer_name} disabled />
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Área</Form.Label>
+                <Form.Control required value={editingArea.name} onChange={(e) => setEditingArea({ ...editingArea, name: e.target.value })} />
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Observações</Form.Label>
+                <Form.Control value={editingArea.notes || ""} onChange={(e) => setEditingArea({ ...editingArea, notes: e.target.value })} />
+              </Form.Group>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setEditingArea(null)}>Cancelar</Button>
+              <Button type="submit" disabled={mUpdateArea.isPending}>Salvar</Button>
             </Modal.Footer>
           </Form>
         )}

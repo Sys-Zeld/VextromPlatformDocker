@@ -363,18 +363,18 @@ function createReportServiceV2Controller(deps) {
 
     // ---- Customers -------------------------------------------------------
     async listCustomers(_req, res) {
-      const [customers, sites] = await Promise.all([
+      const [customers, sites, areas] = await Promise.all([
         repo.listCustomers(),
-        repo.listSites()
+        repo.listSites(),
+        repo.listCustomerAreas()
       ]);
-      return res.json({ customers, sites });
+      return res.json({ customers, sites, areas });
     },
 
     async createCustomer(req, res) {
       const created = await service.createCustomer({
         name: sanitize(req.body.name),
         customerType: req.body.customerType || req.body.customer_type,
-        area: sanitize(req.body.area),
         notes: sanitize(req.body.notes)
       });
       return res.status(201).json(created);
@@ -385,7 +385,6 @@ function createReportServiceV2Controller(deps) {
       const updated = await repo.updateCustomer(id, {
         name: sanitize(req.body.name),
         customerType: req.body.customerType || req.body.customer_type,
-        area: sanitize(req.body.area),
         notes: sanitize(req.body.notes)
       });
       if (!updated) return res.status(404).json({ error: "Cliente não encontrado." });
@@ -707,6 +706,29 @@ function createReportServiceV2Controller(deps) {
       res.setHeader("Content-Disposition", `attachment; filename="lista-spare-parts-${safeOrderCode}.xlsx"`);
       res.setHeader("Cache-Control", "no-store");
       return res.send(workbook);
+    },
+
+    async createCustomerArea(req, res) {
+      const created = await service.createCustomerArea({
+        customerId: req.body.customerId || req.body.customer_id,
+        name: sanitize(req.body.name),
+        notes: sanitize(req.body.notes)
+      });
+      return res.status(201).json(created);
+    },
+
+    async updateCustomerArea(req, res) {
+      const updated = await service.updateCustomerArea(Number(req.params.id), {
+        name: sanitize(req.body.name),
+        notes: sanitize(req.body.notes)
+      });
+      return res.json(updated);
+    },
+
+    async deleteCustomerArea(req, res) {
+      const deleted = await repo.deleteCustomerArea(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ error: "Área não encontrada." });
+      return res.status(204).end();
     },
 
     async addOrderComponent(req, res) {
@@ -1862,12 +1884,13 @@ ${bodyHtml}
 
     // ---- Equipments ------------------------------------------------------
     async listEquipments(_req, res) {
-      const [equipments, customers, sites] = await Promise.all([
+      const [equipments, customers, sites, areas] = await Promise.all([
         repo.listEquipments(),
         repo.listCustomers(),
-        repo.listSites()
+        repo.listSites(),
+        repo.listCustomerAreas()
       ]);
-      return res.json({ equipments, customers, sites });
+      return res.json({ equipments, customers, sites, areas });
     },
 
     async createEquipment(req, res) {
@@ -2434,6 +2457,7 @@ ${bodyHtml}
     return {
       customerId: Number(body.customerId || body.customer_id) || null,
       siteId: Number(body.siteId || body.site_id) || null,
+      areaId: Number(body.areaId || body.area_id) || null,
       type: sanitize(body.type) || "Novo Equipamento",
       yearOfManufacture: sanitize(body.yearOfManufacture || body.year_of_manufacture),
       serialNumber: sanitize(body.serialNumber || body.serial_number),

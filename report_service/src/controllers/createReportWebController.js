@@ -1320,7 +1320,6 @@ function createReportWebController(deps) {
       await service.createCustomer({
         name: req.body.name,
         customerType: req.body.customer_type,
-        area: req.body.area,
         notes: req.body.notes
       });
       return res.redirect("/admin/report-service/customers?created=1");
@@ -1344,7 +1343,6 @@ function createReportWebController(deps) {
       await repo.updateCustomer(id, {
         name: sanitizeInput(req.body.name),
         customerType: req.body.customer_type,
-        area: sanitizeInput(req.body.area),
         notes: sanitizeInput(req.body.notes)
       });
       return res.redirect("/admin/report-service/customers?saved=1");
@@ -1385,16 +1383,18 @@ function createReportWebController(deps) {
     },
 
     async listEquipments(req, res) {
-      const [equipments, customers, sites] = await Promise.all([
+      const [equipments, customers, sites, areas] = await Promise.all([
         repo.listEquipments(),
         repo.listCustomers(),
-        repo.listSites()
+        repo.listSites(),
+        repo.listCustomerAreas()
       ]);
       return res.render("report-service/equipments", {
         pageTitle: "Service Report - Equipamentos",
         equipments,
         customers,
         sites,
+        areas,
         created: req.query.created === "1",
         updated: req.query.updated === "1",
         csrfToken: req.csrfToken()
@@ -1951,7 +1951,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
-        area: req.body.area,
+        areaId: req.body.area_id,
         notes: req.body.notes
       });
       return res.redirect("/admin/report-service/equipments?created=1");
@@ -1990,7 +1990,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
-        area: req.body.area,
+        areaId: req.body.area_id,
         notes: req.body.notes
       });
 
@@ -2033,7 +2033,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
-        area: req.body.area,
+        areaId: req.body.area_id,
         notes: req.body.notes
       });
 
@@ -2073,7 +2073,7 @@ function createReportWebController(deps) {
         tagNumber: req.body.tag_number,
         manufacturer: req.body.manufacturer,
         modelFamily: req.body.model_family,
-        area: req.body.area,
+        areaId: req.body.area_id,
         notes: req.body.notes
       });
 

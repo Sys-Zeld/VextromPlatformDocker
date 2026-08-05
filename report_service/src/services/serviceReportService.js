@@ -203,9 +203,71 @@ async function createCustomer(input = {}) {
   return repo.createCustomer({
     name,
     customerType: sanitizeText(input.customerType || "others").toLowerCase(),
-    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes)
   });
+}
+
+async function createCustomerArea(input = {}) {
+  const customerId = repo.toInt(input.customerId);
+  const name = sanitizeText(input.name);
+  if (!customerId || !await repo.getCustomerById(customerId)) {
+    const err = new Error("Cliente da area nao encontrado.");
+    err.statusCode = 422;
+    throw err;
+  }
+  if (!name) {
+    const err = new Error("Nome da area e obrigatorio.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const duplicate = await repo.getCustomerAreaByName(customerId, name);
+  if (duplicate) {
+    const err = new Error("Esta area ja esta cadastrada para o cliente.");
+    err.statusCode = 409;
+    throw err;
+  }
+  return repo.createCustomerArea({ customerId, name, notes: sanitizeText(input.notes) });
+}
+
+async function updateCustomerArea(id, input = {}) {
+  const current = await repo.getCustomerAreaById(repo.toInt(id));
+  if (!current) {
+    const err = new Error("Area nao encontrada.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const name = sanitizeText(input.name);
+  if (!name) {
+    const err = new Error("Nome da area e obrigatorio.");
+    err.statusCode = 422;
+    throw err;
+  }
+  const duplicate = await repo.getCustomerAreaByName(current.customer_id, name);
+  if (duplicate && Number(duplicate.id) !== Number(current.id)) {
+    const err = new Error("Esta area ja esta cadastrada para o cliente.");
+    err.statusCode = 409;
+    throw err;
+  }
+  return repo.updateCustomerArea(current.id, { name, notes: sanitizeText(input.notes) });
+}
+
+async function resolveEquipmentAreaId(customerId, rawAreaId, rawAreaName = "") {
+  const areaId = repo.toInt(rawAreaId);
+  if (areaId) {
+    const area = await repo.getCustomerAreaById(areaId);
+    if (!area || Number(area.customer_id) !== Number(customerId)) {
+      const err = new Error("Area nao pertence ao cliente informado.");
+      err.statusCode = 422;
+      throw err;
+    }
+    return areaId;
+  }
+  const areaName = sanitizeText(rawAreaName);
+  if (!areaName || !customerId) return null;
+  const existing = await repo.getCustomerAreaByName(customerId, areaName);
+  if (existing) return repo.toInt(existing.id);
+  const created = await repo.createCustomerArea({ customerId, name: areaName, notes: "" });
+  return repo.toInt(created.id);
 }
 
 async function createSite(input = {}) {
@@ -241,9 +303,11 @@ async function createEquipment(input = {}) {
     err.statusCode = 422;
     throw err;
   }
+  const customerId = repo.toInt(input.customerId);
   const payload = {
-    customerId: repo.toInt(input.customerId),
+    customerId,
     siteId: repo.toInt(input.siteId),
+    areaId: await resolveEquipmentAreaId(customerId, input.areaId, input.area),
     type,
     yearOfManufacture: sanitizeText(input.yearOfManufacture),
     serialNumber: sanitizeText(input.serialNumber),
@@ -259,7 +323,6 @@ async function createEquipment(input = {}) {
     tagNumber: sanitizeText(input.tagNumber),
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
-    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes)
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber);
@@ -274,9 +337,11 @@ async function updateEquipment(id, input = {}) {
     throw err;
   }
   const pick = (value, fallback) => (value === undefined ? fallback : value);
+  const customerId = repo.toInt(pick(input.customerId, existing.customer_id));
   const payload = {
-    customerId: repo.toInt(pick(input.customerId, existing.customer_id)),
+    customerId,
     siteId: repo.toInt(pick(input.siteId, existing.site_id)),
+    areaId: await resolveEquipmentAreaId(customerId, pick(input.areaId, existing.area_id), input.area),
     type: sanitizeText(pick(input.type, existing.type)),
     yearOfManufacture: sanitizeText(pick(input.yearOfManufacture, existing.year_of_manufacture)),
     serialNumber: sanitizeText(pick(input.serialNumber, existing.serial_number)),
@@ -292,7 +357,6 @@ async function updateEquipment(id, input = {}) {
     tagNumber: sanitizeText(pick(input.tagNumber, existing.tag_number)),
     manufacturer: sanitizeText(pick(input.manufacturer, existing.manufacturer)),
     modelFamily: sanitizeText(pick(input.modelFamily, existing.model_family)),
-    area: sanitizeText(pick(input.area, existing.area)),
     notes: sanitizeText(pick(input.notes, existing.notes))
   };
   await ensureEquipmentTagUnique(payload.siteId, payload.tagNumber, id);
@@ -701,7 +765,6 @@ async function ensureCustomerByRef(input = {}) {
   const customer = await repo.createCustomer({
     name,
     customerType: sanitizeText(input.customerType || "others").toLowerCase(),
-    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes),
     externalSource: sanitizeText(input.externalSource),
     externalId: sanitizeText(input.externalId)
@@ -830,9 +893,11 @@ async function ensureEquipmentByRef(input = {}) {
   const bySerial = await repo.getEquipmentBySerialForCustomer(input.customerId, input.serialNumber);
   if (bySerial) return adoptEquipment(bySerial);
 
+  const customerId = repo.toInt(input.customerId);
   const payload = {
-    customerId: repo.toInt(input.customerId),
+    customerId,
     siteId: repo.toInt(input.siteId),
+    areaId: await resolveEquipmentAreaId(customerId, input.areaId, input.area),
     type,
     yearOfManufacture: sanitizeText(input.yearOfManufacture),
     serialNumber: sanitizeText(input.serialNumber),
@@ -848,7 +913,6 @@ async function ensureEquipmentByRef(input = {}) {
     tagNumber: sanitizeText(input.tagNumber),
     manufacturer: sanitizeText(input.manufacturer),
     modelFamily: sanitizeText(input.modelFamily),
-    area: sanitizeText(input.area),
     notes: sanitizeText(input.notes),
     externalSource: sanitizeText(input.externalSource),
     externalId: sanitizeText(input.externalId)
@@ -890,6 +954,8 @@ module.exports = {
   createOrder,
   updateOrder,
   createCustomer,
+  createCustomerArea,
+  updateCustomerArea,
   createSite,
   createEquipment,
   ensureCustomerByRef,

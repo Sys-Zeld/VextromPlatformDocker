@@ -13,13 +13,24 @@ async function migrateServiceReport() {
       id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       customer_type TEXT NOT NULL DEFAULT 'others',
-      area TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
-  await db.query(`ALTER TABLE service_report_customers ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT '';`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS service_report_customer_areas (
+      id BIGSERIAL PRIMARY KEY,
+      customer_id BIGINT NOT NULL REFERENCES service_report_customers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_customer_areas_customer_id ON service_report_customer_areas (customer_id);`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_customer_areas_name_unique ON service_report_customer_areas (customer_id, LOWER(TRIM(name)));`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS service_report_customer_contacts (
@@ -56,6 +67,7 @@ async function migrateServiceReport() {
       id BIGSERIAL PRIMARY KEY,
       customer_id BIGINT REFERENCES service_report_customers(id) ON DELETE SET NULL,
       site_id BIGINT REFERENCES service_report_customer_sites(id) ON DELETE SET NULL,
+      area_id BIGINT REFERENCES service_report_customer_areas(id) ON DELETE SET NULL,
       type TEXT NOT NULL,
       year_of_manufacture TEXT NOT NULL DEFAULT '',
       serial_number TEXT NOT NULL DEFAULT '',
@@ -71,16 +83,71 @@ async function migrateServiceReport() {
       tag_number TEXT NOT NULL DEFAULT '',
       manufacturer TEXT NOT NULL DEFAULT '',
       model_family TEXT NOT NULL DEFAULT '',
-      area TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
   await db.query(`ALTER TABLE service_report_equipments ADD COLUMN IF NOT EXISTS power TEXT NOT NULL DEFAULT '';`);
-  await db.query(`ALTER TABLE service_report_equipments ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT '';`);
+  await db.query(`ALTER TABLE service_report_equipments ADD COLUMN IF NOT EXISTS area_id BIGINT;`);
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_sr_equipments_area') THEN
+        ALTER TABLE service_report_equipments
+          ADD CONSTRAINT fk_sr_equipments_area
+          FOREIGN KEY (area_id) REFERENCES service_report_customer_areas(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_customer_id ON service_report_equipments (customer_id);`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_site_id ON service_report_equipments (site_id);`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sr_equipments_area_id ON service_report_equipments (area_id);`);
+
+  // Migra o campo textual criado na versão anterior para a relação Cliente 1:N Áreas.
+  // Os blocos condicionais tornam a migração segura tanto em bancos antigos quanto novos.
+  await db.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'service_report_customers' AND column_name = 'area'
+      ) THEN
+        EXECUTE $sql$
+          INSERT INTO service_report_customer_areas (customer_id, name, created_at, updated_at)
+          SELECT id, TRIM(area), NOW(), NOW()
+          FROM service_report_customers
+          WHERE TRIM(COALESCE(area, '')) <> ''
+          ON CONFLICT DO NOTHING
+        $sql$;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'service_report_equipments' AND column_name = 'area'
+      ) THEN
+        EXECUTE $sql$
+          INSERT INTO service_report_customer_areas (customer_id, name, created_at, updated_at)
+          SELECT DISTINCT customer_id, TRIM(area), NOW(), NOW()
+          FROM service_report_equipments
+          WHERE customer_id IS NOT NULL AND TRIM(COALESCE(area, '')) <> ''
+          ON CONFLICT DO NOTHING
+        $sql$;
+        EXECUTE $sql$
+          UPDATE service_report_equipments e
+          SET area_id = a.id
+          FROM service_report_customer_areas a
+          WHERE e.area_id IS NULL
+            AND a.customer_id = e.customer_id
+            AND LOWER(TRIM(a.name)) = LOWER(TRIM(e.area))
+            AND TRIM(COALESCE(e.area, '')) <> ''
+        $sql$;
+      END IF;
+    END $$;
+  `);
+
+  await db.query(`ALTER TABLE service_report_customers DROP COLUMN IF EXISTS area;`);
+  await db.query(`ALTER TABLE service_report_equipments DROP COLUMN IF EXISTS area;`);
 
   // Fase 11.1 — Referência externa (ADR-004) para integração idempotente com o SentinelGrid.
   // Correlaciona cliente/site/equipamento sem duplicar (external_source + external_id únicos).

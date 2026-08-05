@@ -21,6 +21,9 @@ function createReportServiceV2Router(deps) {
   router.post("/customers", asyncHandler(controller.createCustomer));
   router.put("/customers/:id", asyncHandler(controller.updateCustomer));
   router.delete("/customers/:id", asyncHandler(controller.deleteCustomer));
+  router.post("/customer-areas", asyncHandler(controller.createCustomerArea));
+  router.put("/customer-areas/:id", asyncHandler(controller.updateCustomerArea));
+  router.delete("/customer-areas/:id", asyncHandler(controller.deleteCustomerArea));
   router.post("/sites", asyncHandler(controller.createSite));
   router.put("/sites/:id", asyncHandler(controller.updateSite));
   router.delete("/sites/:id", asyncHandler(controller.deleteSite));
