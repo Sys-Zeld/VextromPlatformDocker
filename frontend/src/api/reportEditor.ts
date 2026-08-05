@@ -1,13 +1,16 @@
 import { api, API_BASE } from "./client";
 import type { Order } from "./orders";
+import type { QuillDelta } from "../components/RichTextEditor";
 
 export interface ReportSection {
   section_key: string;
   section_title: string | null;
   section_title_html: string | null;
   section_title_text: string | null;
+  section_title_delta_json: QuillDelta | null;
   content_html: string | null;
   content_text: string | null;
+  content_delta_json: QuillDelta | null;
   is_visible: boolean;
   sort_order: number | null;
 }
@@ -92,8 +95,10 @@ export interface TranslateJob {
 export interface SectionSaveInput {
   sectionTitleHtml: string;
   sectionTitleText: string;
+  sectionTitleDeltaJson?: QuillDelta;
   contentHtml: string;
   contentText: string;
+  contentDeltaJson?: QuillDelta;
   isVisible: boolean;
 }
 

@@ -2,9 +2,10 @@ import { confirmDialog } from "./ConfirmDialog";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form } from "react-bootstrap";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor, { QuillDelta } from "./RichTextEditor";
 import SectionAiReviseModal from "./SectionAiReviseModal";
 import { ReportSection, deleteSection, saveSection } from "../api/reportEditor";
+import { trustedInitialDelta } from "../utils/quillDeltaTrust";
 
 function stripHtml(html: string | null): string {
   return String(html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
@@ -22,16 +23,35 @@ export default function ReportSectionCard(props: {
   const { orderId, section, index, locked, onChanged, onDirtyChange, onShowTags } = props;
   const [titleHtml, setTitleHtml] = useState(section.section_title_html || "");
   const [contentHtml, setContentHtml] = useState(section.content_html || "");
+  // Delta do Quill: fonte de verdade para o editor (igual ao legado), quando
+  // confiável (ver trustedInitialDelta — capítulos salvos antes desta versão
+  // podem ter um Delta "degradado" sem formatação/imagens, mesmo com HTML
+  // completo). Nulo também logo após a IA revisar o conteúdo (que só devolve
+  // HTML) — nesses casos o RichTextEditor recebe o HTML diretamente até o
+  // próximo edit, que volta a gerar um Delta correto.
+  const [titleDelta, setTitleDelta] = useState<QuillDelta | null>(
+    trustedInitialDelta(section.section_title_delta_json, section.section_title_html)
+  );
+  const [contentDelta, setContentDelta] = useState<QuillDelta | null>(
+    trustedInitialDelta(section.content_delta_json, section.content_html)
+  );
   const [isVisible, setIsVisible] = useState(section.is_visible !== false);
   const [err, setErr] = useState<string | null>(null);
   const [showRevise, setShowRevise] = useState(false);
 
-  // Ressincroniza quando a seção muda (ex.: após reorder/invalidate).
+  // Ressincroniza quando a seção muda (ex.: após reorder/invalidate). O Delta
+  // acompanha o HTML nessas mesmas dependências — eles sempre mudam juntos a
+  // cada save real, então não precisa entrar no array de deps (evitaria a
+  // dedução por igualdade de string do content_html, já que objetos vindos de
+  // um novo fetch nunca são ===, mesmo com o mesmo conteúdo).
   useEffect(() => {
     setTitleHtml(section.section_title_html || "");
     setContentHtml(section.content_html || "");
+    setTitleDelta(trustedInitialDelta(section.section_title_delta_json, section.section_title_html));
+    setContentDelta(trustedInitialDelta(section.content_delta_json, section.content_html));
     setIsVisible(section.is_visible !== false);
     onDirtyChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section.section_key, section.section_title_html, section.content_html, section.is_visible]);
 
   useEffect(() => {
@@ -47,8 +67,10 @@ export default function ReportSectionCard(props: {
     mutationFn: () => saveSection(orderId, section.section_key, {
       sectionTitleHtml: titleHtml,
       sectionTitleText: stripHtml(titleHtml),
+      sectionTitleDeltaJson: titleDelta || undefined,
       contentHtml,
       contentText: stripHtml(contentHtml),
+      contentDeltaJson: contentDelta || undefined,
       isVisible
     }),
     onSuccess: () => { setErr(null); onDirtyChange?.(false); onChanged(); },
@@ -78,9 +100,21 @@ export default function ReportSectionCard(props: {
       <Card.Body>
         {err && <Alert variant="danger" dismissible onClose={() => setErr(null)}>{err}</Alert>}
         <Form.Label className="small text-muted mb-1">Título do capítulo</Form.Label>
-        <RichTextEditor value={titleHtml} onChange={setTitleHtml} readOnly={locked} placeholder="Título do capítulo…" />
+        <RichTextEditor
+          className="report-quill-title-editor"
+          value={titleDelta || titleHtml}
+          onChange={(html, delta) => { setTitleHtml(html); setTitleDelta(delta); }}
+          readOnly={locked}
+          placeholder="Título do capítulo…"
+        />
         <Form.Label className="small text-muted mb-1 mt-3">Conteúdo do capítulo</Form.Label>
-        <RichTextEditor value={contentHtml} onChange={setContentHtml} readOnly={locked} placeholder="Conteúdo do capítulo…" />
+        <RichTextEditor
+          className="report-quill-editor"
+          value={contentDelta || contentHtml}
+          onChange={(html, delta) => { setContentHtml(html); setContentDelta(delta); }}
+          readOnly={locked}
+          placeholder="Conteúdo do capítulo…"
+        />
       </Card.Body>
       {!locked && (
         <Card.Footer className="d-flex flex-wrap gap-2 justify-content-between">
@@ -100,7 +134,7 @@ export default function ReportSectionCard(props: {
         text={stripHtml(contentHtml)}
         html={contentHtml}
         onHide={() => setShowRevise(false)}
-        onApplied={(revisedHtml) => setContentHtml(revisedHtml)}
+        onApplied={(revisedHtml) => { setContentHtml(revisedHtml); setContentDelta(null); }}
       />
     </Card>
   );

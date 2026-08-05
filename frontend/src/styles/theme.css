@@ -1541,6 +1541,47 @@ body {
   --bs-alert-border-color: rgba(223, 174, 24, 0.34);
 }
 
+/* Editor de capitulos do relatorio (ReportSectionCard): o tema "snow" do
+   Quill usa font-size 13px, line-height 1.42 e margin:0 em <p>/<ul>/<ol> por
+   padrao — bem mais compacto que a renderizacao final do relatorio
+   (.rich-output em report_service/.../report-preview.css, line-height 1.55 e
+   margin-bottom 9px/10px por bloco). Sem este ajuste, linhas em branco
+   criadas no editor (Enter varias vezes para dar espaco) aparecem quase sem
+   espaco na tela mesmo sendo salvas e renderizadas corretamente no
+   preview/PDF. Estas regras aproximam o WYSIWYG do resultado final. */
+.report-quill-editor .ql-container.ql-snow,
+.report-quill-title-editor .ql-container.ql-snow {
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.report-quill-editor .ql-editor p,
+.report-quill-editor .ql-editor ul,
+.report-quill-editor .ql-editor ol {
+  margin: 0 0 9px;
+}
+
+.report-quill-editor .ql-editor h1,
+.report-quill-editor .ql-editor h2,
+.report-quill-editor .ql-editor h3,
+.report-quill-editor .ql-editor blockquote {
+  margin: 0 0 10px;
+}
+
+.report-quill-editor .ql-editor,
+.report-quill-title-editor .ql-editor {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.report-quill-editor .ql-editor {
+  min-height: 260px;
+}
+
+.report-quill-title-editor .ql-editor {
+  min-height: 60px;
+}
+
 :root[data-theme="darkvextrom"] .ql-toolbar.ql-snow,
 :root[data-theme="darkvextrom"] .ql-container.ql-snow {
   border-color: var(--border);

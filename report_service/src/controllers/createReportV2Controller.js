@@ -1411,8 +1411,10 @@ ${bodyHtml}
       await service.upsertReportSection(report.id, sectionKey, {
         sectionTitleHtml: req.body.sectionTitleHtml,
         sectionTitleText: sanitize(req.body.sectionTitleText),
+        sectionTitleDeltaJson: req.body.sectionTitleDeltaJson || req.body.section_title_delta_json,
         contentHtml: req.body.contentHtml || "",
         contentText: sanitize(req.body.contentText),
+        contentDeltaJson: req.body.contentDeltaJson || req.body.content_delta_json,
         isVisible: req.body.isVisible
       });
       return res.json({ ok: true });
