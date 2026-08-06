@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form } from "react-bootstrap";
 import RichTextEditor, { QuillDelta } from "./RichTextEditor";
 import SectionAiReviseModal from "./SectionAiReviseModal";
-import { ReportSection, deleteSection, saveSection } from "../api/reportEditor";
+import { ReportSection, deleteSection, saveSection, uploadReportImage, reportImageUrl } from "../api/reportEditor";
 import { trustedInitialDelta } from "../utils/quillDeltaTrust";
 
 function stripHtml(html: string | null): string {
@@ -16,11 +16,12 @@ export default function ReportSectionCard(props: {
   section: ReportSection;
   index: number;
   locked: boolean;
+  defaultModelHtml?: string;
   onChanged: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onShowTags: () => void;
 }) {
-  const { orderId, section, index, locked, onChanged, onDirtyChange, onShowTags } = props;
+  const { orderId, section, index, locked, defaultModelHtml, onChanged, onDirtyChange, onShowTags } = props;
   const [titleHtml, setTitleHtml] = useState(section.section_title_html || "");
   const [contentHtml, setContentHtml] = useState(section.content_html || "");
   // Delta do Quill: fonte de verdade para o editor (igual ao legado), quando
@@ -37,6 +38,7 @@ export default function ReportSectionCard(props: {
   );
   const [isVisible, setIsVisible] = useState(section.is_visible !== false);
   const [err, setErr] = useState<string | null>(null);
+  const [modelStatus, setModelStatus] = useState<{ variant: "success" | "warning"; message: string } | null>(null);
   const [showRevise, setShowRevise] = useState(false);
 
   // Ressincroniza quando a seção muda (ex.: após reorder/invalidate). O Delta
@@ -50,6 +52,7 @@ export default function ReportSectionCard(props: {
     setTitleDelta(trustedInitialDelta(section.section_title_delta_json, section.section_title_html));
     setContentDelta(trustedInitialDelta(section.content_delta_json, section.content_html));
     setIsVisible(section.is_visible !== false);
+    setModelStatus(null);
     onDirtyChange?.(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section.section_key, section.section_title_html, section.content_html, section.is_visible]);
@@ -63,6 +66,28 @@ export default function ReportSectionCard(props: {
   }, [contentHtml, isVisible, onDirtyChange, section.content_html, section.is_visible, section.section_title_html, titleHtml]);
 
   const onError = (e: unknown) => setErr((e as Error).message);
+  const canLoadDefaultModel = section.section_key === "scope" || section.section_key === "recommendations";
+  const loadDefaultModel = () => {
+    const modelHtml = String(defaultModelHtml || "").trim();
+    if (!modelHtml) {
+      setModelStatus({ variant: "warning", message: "Modelo padrão vazio para este capítulo." });
+      return;
+    }
+    setErr(null);
+    setContentHtml(modelHtml);
+    setContentDelta(null);
+    setModelStatus({ variant: "success", message: "Modelo padrão carregado no conteúdo do capítulo." });
+  };
+  // Botão "Imagem" do RichTextEditor: faz upload pelo mesmo endpoint do banco
+  // de imagens (@img) e devolve a URL estável /docs/report/img/<arquivo>,
+  // igual ao que o editor legado insere via insertEmbed. Sem isto, colar uma
+  // imagem no Quill gera uma URL blob:/file: que o sanitizador do backend
+  // remove ao salvar, deixando o <img> sem src — quebrado inclusive no PDF.
+  const handleContentImageUpload = async (file: File): Promise<string> => {
+    const resp = await uploadReportImage(orderId, file, "");
+    if (!resp.ok || !resp.data) throw new Error(resp.error || "Falha ao enviar imagem.");
+    return reportImageUrl(resp.data.filePath);
+  };
   const mSave = useMutation({
     mutationFn: () => saveSection(orderId, section.section_key, {
       sectionTitleHtml: titleHtml,
@@ -99,6 +124,7 @@ export default function ReportSectionCard(props: {
       </Card.Header>
       <Card.Body>
         {err && <Alert variant="danger" dismissible onClose={() => setErr(null)}>{err}</Alert>}
+        {modelStatus && <Alert variant={modelStatus.variant} dismissible onClose={() => setModelStatus(null)}>{modelStatus.message}</Alert>}
         <Form.Label className="small text-muted mb-1">Título do capítulo</Form.Label>
         <RichTextEditor
           className="report-quill-title-editor"
@@ -114,11 +140,13 @@ export default function ReportSectionCard(props: {
           onChange={(html, delta) => { setContentHtml(html); setContentDelta(delta); }}
           readOnly={locked}
           placeholder="Conteúdo do capítulo…"
+          onImageUpload={handleContentImageUpload}
         />
       </Card.Body>
       {!locked && (
         <Card.Footer className="d-flex flex-wrap gap-2 justify-content-between">
           <div className="d-flex gap-2">
+            {canLoadDefaultModel && <Button size="sm" variant="outline-secondary" onClick={loadDefaultModel}>Carregar modelo</Button>}
             <Button size="sm" variant="link" className="p-0 text-decoration-none" onClick={onShowTags}>Ver tags disponíveis</Button>
             <Button size="sm" variant="outline-secondary" onClick={() => setShowRevise(true)}>Revisar com IA</Button>
           </div>

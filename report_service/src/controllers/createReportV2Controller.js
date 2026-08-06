@@ -1264,7 +1264,11 @@ function createReportServiceV2Controller(deps) {
       return res.json({
         order, report, sections, images, locked, reportTemplates, templateKey,
         signatures, signRequests, signRequestGuard,
-        reportLanguages: REPORT_LANGUAGES, reportLanguage
+        reportLanguages: REPORT_LANGUAGES, reportLanguage,
+        defaultChapterModels: {
+          scope: String(reportConfig.defaultScopeHtml || ""),
+          recommendations: String(reportConfig.defaultRecommendationsHtml || "")
+        }
       });
     },
 

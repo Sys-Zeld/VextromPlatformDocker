@@ -79,6 +79,10 @@ export interface ReportEditorPayload {
   signRequestGuard: SignRequestGuard;
   reportLanguages: ReportLanguage[];
   reportLanguage: string;
+  defaultChapterModels: {
+    scope: string;
+    recommendations: string;
+  };
 }
 
 export interface ReportLanguage { key: string; label: string }
@@ -161,7 +165,7 @@ export function reportImageUrl(filePath: string | null): string {
   return `/docs/report/img/${encodeURIComponent(imageFileName(filePath))}`;
 }
 export function uploadReportImage(id: number, file: File, caption: string) {
-  return api<{ ok: boolean; data?: { id: number }; error?: string }>(`/orders/${id}/images`, {
+  return api<{ ok: boolean; data?: { id: number; filePath: string; sizeBytes: number }; error?: string }>(`/orders/${id}/images`, {
     method: "POST",
     headers: {
       "Content-Type": file.type || "application/octet-stream",

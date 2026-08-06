@@ -142,6 +142,11 @@ export default function ReportEditorPage() {
           {sections.length === 0 && <p className="text-muted">Nenhum capítulo cadastrado.</p>}
           {sections.length > 0 && (() => {
             const section = sections[active];
+            const defaultModelHtml = section.section_key === "scope"
+              ? data.defaultChapterModels.scope
+              : section.section_key === "recommendations"
+                ? data.defaultChapterModels.recommendations
+                : undefined;
             return (
               <>
                 <Card className="vx-chapter-carousel mb-3">
@@ -186,6 +191,7 @@ export default function ReportEditorPage() {
                       section={section}
                       index={active}
                       locked={locked}
+                      defaultModelHtml={defaultModelHtml}
                       onChanged={invalidate}
                       onDirtyChange={setHasUnsavedChapter}
                       onShowTags={() => setShowTags(true)}
