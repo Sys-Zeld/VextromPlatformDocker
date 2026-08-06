@@ -96,6 +96,11 @@ export default function ReportSectionCard(props: {
     if (!resp.ok || !resp.data) throw new Error(resp.error || "Falha ao enviar imagem.");
     return reportImageUrl(resp.data.filePath);
   }, [orderId]);
+  // Também precisa de useCallback pelo mesmo motivo: é dependência do
+  // useMemo de `modules` no RichTextEditor.
+  const handleContentImageUploadError = useCallback((err: unknown) => {
+    setErr((err as Error)?.message || "Falha ao enviar imagem.");
+  }, []);
   const mSave = useMutation({
     mutationFn: () => saveSection(orderId, section.section_key, {
       sectionTitleHtml: titleHtml,
@@ -149,6 +154,7 @@ export default function ReportSectionCard(props: {
           readOnly={locked}
           placeholder="Conteúdo do capítulo…"
           onImageUpload={handleContentImageUpload}
+          onImageUploadError={handleContentImageUploadError}
         />
       </Card.Body>
       {!locked && (

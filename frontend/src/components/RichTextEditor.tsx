@@ -36,6 +36,11 @@ interface Props {
   // ficando com um <img> sem src — quebrado em qualquer contexto, inclusive
   // no PDF gerado via Puppeteer.
   onImageUpload?: (file: File) => Promise<string>;
+  // Chamado quando onImageUpload rejeita (upload falhou). Sem isto o erro é
+  // engolido silenciosamente e o usuário não sabe que a imagem não foi
+  // inserida — foi exatamente essa lacuna que escondeu uma falha real de
+  // upload (MinIO inacessível) até o PDF sair com a imagem quebrada.
+  onImageUploadError?: (error: unknown) => void;
 }
 
 // Editor rich-text (Quill) compartilhado, compatível com o conteúdo de
@@ -52,7 +57,7 @@ interface Props {
 // `value`, e essa conversão não garante preservar blocos de parágrafo vazios
 // (<p><br></p>) usados para espaçamento vertical. Passando o Delta salvo
 // diretamente (como o editor legado faz) evita essa conversão com perdas.
-export default function RichTextEditor({ value, onChange, readOnly, placeholder, className, onImageUpload }: Props) {
+export default function RichTextEditor({ value, onChange, readOnly, placeholder, className, onImageUpload, onImageUploadError }: Props) {
   const quillRef = useRef<ReactQuill>(null);
 
   // Mesma abordagem do editor legado (report-section-editor.js): o botão
@@ -86,14 +91,14 @@ export default function RichTextEditor({ value, onChange, readOnly, placeholder,
                   editor.insertEmbed(index, "image", src, "user");
                   editor.setSelection(index + 1, 0, "user");
                 })
-                .catch(() => {});
+                .catch((err) => onImageUploadError?.(err));
             };
             input.click();
           }
         }
       }
     };
-  }, [onImageUpload]);
+  }, [onImageUpload, onImageUploadError]);
 
   return (
     <ReactQuill
