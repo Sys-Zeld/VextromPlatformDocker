@@ -38,10 +38,20 @@ function deltaLooksStructured(delta: QuillDelta | null | undefined): boolean {
   return (text.match(/\n/g) || []).length > 1;
 }
 
+// HTML muito grande (ex.: imagem embutida em base64 direto no texto, em vez
+// de enviada como arquivo e referenciada por URL) não deve ser reprocessado
+// via clipboard.convert() do Quill ao inicializar o editor — o custo/risco de
+// reprocessar dezenas/centenas de KB de HTML supera o benefício de recuperar
+// formatação. Nesse caso preferimos aceitar o Delta salvo mesmo se degradado
+// (perde formatação, mas não arrisca travar o editor).
+const MAX_HTML_LENGTH_FOR_REPARSE = 50_000;
+
 // Retorna o Delta apenas se for seguro usá-lo como valor inicial do editor;
 // caso contrário null, para o chamador cair de volta para o HTML.
 export function trustedInitialDelta(delta: QuillDelta | null | undefined, html: string | null | undefined): QuillDelta | null {
   if (!delta) return null;
   if (!htmlLooksRich(html)) return delta;
-  return deltaLooksStructured(delta) ? delta : null;
+  if (deltaLooksStructured(delta)) return delta;
+  if (String(html || "").length > MAX_HTML_LENGTH_FOR_REPARSE) return delta;
+  return null;
 }

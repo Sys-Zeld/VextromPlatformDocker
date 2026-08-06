@@ -1,5 +1,5 @@
 import { confirmDialog } from "./ConfirmDialog";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert, Badge, Button, Card, Form } from "react-bootstrap";
 import RichTextEditor, { QuillDelta } from "./RichTextEditor";
@@ -83,11 +83,19 @@ export default function ReportSectionCard(props: {
   // igual ao que o editor legado insere via insertEmbed. Sem isto, colar uma
   // imagem no Quill gera uma URL blob:/file: que o sanitizador do backend
   // remove ao salvar, deixando o <img> sem src — quebrado inclusive no PDF.
-  const handleContentImageUpload = async (file: File): Promise<string> => {
+  //
+  // useCallback é obrigatório aqui: o RichTextEditor usa esta função como
+  // dependência do useMemo que monta `modules` (toolbar). Uma closure nova a
+  // cada render faz `modules` mudar de referência a cada render, e o
+  // react-quill-new destroi e recria o editor inteiro sempre que `modules`
+  // muda (ver shouldComponentRegenerate/componentDidUpdate) — a cada tecla
+  // digitada isso reinicia o editor em loop, disparando "Maximum update
+  // depth exceeded" (React error #185) e deixando a página em branco.
+  const handleContentImageUpload = useCallback(async (file: File): Promise<string> => {
     const resp = await uploadReportImage(orderId, file, "");
     if (!resp.ok || !resp.data) throw new Error(resp.error || "Falha ao enviar imagem.");
     return reportImageUrl(resp.data.filePath);
-  };
+  }, [orderId]);
   const mSave = useMutation({
     mutationFn: () => saveSection(orderId, section.section_key, {
       sectionTitleHtml: titleHtml,
