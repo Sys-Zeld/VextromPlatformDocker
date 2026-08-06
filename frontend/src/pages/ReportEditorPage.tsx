@@ -143,9 +143,9 @@ export default function ReportEditorPage() {
           {sections.length > 0 && (() => {
             const section = sections[active];
             const defaultModelHtml = section.section_key === "scope"
-              ? data.defaultChapterModels.scope
+              ? data.defaultChapterModels?.scope
               : section.section_key === "recommendations"
-                ? data.defaultChapterModels.recommendations
+                ? data.defaultChapterModels?.recommendations
                 : undefined;
             return (
               <>
