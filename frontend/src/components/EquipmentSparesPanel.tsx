@@ -10,6 +10,8 @@ import {
   copyEquipmentSpares,
   createEquipmentSpare,
   deleteEquipmentSpare,
+  exportEquipmentSpares,
+  exportSparesGroupedByEquipment,
   getEquipmentSpares,
   linkSparePartToEquipment,
   listSpareParts,
@@ -109,6 +111,15 @@ export default function EquipmentSparesPanel() {
     qc.invalidateQueries({ queryKey: ["spare-part-applications"] });
   };
   const onError = (e: unknown) => setActionError((e as Error).message);
+
+  const mExportEquipment = useMutation({
+    mutationFn: () => exportEquipmentSpares(eqId, selectedEquipment?.tag_number || undefined),
+    onError
+  });
+  const mExportConsolidated = useMutation({
+    mutationFn: () => exportSparesGroupedByEquipment({ customerId: typeof customerId === "number" ? customerId : undefined }),
+    onError
+  });
 
   const mLink = useMutation({
     mutationFn: (p: { sparePartId: number; quantity: number }) => linkSparePartToEquipment(eqId, p.sparePartId, p.quantity),
@@ -238,6 +249,15 @@ export default function EquipmentSparesPanel() {
               <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>print</span>
               {mConsolidated.isPending ? "Gerando…" : "Imprimir consolidado"}
             </Button>
+            <Button
+              variant="outline-success"
+              disabled={mExportConsolidated.isPending}
+              onClick={() => mExportConsolidated.mutate()}
+              title={customerId ? "Exportar em Excel as peças de todos os equipamentos do cliente" : "Exportar em Excel as peças de todos os equipamentos"}
+            >
+              <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>download</span>
+              {mExportConsolidated.isPending ? "Gerando…" : "Exportar Excel"}
+            </Button>
           </div>
         </Card.Body>
       </Card>
@@ -253,6 +273,10 @@ export default function EquipmentSparesPanel() {
                 <Form.Control size="sm" placeholder="Filtrar vinculadas…" value={linkedFilter} onChange={(e) => setLinkedFilter(e.target.value)} style={{ maxWidth: 220 }} />
                 <Button size="sm" variant="outline-secondary" disabled={linkedView.length === 0} onClick={() => setPrinting(true)} title="Imprimir a lista de peças deste equipamento">
                   <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>print</span>Imprimir lista
+                </Button>
+                <Button size="sm" variant="outline-success" disabled={linked.length === 0 || mExportEquipment.isPending} onClick={() => mExportEquipment.mutate()} title="Exportar a lista de peças deste equipamento em Excel">
+                  <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: 16 }}>download</span>
+                  {mExportEquipment.isPending ? "Gerando…" : "Exportar Excel"}
                 </Button>
                 <Badge bg="light" text="dark">{linkedView.length}/{linked.length}</Badge>
               </div>

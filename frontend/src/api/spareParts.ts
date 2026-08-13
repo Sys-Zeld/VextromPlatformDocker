@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, downloadFile } from "./client";
 import type { Customer } from "./customers";
 import type { Equipment } from "./equipments";
 
@@ -78,6 +78,14 @@ export function getEquipmentSpares(equipmentId: number) {
   return api<EquipmentSparesPayload>(`/spare-parts/equipment/${equipmentId}`);
 }
 
+/** Exporta a lista de peças vinculadas ao equipamento em XLSX. */
+export function exportEquipmentSpares(equipmentId: number, tag?: string) {
+  return downloadFile(
+    `/spare-parts/equipment/${equipmentId}?format=xlsx`,
+    `pecas-equipamento-${tag || equipmentId}.xlsx`
+  );
+}
+
 /** Consolidado para impressão: peças agrupadas por equipamento. */
 export interface EquipmentSparesGroup {
   equipment: Equipment;
@@ -91,6 +99,14 @@ export function listSparesGroupedByEquipment(params: { customerId?: number; site
   if (params.includeEmpty) query.set("includeEmpty", "true");
   const suffix = query.toString();
   return api<{ groups: EquipmentSparesGroup[] }>(`/spare-parts/by-equipment${suffix ? `?${suffix}` : ""}`);
+}
+
+/** Exporta o consolidado de peças por equipamento em XLSX (mesmo filtro do "Imprimir consolidado"). */
+export function exportSparesGroupedByEquipment(params: { customerId?: number; siteId?: number } = {}) {
+  const query = new URLSearchParams({ format: "xlsx" });
+  if (params.customerId) query.set("customerId", String(params.customerId));
+  if (params.siteId) query.set("siteId", String(params.siteId));
+  return downloadFile(`/spare-parts/by-equipment?${query.toString()}`, "pecas-por-equipamento-consolidado.xlsx");
 }
 
 export function linkSparePartToEquipment(equipmentId: number, sparePartId: number, quantity: number) {

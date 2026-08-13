@@ -20,6 +20,7 @@ const { parseEventLogWorkbook } = require("../services/eventLogParser");
 const { COMPONENT_CATEGORIES } = require("../constants");
 const { formatServiceOrderColumnNumber } = require("../utils/serviceOrderDisplay");
 const { buildComponentSpareList, buildComponentSpareListWorkbook } = require("../services/componentSpareListService");
+const { buildEquipmentSpareListWorkbook, buildConsolidatedSpareListWorkbook } = require("../services/equipmentSpareListService");
 
 function jsonArr(v) {
   if (Array.isArray(v)) return v;
@@ -2193,6 +2194,17 @@ ${bodyHtml}
         if (pn && linkedPns.has(pn)) return false;
         return true;
       });
+
+      const format = String(req.query.format || "json").trim().toLowerCase();
+      if (format === "xlsx") {
+        const safeTag = String(equipment.tag_number || equipment.id).replace(/[^a-zA-Z0-9._-]/g, "-");
+        const workbook = buildEquipmentSpareListWorkbook(equipment, linkedSpares);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="pecas-equipamento-${safeTag}.xlsx"`);
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(workbook);
+      }
+
       return res.json({ equipment, linkedSpares, availableSpares });
     },
 
@@ -2219,6 +2231,16 @@ ${bodyHtml}
       const groups = scoped
         .map((equipment) => ({ equipment, spares: byEquipment.get(Number(equipment.id)) || [] }))
         .filter((group) => includeEmpty || group.spares.length > 0);
+
+      const format = String(req.query.format || "json").trim().toLowerCase();
+      if (format === "xlsx") {
+        const filterLabel = customerId ? (groups[0] && groups[0].equipment.customer_name) || `Cliente #${customerId}` : "";
+        const workbook = buildConsolidatedSpareListWorkbook(groups, filterLabel);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="pecas-por-equipamento-consolidado.xlsx"`);
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(workbook);
+      }
 
       return res.json({ groups });
     },
