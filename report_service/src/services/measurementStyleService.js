@@ -1,8 +1,9 @@
-const { renderMeasurementsInlineTable, renderUpsMeasuresTable, renderEventLogTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss, renderDischargeTestTable, generateDefaultDischargeCss, generateDischargeSvgChart, generateDefaultDischargeChartCss, renderTimesheetInlineTable, generateDefaultTimesheetCss, renderTechTeamInlineTable, generateDefaultTechteamCss, renderEquipmentsInlineTable, generateDefaultEquipmentCss, renderComponentsInlineTable, generateDefaultComponentsCss } = require("./reportPreviewService");
+const { renderMeasurementsInlineTable, renderUpsMeasuresTable, renderEventLogTable, generateDefaultCss, renderAlberLeituraTable, generateDefaultAlberCss, renderFluke521LeituraTable, generateDefaultFluke521Css, renderDischargeTestTable, generateDefaultDischargeCss, generateDischargeSvgChart, generateDefaultDischargeChartCss, renderTimesheetInlineTable, generateDefaultTimesheetCss, renderTechTeamInlineTable, generateDefaultTechteamCss, renderEquipmentsInlineTable, generateDefaultEquipmentCss, renderComponentsInlineTable, generateDefaultComponentsCss } = require("./reportPreviewService");
 const repo = require("../repositories/serviceReportRepository");
 
 const MEASUREMENT_DEFAULT_STYLE_SETTING_KEY = "report.preview.measurements.style.default";
 const ALBER_DEFAULT_STYLE_SETTING_KEY = "report.preview.alber.style.default";
+const FLUKE521_DEFAULT_STYLE_SETTING_KEY = "report.preview.fluke521.style.default";
 
 function buildStyleConfig(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
@@ -206,6 +207,148 @@ REGRAS OBRIGATÓRIAS:
     .replace(/^```css?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
+}
+
+function buildFluke521PreviewHtml(leitura, styleConfig) {
+  const fakeList = [leitura];
+  return renderFluke521LeituraTable(fakeList, leitura.id, styleConfig || null);
+}
+
+function buildFluke521StyleConfig(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const cfg = {};
+  if (src.customCss && typeof src.customCss === "string" && src.customCss.trim()) {
+    cfg.customCss = src.customCss;
+  }
+  return cfg;
+}
+
+function scopeFluke521StyleConfig(styleConfig, leituraId) {
+  const cfg = buildFluke521StyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  const scopedCss = cfg.customCss.replace(
+    /\[data-fluke521-id=(?:"[^"]*"|'[^']*'|[^\]]+)\]/g,
+    `[data-fluke521-id="${Number(leituraId)}"]`
+  );
+  return { ...cfg, customCss: scopedCss };
+}
+
+async function getDefaultFluke521StyleConfig() {
+  const raw = await repo.getAppSetting(FLUKE521_DEFAULT_STYLE_SETTING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const cfg = buildFluke521StyleConfig(parsed);
+    return cfg.customCss ? cfg : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveDefaultFluke521StyleConfig(styleConfig) {
+  const cfg = buildFluke521StyleConfig(styleConfig);
+  if (!cfg.customCss) return null;
+  await repo.upsertAppSetting(FLUKE521_DEFAULT_STYLE_SETTING_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+function applyDefaultFluke521Style(leituras, defaultStyleConfig) {
+  if (!defaultStyleConfig || !defaultStyleConfig.customCss || !Array.isArray(leituras)) {
+    return Array.isArray(leituras) ? leituras : [];
+  }
+  return leituras.map((item) => {
+    if (!item || (item.style_config && typeof item.style_config === "object")) return item;
+    const scopedStyleConfig = scopeFluke521StyleConfig(defaultStyleConfig, item.id);
+    return scopedStyleConfig ? { ...item, style_config: scopedStyleConfig, _uses_default_fluke521_style: true } : item;
+  });
+}
+
+async function applyFluke521StyleViaAi(currentCss, leituraId, userInstruction, reviseTextWithAi) {
+  if (typeof reviseTextWithAi !== "function") {
+    const err = new Error("Serviço de IA indisponível.");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const scope = `[data-fluke521-id="${leituraId}"]`;
+
+  const systemInstruction = `Você é um especialista em CSS para tabelas HTML impressas em PDF via Puppeteer.
+
+A tabela usa as seguintes classes CSS com escopo "${scope}":
+- .fluke521-info-cell → célula da barra de informações do cabeçalho (Local, Equipamento, Tipo de bateria, Capacidade)
+- .fluke521-info-label → rótulo da informação no cabeçalho
+- .fluke521-info-value → valor da informação no cabeçalho
+- .fluke521-stat-cell → célula dos cards de estatísticas (Resistência média, Tensão média, etc.)
+- .fluke521-stat-label → rótulo do card de estatística
+- .fluke521-stat-value → valor numérico do card de estatística
+- .fluke521-stat-unit → unidade do card de estatística
+- .fluke521-title-th → th do título da tabela (nome do equipamento)
+- .fluke521-th → th das colunas de dados (Célula, Resistência, Tensão, Temperatura, Hora)
+- .fluke521-td → célula de dados (linhas pares)
+- .fluke521-td-alt → célula de dados (linhas ímpares, cor alternada)
+
+REGRAS OBRIGATÓRIAS:
+1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.
+2. Mantenha EXATAMENTE o prefixo de escopo "${scope}" em TODOS os seletores.
+3. Use apenas propriedades CSS compatíveis com Puppeteer: cores em hex, sem gradientes, sem variáveis CSS (--var).
+4. Preserve todas as propriedades existentes, modificando apenas o que a instrução solicita.
+5. Não adicione seletores além dos listados acima.`;
+
+  const prompt = `CSS atual:\n${currentCss}\n\nInstrução: ${userInstruction}\n\nRetorne o CSS completo modificado.`;
+
+  const result = await reviseTextWithAi({
+    text: prompt,
+    systemInstruction,
+    preserveFormatting: true
+  });
+
+  const raw = String(result && result.revisedText ? result.revisedText : "");
+  const cleaned = raw
+    .replace(/^```css?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+
+  // A IA às vezes devolve só as regras que ela mencionou, descartando o resto do bloco
+  // (ex.: some o zebrado porque a regra .fluke521-td-alt não veio na resposta). Reinserimos
+  // as regras do CSS atual que não aparecem na resposta, mantendo o que a IA alterou.
+  return mergeCssPreservingMissingRules(currentCss, cleaned);
+}
+
+// Quebra um bloco CSS em pares seletor -> declarações.
+function parseCssRules(css) {
+  const rules = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = re.exec(String(css || ""))) !== null) {
+    const selector = match[1].trim().replace(/\s+/g, " ");
+    if (!selector) continue;
+    rules.push({ selector, declarations: match[2].trim() });
+  }
+  return rules;
+}
+
+// Chave de comparação sem o escopo [data-*-id="N"], para casar as regras mesmo que o
+// id do escopo mude entre o CSS atual e o devolvido pela IA.
+function cssRuleKey(selector) {
+  return String(selector || "")
+    .replace(/\[data-[a-z0-9-]+=(?:"[^"]*"|'[^']*'|[^\]]+)\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Devolve o CSS da IA acrescido das regras do CSS original que a IA omitiu.
+// Se a resposta da IA não tiver nenhuma regra válida, mantém o CSS original.
+function mergeCssPreservingMissingRules(currentCss, newCss) {
+  const nextRules = parseCssRules(newCss);
+  if (!nextRules.length) return String(currentCss || "").trim();
+
+  const nextKeys = new Set(nextRules.map((rule) => cssRuleKey(rule.selector)));
+  const missing = parseCssRules(currentCss)
+    .filter((rule) => !nextKeys.has(cssRuleKey(rule.selector)))
+    .map((rule) => `${rule.selector}{${rule.declarations}}`);
+
+  if (!missing.length) return String(newCss || "").trim();
+  return `${String(newCss || "").trim()}\n${missing.join("\n")}`;
 }
 
 const DISCHARGE_DEFAULT_STYLE_SETTING_KEY = "report.preview.discharge.style.default";
@@ -863,6 +1006,7 @@ REGRAS OBRIGATÓRIAS:
 module.exports = {
   generateDefaultCss,
   generateDefaultAlberCss,
+  generateDefaultFluke521Css,
   generateDefaultDischargeCss,
   generateDefaultTimesheetCss,
   generateDefaultTechteamCss,
@@ -881,6 +1025,14 @@ module.exports = {
   applyDefaultAlberStyle,
   applyStyleViaAi,
   applyAlberStyleViaAi,
+  buildFluke521PreviewHtml,
+  buildFluke521StyleConfig,
+  scopeFluke521StyleConfig,
+  getDefaultFluke521StyleConfig,
+  saveDefaultFluke521StyleConfig,
+  applyDefaultFluke521Style,
+  applyFluke521StyleViaAi,
+  mergeCssPreservingMissingRules,
   buildDischargeStyleConfig,
   scopeDischargeStyleConfig,
   getDefaultDischargeStyleConfig,

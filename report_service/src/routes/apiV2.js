@@ -51,14 +51,16 @@ function createReportServiceV2Router(deps) {
   router.get("/orders/:id/components/spare-list", asyncHandler(controller.getOrderComponentSpareList));
   router.put("/orders/:id/components/:componentId", asyncHandler(controller.updateOrderComponent));
   router.delete("/orders/:id/components/:componentId", asyncHandler(controller.deleteOrderComponent));
+
+  const csvRaw = express.raw({ type: ["text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream"], limit: "10mb" });
+  const xlsxRaw = express.raw({ type: ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"], limit: "25mb" });
+
   // Ensaios / Medições (tabelas @ensaios)
   router.get("/orders/:id/measurements", asyncHandler(controller.listMeasurements));
   router.post("/orders/:id/measurements", asyncHandler(controller.saveMeasurement));
   router.delete("/orders/:id/measurements/:measurementId", asyncHandler(controller.deleteMeasurement));
 
   // Dados UPS: Leituras Alber (CSV) + Medições UPS (XLSX) + Event Logs (XLSX)
-  const csvRaw = express.raw({ type: ["text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream"], limit: "10mb" });
-  const xlsxRaw = express.raw({ type: ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"], limit: "25mb" });
   router.get("/orders/:id/ups-data", asyncHandler(controller.getUpsData));
   router.post("/orders/:id/ups-data/alber/import", csvRaw, asyncHandler(controller.importAlber));
   router.delete("/orders/:id/ups-data/alber/:leituraId", asyncHandler(controller.deleteAlber));

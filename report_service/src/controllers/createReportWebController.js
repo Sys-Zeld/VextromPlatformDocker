@@ -2,6 +2,7 @@ const path = require("path");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { parseAlberCsv } = require("../services/alberParserService");
+const { parseFluke521Csv } = require("../services/fluke521ParserService");
 const { parseDischargeCsv } = require("../services/dischargeParserService");
 const { parseUpsMeasuresWorkbook } = require("../services/upsMeasuresParser");
 const { parseEventLogWorkbook } = require("../services/eventLogParser");
@@ -29,6 +30,14 @@ const {
   saveDefaultAlberStyleConfig,
   scopeAlberStyleConfig,
   applyDefaultAlberStyle,
+  buildFluke521PreviewHtml,
+  buildFluke521StyleConfig,
+  getDefaultFluke521StyleConfig,
+  saveDefaultFluke521StyleConfig,
+  scopeFluke521StyleConfig,
+  applyDefaultFluke521Style,
+  applyFluke521StyleViaAi,
+  generateDefaultFluke521Css,
   buildDischargeStyleConfig,
   scopeDischargeStyleConfig,
   getDefaultDischargeStyleConfig,
@@ -476,7 +485,7 @@ function createReportWebController(deps) {
         return cells;
       })
       .filter((row) => row.some((cell) => String(cell || "").trim()))
-      .slice(0, 80);
+      .slice(0, 300);
 
     return {
       id: Number(body.measurement_id || 0),
@@ -3468,6 +3477,207 @@ function createReportWebController(deps) {
         await repo.deleteMeasurementTable(measurementId, report.id);
       }
       return res.redirect(`${buildOrderEditorRedirect(req, orderId)}?saved=1`);
+    },
+
+    // ---- Leituras Fluke BT521 (tela dedicada, análoga a Alber + Teste de Descarga) -----
+    async fluke521Editor(req, res) {
+      const orderId = Number(req.params.id);
+      const data = await loadOrderEditorData(orderId);
+      if (!data) return res.status(404).send("OS nao encontrada.");
+      const orderView = withServiceOrderDisplay(data.order);
+      const report = await service.ensureReportForOrder(orderId);
+      const [leiturasRaw, dischargeTests] = await Promise.all([
+        repo.listLeiturasFluke521ByReport(report.id),
+        repo.listDischargeTestsByReport(report.id)
+      ]);
+      const defaultStyle = await getDefaultFluke521StyleConfig();
+      // A tela mostra exatamente a MESMA tabela que sai no relatório (mesma função de
+      // renderização e mesmo style_config), para não divergir do que a tag @fluke521 gera.
+      const leituras = applyDefaultFluke521Style(leiturasRaw, defaultStyle).map((item) => ({
+        ...item,
+        rendered_html: buildFluke521PreviewHtml(item, item.style_config || null)
+      }));
+      // Cada leitura tem no máximo um teste de descarga vinculado (1:1, criado junto no import).
+      const dischargeByLeitura = new Map();
+      (dischargeTests || []).forEach((t) => { if (t.fluke_leitura_id) dischargeByLeitura.set(Number(t.fluke_leitura_id), t); });
+
+      return res.render("report-service/fluke521-editor", {
+        pageTitle: `Leituras Fluke BT521 - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
+        order: orderView,
+        report,
+        leituras,
+        dischargeByLeitura,
+        saved: req.query.saved === "1",
+        importError: req.query.import_error ? decodeURIComponent(req.query.import_error) : null,
+        csrfToken: req.csrfToken(),
+        appVersion: env.APP_VERSION || "1"
+      });
+    },
+
+    async importFluke521File(req, res) {
+      const orderId = Number(req.params.id);
+      if (!await ensureOrderEditable(req, res, orderId, { json: true })) return;
+      const report = await service.ensureReportForOrder(orderId);
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      if (!buffer.length) {
+        return res.status(400).json({ ok: false, error: "Arquivo vazio." });
+      }
+
+      const originalName = sanitizeInput(decodeURIComponent(String(req.headers["x-file-name"] || "arquivo.csv")));
+      const parsed = parseFluke521Csv(buffer.toString("utf-8"), originalName);
+
+      if (!parsed.isValid) {
+        return res.status(422).json({ ok: false, error: (parsed.errors || []).join(" | ") || "Arquivo inválido." });
+      }
+
+      const leitura = await repo.createLeituraFluke521({
+        serviceReportId: report.id,
+        locationName: parsed.header.locationName,
+        deviceName: parsed.header.deviceName,
+        deviceId: parsed.header.deviceId,
+        batterySeries: parsed.header.batterySeries,
+        batteryType: parsed.header.batteryType,
+        batteryNumber: parsed.header.batteryNumber,
+        batteryStartId: parsed.header.batteryStartId,
+        capacity: parsed.header.capacity,
+        timeCreated: parsed.header.timeCreated,
+        timeModified: parsed.header.timeModified,
+        nomeArquivo: parsed.header.nomeArquivo,
+        celulas: parsed.celulas
+      });
+
+      let dischargeCreated = false;
+      if (parsed.discharge) {
+        await repo.createDischargeTest({
+          serviceReportId: report.id,
+          title: `Fluke BT521 — Teste de Descarga — ${parsed.subject}`,
+          measurementDate: "",
+          nominalVoltage: null,
+          notes: parsed.notes,
+          hourLabels: parsed.discharge.hourLabels,
+          readings: parsed.discharge.readings,
+          colCelulaLabel: "Célula",
+          colFlutuacaoLabel: "Tensão de Flutuação (Vcc)",
+          flukeLeituraId: leitura.id
+        });
+        dischargeCreated = true;
+      }
+
+      return res.status(201).json({
+        ok: true,
+        data: { id: leitura.id, cellCount: leitura.celulas.length, dischargeCreated },
+        warnings: parsed.errors || []
+      });
+    },
+
+    // Colunas visíveis da tabela: o form envia um checkbox "col_<chave>" por coluna
+    // marcada; as chaves ausentes viram hiddenColumns.
+    async updateFluke521DisplayConfig(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(leituraId) && leituraId > 0) {
+        const allColumns = ["celula", "resistencia", "tensao", "temperatura", "hora"];
+        const hiddenColumns = allColumns.filter((key) => !req.body[`col_${key}`]);
+        await repo.updateLeituraFluke521DisplayConfig(leituraId, report.id, { hiddenColumns });
+      }
+      return res.redirect(`/admin/report-service/orders/${orderId}/fluke521?saved=1`);
+    },
+
+    async deleteLeituraFluke521(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!await ensureOrderEditable(req, res, orderId)) return;
+      const report = await service.ensureReportForOrder(orderId);
+      if (Number.isInteger(leituraId) && leituraId > 0) {
+        await repo.deleteLeituraFluke521(leituraId, report.id);
+      }
+      return res.redirect(`/admin/report-service/orders/${orderId}/fluke521?saved=1`);
+    },
+
+    async fluke521StyleAi(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      const { instruction, apply, current_style } = req.body || {};
+
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const leitura = await repo.getLeituraFluke521ById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Fluke BT521 não encontrada." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+      const defaultStyle = scopeFluke521StyleConfig(await getDefaultFluke521StyleConfig(), leituraId);
+      const activeStyle = parsedCurrentStyle || leitura.style_config || defaultStyle || null;
+
+      if (!String(instruction || "").trim()) {
+        if (String(apply || "") === "true" && parsedCurrentStyle) {
+          await repo.updateLeituraFluke521StyleConfig(leituraId, report.id, parsedCurrentStyle);
+          const previewHtml = buildFluke521PreviewHtml(leitura, parsedCurrentStyle);
+          return res.json({ previewHtml, styleConfig: parsedCurrentStyle });
+        }
+        const previewHtml = buildFluke521PreviewHtml(leitura, activeStyle);
+        return res.json({ previewHtml, styleConfig: activeStyle });
+      }
+
+      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultFluke521Css(leituraId);
+      const newCss = await applyFluke521StyleViaAi(currentCss, leituraId, String(instruction).trim(), reviseTextWithAi);
+      const newStyleConfig = { customCss: newCss };
+      const previewHtml = buildFluke521PreviewHtml(leitura, newStyleConfig);
+
+      if (String(apply || "") === "true") {
+        await repo.updateLeituraFluke521StyleConfig(leituraId, report.id, newStyleConfig);
+      }
+
+      return res.json({ previewHtml, styleConfig: newStyleConfig });
+    },
+
+    async fluke521StyleReset(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+      const report = await service.ensureReportForOrder(orderId);
+      await repo.updateLeituraFluke521StyleConfig(leituraId, report.id, null);
+      const leitura = await repo.getLeituraFluke521ById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Fluke BT521 não encontrada." });
+      const defaultStyle = scopeFluke521StyleConfig(await getDefaultFluke521StyleConfig(), leituraId);
+      const previewHtml = buildFluke521PreviewHtml(leitura, defaultStyle || null);
+      return res.json({ previewHtml, styleConfig: defaultStyle || null });
+    },
+
+    async fluke521StyleDefault(req, res) {
+      const orderId = Number(req.params.id);
+      const leituraId = Number(req.params.leituraId);
+      const { current_style } = req.body || {};
+
+      if (!Number.isInteger(leituraId) || leituraId <= 0) {
+        return res.status(400).json({ error: "ID de leitura inválido." });
+      }
+
+      const report = await service.ensureReportForOrder(orderId);
+      const leitura = await repo.getLeituraFluke521ById(leituraId, report.id);
+      if (!leitura) return res.status(404).json({ error: "Leitura Fluke BT521 não encontrada." });
+
+      let parsedCurrentStyle = null;
+      try { parsedCurrentStyle = current_style ? JSON.parse(current_style) : null; } catch (_) { /* ignored */ }
+
+      const styleConfig = buildFluke521StyleConfig(parsedCurrentStyle || leitura.style_config || { customCss: generateDefaultFluke521Css(leituraId) });
+      if (!styleConfig.customCss) {
+        return res.status(400).json({ error: "Nenhum estilo válido para salvar como padrão." });
+      }
+
+      await saveDefaultFluke521StyleConfig(styleConfig);
+      const scopedStyleConfig = scopeFluke521StyleConfig(styleConfig, leituraId);
+      await repo.updateLeituraFluke521StyleConfig(leituraId, report.id, scopedStyleConfig);
+      const previewHtml = buildFluke521PreviewHtml(leitura, scopedStyleConfig);
+      return res.json({ previewHtml, styleConfig: scopedStyleConfig });
     },
 
     async upsMeasuresEditor(req, res) {

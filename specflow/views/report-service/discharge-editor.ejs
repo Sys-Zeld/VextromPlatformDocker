@@ -78,6 +78,7 @@
         <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">← Ensaios/Medições</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/alber">Leituras Alber</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/fluke521">Leituras Fluke BT521</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
         <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
       </div>
@@ -154,6 +155,11 @@
 
         <!-- Info bar -->
         <div class="discharge-info-bar">
+          <% if (test.fluke_leitura_id) { %>
+          <div class="discharge-info-pair">
+            <span class="badge text-bg-info">via Fluke BT521</span>
+          </div>
+          <% } %>
           <div class="discharge-info-pair">
             <span class="discharge-info-label">Células</span>
             <span class="discharge-info-value"><%= totalCelulas %></span>

@@ -6,6 +6,8 @@ const {
   applyDefaultMeasurementStyle,
   getDefaultAlberStyleConfig,
   applyDefaultAlberStyle,
+  getDefaultFluke521StyleConfig,
+  applyDefaultFluke521Style,
   getDefaultDischargeStyleConfig,
   applyDefaultDischargeStyle,
   getDefaultTimesheetStyleConfig,
@@ -615,17 +617,20 @@ async function buildReportAggregate(serviceReportId) {
   const upsMeasures = applyDefaultUpsStyle(upsMeasuresRows, defaultUpsStyleConfig);
   const eventLogs = applyDefaultEventLogStyle(eventLogRows, defaultEventLogStyleConfig);
   const reportWithDefaults = applyDefaultComponentsStyle(report, defaultComponentsStyleConfig);
-  const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig] = await Promise.all([
+  const [alberRows, defaultAlberStyleConfig, dischargeRows, defaultDischargeStyleConfig, timesheetStyleConfig, techteamStyleConfig, equipmentStyleConfig, fluke521Rows, defaultFluke521StyleConfig] = await Promise.all([
     repo.listLeiturasAlberByReport(serviceReportId),
     getDefaultAlberStyleConfig(),
     repo.listDischargeTestsByReport(serviceReportId),
     getDefaultDischargeStyleConfig(),
     getDefaultTimesheetStyleConfig(),
     getDefaultTechteamStyleConfig(),
-    getDefaultEquipmentStyleConfig()
+    getDefaultEquipmentStyleConfig(),
+    repo.listLeiturasFluke521ByReport(serviceReportId),
+    getDefaultFluke521StyleConfig()
   ]);
   const alberLeituras = applyDefaultAlberStyle(alberRows, defaultAlberStyleConfig);
   const dischargeTests = applyDefaultDischargeStyle(dischargeRows, defaultDischargeStyleConfig);
+  const leiturasFluke521 = applyDefaultFluke521Style(fluke521Rows, defaultFluke521StyleConfig);
   const signatures = await repo.listSignatures(serviceReportId);
   const instruments = await repo.listInstruments(serviceReportId);
   // Equipe tecnica no fluxo atual e vinculada a OS (order-level).
@@ -652,6 +657,7 @@ async function buildReportAggregate(serviceReportId) {
     eventLogs,
     alberLeituras,
     dischargeTests,
+    leiturasFluke521,
     signatures,
     instruments,
     technicians,

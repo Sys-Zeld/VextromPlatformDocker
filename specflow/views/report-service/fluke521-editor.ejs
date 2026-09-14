@@ -1,0 +1,1420 @@
+<%- include("../partials/head", { pageTitle }) %>
+<link href="/public/css/report-editor.css?v=<%= appVersion %>" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<style>
+  .fluke521-info-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px 6px 0 0;
+    border-bottom: none;
+    padding: 10px 16px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .fluke521-info-pair { display: flex; align-items: center; gap: 6px; padding-right: 20px; }
+  .fluke521-info-pair + .fluke521-info-pair { border-left: 1px solid #e2e8f0; padding-left: 20px; }
+  .fluke521-info-label { color: #64748b; font-size: 12px; }
+  .fluke521-info-value { font-weight: 600; color: #1e293b; }
+
+  /* A tabela aqui é o MESMO HTML/CSS gerado para o relatório (renderFluke521LeituraTable),
+     então a página não define estilo próprio para ela — só o contêiner com rolagem. */
+  .fluke521-rendered { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; background: #fff; overflow-x: auto; }
+  .fluke521-rendered table { max-width: 100%; }
+
+  /* Bloco de descarga embutido (mesmo padrão visual de discharge-editor.ejs) */
+  .discharge-table-wrap { border: 1px solid #e2e8f0; border-radius: 0 0 6px 6px; overflow-x: auto; }
+  .discharge-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .discharge-table thead th {
+    background: #1e3a5f; color: #fff; padding: 7px 10px; text-align: center; font-size: 11px;
+    font-weight: 600; border: 1px solid #2d5a8e; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 2;
+  }
+  .discharge-table thead th.th-celula { text-align: left; min-width: 70px; position: sticky; left: 0; z-index: 3; }
+  .discharge-table thead th.th-flutuacao { min-width: 90px; }
+  .discharge-table thead th.th-hora { min-width: 80px; }
+  .discharge-table tbody td { padding: 5px 10px; border: 1px solid #cbd5e1; color: #1e293b; vertical-align: middle; text-align: center; }
+  .discharge-table tbody td.td-celula { text-align: left; font-weight: 600; background: #f8fafc; position: sticky; left: 0; z-index: 1; border-right: 2px solid #cbd5e1; }
+  .discharge-table tbody tr:nth-child(even) td { background: #f0f4fa; }
+  .discharge-table tbody tr:nth-child(even) td.td-celula { background: #edf2f9; }
+  .discharge-info-bar {
+    display: flex; flex-wrap: wrap; gap: 0; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 6px 6px 0 0; border-bottom: none; padding: 10px 16px; align-items: center; font-size: 13px;
+  }
+  .discharge-info-pair { display: flex; align-items: center; gap: 6px; padding-right: 20px; }
+  .discharge-info-pair + .discharge-info-pair { border-left: 1px solid #e2e8f0; padding-left: 20px; }
+  .discharge-info-label { color: #64748b; font-size: 12px; }
+  .discharge-info-value { font-weight: 600; color: #1e293b; }
+</style>
+
+<section class="token-console">
+  <div class="card app-card token-hero-card">
+    <div class="card-body token-hero-body">
+      <div class="token-hero-copy">
+        <span class="token-hero-eyebrow">LEITURAS FLUKE BT521</span>
+        <h1 class="h4 app-card-title mb-1"><%= order.service_order_display || "-" %></h1>
+        <p class="text-muted mb-0"><%= order.title %> - <%= order.customer_name %></p>
+      </div>
+      <div class="token-hero-actions">
+        <span class="badge text-bg-secondary">Status: <%= order.status || "draft" %></span>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/measurements">← Ensaios/Medições</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/alber">Leituras Alber</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/discharge">Teste de Descarga</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>">Editar OS</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/admin/report-service/orders/<%= order.id %>/preview-html" target="_blank" rel="noopener"><%= t("rs.nav.previewReport") %></a>
+      </div>
+    </div>
+  </div>
+
+  <% if (saved) { %><div class="alert alert-success mb-0">Leitura Fluke BT521 salva com sucesso.</div><% } %>
+  <% if (importError) { %><div class="alert alert-danger mb-0"><strong>Erro ao importar:</strong> <%= importError %></div><% } %>
+
+  <!-- Import card -->
+  <div class="card app-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h6 app-card-title mb-1">Importar Leituras Fluke BT521 (CSV)</h2>
+          <div class="text-muted small">
+            Importa as duas medições do mesmo arquivo: resistência/tensão/temperatura por célula (tag <code>@fluke521=ID</code>)
+            e teste de descarga (tag <code>@discharge=ID</code>, gráfico via <code>@grafo=ID</code>).
+          </div>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <button class="btn btn-primary btn-sm" type="button" id="fluke521ImportBtn">Importar Fluke BT521</button>
+        <input type="file" accept=".csv,.txt" id="fluke521FileInput" class="d-none" />
+        <span class="text-muted small" id="fluke521FileName"></span>
+        <div id="fluke521ImportSpinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></div>
+        <span id="fluke521ImportMsg" class="small"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leituras list -->
+  <div class="card app-card">
+    <div class="card-body p-0">
+      <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+        <h2 class="h6 app-card-title mb-0">Leituras importadas (<%= (leituras || []).length %>)</h2>
+      </div>
+
+      <% if (!(leituras || []).length) { %>
+        <div class="p-4 text-center text-muted">Nenhuma leitura Fluke BT521 importada para esta OS.</div>
+      <% } %>
+
+      <% (leituras || []).forEach(function(leitura) {
+        var celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
+        var dTest = dischargeByLeitura && dischargeByLeitura.get ? dischargeByLeitura.get(Number(leitura.id)) : null;
+        var _dc = (leitura.display_config && typeof leitura.display_config === 'object') ? leitura.display_config : {};
+        var hiddenCols = Array.isArray(_dc.hiddenColumns) ? _dc.hiddenColumns : [];
+        var temTemperatura = celulas.some(function(c){ return c.temperaturaC !== null && c.temperaturaC !== undefined; });
+        var temHora = celulas.some(function(c){ return String(c.hora || '').trim(); });
+        var colDefs = [
+          { key: 'celula',      label: 'Célula',           disponivel: true },
+          { key: 'resistencia', label: 'Resistência (mΩ)', disponivel: true },
+          { key: 'tensao',      label: 'Tensão (Vcc)',     disponivel: true },
+          { key: 'temperatura', label: 'Temperatura (°C)', disponivel: temTemperatura },
+          { key: 'hora',        label: 'Hora',             disponivel: temHora }
+        ];
+      %>
+      <% if (dTest) {
+        var dHourLabels = Array.isArray(dTest.hour_labels) ? dTest.hour_labels : [];
+        var dReadings = Array.isArray(dTest.readings) ? dTest.readings : [];
+        var dChartLabels = [(dTest.col_flutuacao_label || 'Flutuação')];
+        var dChartValues = [];
+        var dfSum = 0;
+        dReadings.forEach(function(r) { var v = parseFloat(r.flutuacao); if (!isNaN(v)) dfSum += v; });
+        dChartValues.push(parseFloat(dfSum.toFixed(3)));
+        dHourLabels.forEach(function(label, idx) {
+          dChartLabels.push(label);
+          var hSum = 0;
+          dReadings.forEach(function(r) { var h = Array.isArray(r.horas) ? r.horas : []; var v = parseFloat(h[idx]); if (!isNaN(v)) hSum += v; });
+          dChartValues.push(parseFloat(hSum.toFixed(3)));
+        });
+        var dCellSeries = dReadings.map(function(r) {
+          var cv = [];
+          var fv = parseFloat(r.flutuacao);
+          cv.push(isNaN(fv) ? null : parseFloat(fv.toFixed(3)));
+          var horas = Array.isArray(r.horas) ? r.horas : [];
+          horas.forEach(function(v) { var hv = parseFloat(v); cv.push(isNaN(hv) ? null : parseFloat(hv.toFixed(3))); });
+          return { name: String(r.celula || ''), values: cv };
+        });
+        var dSafeChartJson = JSON.stringify({labels:dChartLabels,values:dChartValues,cells:dCellSeries,title:dTest.title||('Teste #'+dTest.id),nominal:dTest.nominal_voltage||null})
+          .replace(/</g,'\\u003C').replace(/>/g,'\\u003E').replace(/&/g,'\\u0026');
+      %>
+      <script type="application/json" id="dischargeChartData_<%= dTest.id %>"><%- dSafeChartJson %></script>
+      <% } %>
+      <div class="border-bottom p-3">
+
+        <!-- Info bar -->
+        <div class="fluke521-info-bar">
+          <div class="fluke521-info-pair">
+            <span class="fluke521-info-label">Local</span>
+            <span class="fluke521-info-value"><%= leitura.location_name || "-" %></span>
+          </div>
+          <div class="fluke521-info-pair">
+            <span class="fluke521-info-label">Equipamento</span>
+            <span class="fluke521-info-value"><%= leitura.device_name || "-" %></span>
+          </div>
+          <% if (leitura.battery_type) { %>
+          <div class="fluke521-info-pair">
+            <span class="fluke521-info-label">Tipo de bateria</span>
+            <span class="fluke521-info-value"><%= leitura.battery_type %></span>
+          </div>
+          <% } %>
+          <% if (leitura.capacity) { %>
+          <div class="fluke521-info-pair">
+            <span class="fluke521-info-label">Capacidade</span>
+            <span class="fluke521-info-value"><%= leitura.capacity %></span>
+          </div>
+          <% } %>
+          <div class="fluke521-info-pair">
+            <span class="fluke521-info-label">Células</span>
+            <span class="fluke521-info-value"><%= celulas.length %></span>
+          </div>
+          <div class="ms-auto d-flex gap-2 align-items-center">
+            <code class="small text-primary">@fluke521=<%= leitura.seq_id %></code>
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="fluke521ViewBtn_<%= leitura.id %>" onclick="toggleFluke521Data(<%= leitura.id %>)">Ver dados</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="toggleFluke521Columns(<%= leitura.id %>)">Colunas<% if (hiddenCols.length) { %> <span class="badge text-bg-secondary" style="font-size:9px;"><%= hiddenCols.length %> oculta(s)</span><% } %></button>
+            <button class="btn btn-outline-success btn-sm fluke521-style-btn"
+              data-leitura-id="<%= leitura.id %>"
+              data-order-id="<%= order.id %>"
+              data-leitura-name="<%= (leitura.device_name || leitura.location_name || ('Leitura #' + leitura.id)).replace(/\"/g, '&quot;') %>"
+              data-has-style="<%= leitura.style_config && !leitura._uses_default_fluke521_style ? '1' : '0' %>">
+              🎨 Visual<% if (leitura.style_config && leitura._uses_default_fluke521_style) { %> <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span><% } else if (leitura.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
+            </button>
+            <form method="post" action="/admin/report-service/orders/<%= order.id %>/fluke521/<%= leitura.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta leitura Fluke BT521 (e o teste de descarga vinculado, se houver)?');">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Colunas visíveis na tabela (vale para a tela e para o relatório) -->
+        <div id="fluke521Columns_<%= leitura.id %>" class="d-none mt-2 border rounded bg-light p-3">
+          <form method="post" action="/admin/report-service/orders/<%= order.id %>/fluke521/<%= leitura.id %>/columns">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <div class="fw-semibold small mb-2">Colunas visíveis na tabela</div>
+            <div class="d-flex flex-wrap gap-3 mb-3">
+              <% colDefs.forEach(function(col) { %>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox"
+                  id="col_<%= col.key %>_<%= leitura.id %>"
+                  name="col_<%= col.key %>"
+                  value="1"
+                  <%= hiddenCols.indexOf(col.key) === -1 ? 'checked' : '' %>
+                  <%= col.disponivel ? '' : 'disabled' %> />
+                <label class="form-check-label small" for="col_<%= col.key %>_<%= leitura.id %>">
+                  <%= col.label %><% if (!col.disponivel) { %> <span class="text-muted">(sem dados no arquivo)</span><% } %>
+                </label>
+              </div>
+              <% }); %>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary btn-sm" type="submit">Salvar colunas</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" onclick="toggleFluke521Columns(<%= leitura.id %>)">Cancelar</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Tabela renderizada exatamente como sai no relatório (tag @fluke521=ID):
+             mesma função de render e mesmo style_config, para a tela não divergir do PDF. -->
+        <div id="fluke521Data_<%= leitura.id %>" class="d-none mt-2 fluke521-rendered">
+          <%- leitura.rendered_html %>
+        </div>
+
+        <!-- Teste de descarga vinculado — seção independente, própria (mesmos dados/gráfico
+             da tela Teste de Descarga), com seu próprio "Ver dados" separado do de cima. -->
+        <% if (dTest) { %>
+        <div class="mt-3 pt-3 border-top">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <h3 class="h6 mb-0">Teste de Descarga</h3>
+            <span class="badge text-bg-info">via Fluke BT521</span>
+          </div>
+          <div class="discharge-info-bar">
+            <div class="discharge-info-pair">
+              <span class="discharge-info-label">Células</span>
+              <span class="discharge-info-value"><%= dReadings.length %></span>
+            </div>
+            <div class="discharge-info-pair">
+              <span class="discharge-info-label">Checkpoints</span>
+              <span class="discharge-info-value"><%= dHourLabels.length %></span>
+            </div>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+              <code class="small text-primary">@discharge=<%= dTest.seq_id %></code>
+              <% if (dReadings.length > 0) { %><code class="small text-success">@grafo=<%= dTest.seq_id %></code><% } %>
+              <button class="btn btn-outline-secondary btn-sm" type="button" id="dischargeViewBtn_<%= dTest.id %>" onclick="toggleDischargeData(<%= dTest.id %>)">Ver dados</button>
+              <% if (dReadings.length > 0) { %>
+              <button class="btn btn-outline-info btn-sm" type="button" onclick="openDischargeChart(<%= dTest.id %>)">📈 Ver gráfico</button>
+              <% } %>
+              <button class="btn btn-outline-primary btn-sm discharge-style-btn"
+                type="button" data-test-id="<%= dTest.id %>" data-order-id="<%= order.id %>"
+                data-test-name="<%= dTest.title || ('Teste #' + dTest.id) %>"
+                data-has-style="<%= dTest.style_config ? '1' : '0' %>">
+                🎨 Visual<% if (dTest.style_config) { %> <span class="badge text-bg-primary" style="font-size:9px;">custom</span><% } %>
+              </button>
+              <% if (dReadings.length > 0) { %>
+              <button class="btn btn-outline-success btn-sm discharge-chart-style-btn"
+                type="button" data-test-id="<%= dTest.id %>" data-order-id="<%= order.id %>"
+                data-test-name="<%= dTest.title || ('Teste #' + dTest.id) %>"
+                data-has-chart-style="<%= (dTest.style_config && dTest.style_config.chartCustomCss) ? '1' : '0' %>">
+                📊 Gráfico<% if (dTest.style_config && dTest.style_config.chartCustomCss) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
+              </button>
+              <% } %>
+            </div>
+          </div>
+          <div id="dischargeData_<%= dTest.id %>" class="d-none mt-2">
+            <% if (dReadings.length > 0) { %>
+            <div class="discharge-table-wrap">
+              <table class="discharge-table">
+                <thead>
+                  <tr>
+                    <th class="th-celula">Célula</th>
+                    <th class="th-flutuacao">Flutuação (V)</th>
+                    <% dHourLabels.forEach(function(h) { %><th class="th-hora"><%= h %></th><% }); %>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% dReadings.forEach(function(row) { var horas = Array.isArray(row.horas) ? row.horas : []; %>
+                  <tr>
+                    <td class="td-celula"><%= row.celula %></td>
+                    <td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td>
+                    <% horas.forEach(function(v) { %><td><%= v !== null && v !== undefined ? v : '-' %></td><% }); %>
+                  </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+            <% } else { %>
+              <div class="text-muted small p-2">Sem leituras.</div>
+            <% } %>
+          </div>
+        </div>
+        <% } else { %>
+        <div class="mt-3 pt-3 border-top text-muted small">Nenhum teste de descarga associado a esta leitura (o arquivo não trazia checkpoints de descarga com dado real).</div>
+        <% } %>
+
+      </div>
+      <% }); %>
+
+    </div>
+  </div>
+
+</section>
+
+<!-- ── Modal: Ajuste visual IA — Tabela Resistência/Tensão/Temperatura ──────── -->
+<style>
+  #fStyleModal .msm-header { background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: #fff; padding: 14px 18px 12px; border-radius: 12px 12px 0 0; }
+  #fStyleModal .msm-preview-panel { flex: 1; min-width: 0; background: #f1f5f9; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; }
+  #fStyleModal .msm-paper { background: #fff; border-radius: 6px; box-shadow: 0 2px 16px rgba(0,0,0,0.10); padding: 22px 24px; flex: 1; position: relative; min-height: 180px; overflow-x: auto; }
+  #fStyleModal .msm-paper-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; z-index: 5; gap: 8px; }
+  #fStyleModal .msm-ai-panel { width: 310px; min-width: 240px; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0; background: #fff; }
+  #fStyleModal .msm-ai-header { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 11.5px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 6px; letter-spacing: 0.02em; }
+  #fStyleModal .msm-chat-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #fStyleModal .msm-bubble { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+  #fStyleModal .msm-bubble.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 3px; }
+  #fStyleModal .msm-bubble.ai { align-self: flex-start; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+  #fStyleModal .msm-bubble.err { align-self: flex-start; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-bottom-left-radius: 3px; }
+  #fStyleModal .msm-typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; margin: 0 2px; animation: fsmPulse 1.2s ease-in-out infinite; }
+  #fStyleModal .msm-typing span:nth-child(2) { animation-delay: 0.2s; }
+  #fStyleModal .msm-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes fsmPulse { 0%,60%,100% { transform:translateY(0);opacity:.4; } 30% { transform:translateY(-5px);opacity:1; } }
+  #fStyleModal .msm-chips { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #f1f5f9; }
+  #fStyleModal .msm-chip { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; user-select: none; }
+  #fStyleModal .msm-chip:hover { background: #e2e8f0; border-color: #94a3b8; color: #1e293b; }
+  #fStyleModal .msm-input-area { padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+  #fStyleModal .msm-unsaved { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,.15); border-radius: 20px; padding: 1px 8px; }
+  #fStyleModal .msm-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; flex-shrink: 0; }
+</style>
+
+<div class="modal fade" id="fStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:12px;overflow:hidden;">
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="opacity:.85;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — Leitura Fluke BT521</span>
+            <span id="fsmUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div id="fsmLeituraName" style="font-size:12px;opacity:.6;padding-left:22px;">—</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="fsmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="fsmOverlay">
+              <div class="spinner-border text-primary" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="fsmPreviewContent"></div>
+          </div>
+        </div>
+
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">
+            <svg width="13" height="13" fill="currentColor" viewBox="0 0 20 20" style="color:#6366f1;flex-shrink:0;"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            Assistente de Design IA
+          </div>
+          <div class="msm-chat-area" id="fsmChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Cabeçalho cinza escuro, texto branco">Cabeçalho cinza</span>
+            <span class="msm-chip" data-s="Aumentar fonte das células para 12px">Fonte maior</span>
+            <span class="msm-chip" data-s="Remover o fundo alternado nas linhas, deixar todas brancas">Sem zebra</span>
+            <span class="msm-chip" data-s="Borda preta mais grossa 2px sólida">Borda grossa</span>
+            <span class="msm-chip" data-s="Coluna Célula com fundo azul escuro e texto branco">Célula destacada</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="fsmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-primary btn-sm d-flex align-items-center justify-content-center" id="fsmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto d-flex align-items-center gap-1" id="fsmResetBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Restaurar padrão
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" id="fsmDefaultBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v14H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 9h6M9 13h6"/></svg>
+          Salvar como padrão
+        </button>
+        <button type="button" class="btn btn-sm btn-primary d-flex align-items-center gap-1" id="fsmSaveBtn">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          Salvar visual
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var fModal = document.getElementById("fStyleModal");
+  if (!fModal) return;
+  var bsFModal = null;
+  function getFModal() { if (!bsFModal) bsFModal = new bootstrap.Modal(fModal); return bsFModal; }
+
+  var previewContent = document.getElementById("fsmPreviewContent");
+  var chatArea      = document.getElementById("fsmChatArea");
+  var overlay       = document.getElementById("fsmOverlay");
+  var inputEl       = document.getElementById("fsmInput");
+  var sendBtn       = document.getElementById("fsmSendBtn");
+  var saveBtn       = document.getElementById("fsmSaveBtn");
+  var defaultBtn    = document.getElementById("fsmDefaultBtn");
+  var resetBtn      = document.getElementById("fsmResetBtn");
+  var unsavedBadge  = document.getElementById("fsmUnsavedBadge");
+  var leituraNameEl = document.getElementById("fsmLeituraName");
+  var previewHint   = document.getElementById("fsmPreviewHint");
+
+  var activeLeituraId = null, activeOrderId = null, pendingStyle = null;
+  var csrfToken = (document.querySelector('[name="_csrf"]') || {}).value || "<%= csrfToken %>";
+  var typingEl = null;
+
+  function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+  function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+  function setInputBusy(on) { sendBtn.disabled = on; inputEl.disabled = on; resetBtn.disabled = on; if (defaultBtn) defaultBtn.disabled = on; }
+
+  function addBubble(type, text) {
+    removeTyping();
+    var div = document.createElement("div");
+    div.className = "msm-bubble " + type;
+    div.textContent = text;
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    return div;
+  }
+  function showTyping() {
+    removeTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "msm-bubble ai msm-typing";
+    typingEl.innerHTML = "<span></span><span></span><span></span>";
+    chatArea.appendChild(typingEl);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+  function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+  function updatePreview(html) { previewContent.innerHTML = html || ""; }
+
+  function apiUrl(path) {
+    return "/admin/report-service/orders/" + activeOrderId + "/fluke521/" + activeLeituraId + "/" + path;
+  }
+
+  async function callAi(instruction, apply) {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (instruction) body.set("instruction", instruction);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    if (apply) body.set("apply", "true");
+    var resp = await fetch(apiUrl("style-ai"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro na requisição."); }
+    return resp.json();
+  }
+  async function callReset() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    var resp = await fetch(apiUrl("style-reset"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) throw new Error("Erro ao resetar.");
+    return resp.json();
+  }
+  async function callDefault() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    var resp = await fetch(apiUrl("style-default"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro ao salvar padrão."); }
+    return resp.json();
+  }
+
+  document.querySelectorAll(".fluke521-style-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      activeLeituraId = Number(btn.getAttribute("data-leitura-id") || 0);
+      activeOrderId   = btn.getAttribute("data-order-id") || "";
+      pendingStyle    = null;
+      chatArea.innerHTML = "";
+      inputEl.value = "";
+      previewHint.textContent = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = true;
+      leituraNameEl.textContent = btn.getAttribute("data-leitura-name") || ("Leitura #" + activeLeituraId);
+      showOverlay(true);
+      getFModal().show();
+      callAi(null, false).then(function (r) {
+        showOverlay(false);
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+        previewHint.textContent = "Envie uma instrução para personalizar";
+        addBubble("ai", "Olá! Descreva o que deseja alterar: cores do cabeçalho, fontes, bordas, fundo das células. Use os atalhos abaixo ou escreva livremente.");
+      }).catch(function (err) {
+        showOverlay(false);
+        previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+      });
+    });
+  });
+
+  function sendInstruction() {
+    var instruction = (inputEl.value || "").trim();
+    if (!instruction || sendBtn.disabled) return;
+    setInputBusy(true);
+    addBubble("user", instruction);
+    inputEl.value = "";
+    showTyping();
+    previewHint.textContent = "Aplicando alterações...";
+    callAi(instruction, false).then(function (r) {
+      removeTyping();
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      setUnsaved(true);
+      saveBtn.disabled = false;
+      if (defaultBtn) defaultBtn.disabled = false;
+      previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+      addBubble("ai", "Feito! Verifique o preview ao lado. Você pode continuar ajustando ou salvar.");
+    }).catch(function (err) {
+      removeTyping();
+      addBubble("err", "Erro: " + (err.message || "Falha na IA."));
+      previewHint.textContent = "";
+    }).finally(function () { setInputBusy(false); inputEl.focus(); });
+  }
+
+  sendBtn.addEventListener("click", sendInstruction);
+  inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+  fModal.querySelectorAll(".msm-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); });
+  });
+
+  saveBtn.addEventListener("click", function () {
+    if (!pendingStyle) return;
+    setInputBusy(true);
+    saveBtn.disabled = true;
+    callAi(null, true).then(function () {
+      var styleBtn = document.querySelector('.fluke521-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+      if (styleBtn) {
+        styleBtn.setAttribute("data-has-style", "1");
+        var badge = styleBtn.querySelector(".badge");
+        if (badge) badge.remove();
+        styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
+      }
+      setUnsaved(false);
+      getFModal().hide();
+    }).catch(function (err) {
+      addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente."));
+      saveBtn.disabled = false;
+    }).finally(function () { setInputBusy(false); });
+  });
+
+  if (defaultBtn) {
+    defaultBtn.addEventListener("click", function () {
+      if (!pendingStyle) return;
+      setInputBusy(true);
+      defaultBtn.disabled = true;
+      callDefault().then(function (r) {
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || pendingStyle;
+        var styleBtn = document.querySelector('.fluke521-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+        if (styleBtn) {
+          styleBtn.setAttribute("data-has-style", "1");
+          var badge = styleBtn.querySelector(".badge");
+          if (badge) badge.remove();
+          styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-primary" style="font-size:9px;">custom</span>');
+        }
+        setUnsaved(false);
+        saveBtn.disabled = true;
+        previewHint.textContent = "Estilo salvo como padrão para novas leituras Fluke BT521";
+        addBubble("ai", "Este visual foi salvo como padrão. Outras leituras sem estilo próprio usarão este visual automaticamente.");
+      }).catch(function (err) {
+        addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente."));
+      }).finally(function () { setInputBusy(false); defaultBtn.disabled = !pendingStyle; });
+    });
+  }
+
+  resetBtn.addEventListener("click", function () {
+    if (!confirm("Restaurar o visual padrão desta leitura?")) return;
+    setInputBusy(true);
+    callReset().then(function (r) {
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      chatArea.innerHTML = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+      previewHint.textContent = "Visual padrão restaurado";
+      addBubble("ai", "Visual restaurado para o padrão. Envie novas instruções para personalizar novamente.");
+      var styleBtn = document.querySelector('.fluke521-style-btn[data-leitura-id="' + activeLeituraId + '"]');
+      if (styleBtn) {
+        styleBtn.setAttribute("data-has-style", "0");
+        var badge = styleBtn.querySelector(".badge");
+        if (badge) badge.remove();
+        if (pendingStyle) styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span>');
+      }
+    }).catch(function (err) {
+      addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));
+    }).finally(function () { setInputBusy(false); });
+  });
+})();
+</script>
+
+<!-- ── Import + toggles ─────────────────────────────────────────────────── -->
+<script>
+(function () {
+  var importBtn = document.getElementById("fluke521ImportBtn");
+  var fileInput = document.getElementById("fluke521FileInput");
+  var fileNameLabel = document.getElementById("fluke521FileName");
+  var spinner = document.getElementById("fluke521ImportSpinner");
+  var msgEl = document.getElementById("fluke521ImportMsg");
+  var csrfToken = "<%= csrfToken %>";
+  var orderId = "<%= order.id %>";
+
+  importBtn.addEventListener("click", function () { fileInput.value = ""; fileInput.click(); });
+
+  fileInput.addEventListener("change", function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    fileNameLabel.textContent = file.name;
+    spinner.classList.remove("d-none");
+    msgEl.textContent = "";
+    importBtn.disabled = true;
+
+    fetch("/admin/report-service/orders/" + orderId + "/fluke521/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream", "X-CSRF-Token": csrfToken, "X-File-Name": encodeURIComponent(file.name) },
+      body: file
+    }).then(function (resp) {
+      return resp.json().then(function (data) {
+        spinner.classList.add("d-none");
+        importBtn.disabled = false;
+        if (!resp.ok || !data.ok) {
+          msgEl.textContent = (data && data.error) ? data.error : "Erro ao importar.";
+          msgEl.style.color = "red";
+        } else {
+          window.location.reload();
+        }
+      });
+    }).catch(function (err) {
+      spinner.classList.add("d-none");
+      importBtn.disabled = false;
+      msgEl.textContent = "Erro ao importar: " + (err && err.message ? err.message : "falha na requisição.");
+      msgEl.style.color = "red";
+    });
+  });
+
+  window.toggleFluke521Data = function (id) {
+    var el = document.getElementById("fluke521Data_" + id);
+    if (!el) return;
+    el.classList.toggle("d-none");
+  };
+
+  window.toggleFluke521Columns = function (id) {
+    var el = document.getElementById("fluke521Columns_" + id);
+    if (!el) return;
+    el.classList.toggle("d-none");
+  };
+
+  window.toggleDischargeData = function (id) {
+    var el = document.getElementById("dischargeData_" + id);
+    if (!el) return;
+    el.classList.toggle("d-none");
+  };
+})();
+</script>
+
+<!-- ── Reaproveita 100% a infraestrutura de "Teste de Descarga": mesmos endpoints
+     /orders/:id/discharge/:testId/style-ai|chart-style-ai e o mesmo gráfico Chart.js. ── -->
+<style>
+  #dStyleModal .msm-header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8e 100%); color: #fff; padding: 14px 18px 12px; border-radius: 12px 12px 0 0; }
+  #dStyleModal .msm-preview-panel { flex: 1; min-width: 0; background: #f1f5f9; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; }
+  #dStyleModal .msm-paper { background: #fff; border-radius: 6px; box-shadow: 0 2px 16px rgba(0,0,0,0.10); padding: 22px 24px; flex: 1; position: relative; min-height: 180px; overflow-x: auto; }
+  #dStyleModal .msm-paper-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; z-index: 5; gap: 8px; }
+  #dStyleModal .msm-ai-panel { width: 310px; min-width: 240px; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0; background: #fff; }
+  #dStyleModal .msm-ai-header { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 11.5px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 6px; letter-spacing: 0.02em; }
+  #dStyleModal .msm-chat-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #dStyleModal .msm-bubble { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+  #dStyleModal .msm-bubble.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 3px; }
+  #dStyleModal .msm-bubble.ai { align-self: flex-start; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+  #dStyleModal .msm-bubble.err { align-self: flex-start; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-bottom-left-radius: 3px; }
+  #dStyleModal .msm-typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; margin: 0 2px; animation: dsmPulse2 1.2s ease-in-out infinite; }
+  #dStyleModal .msm-typing span:nth-child(2) { animation-delay: 0.2s; }
+  #dStyleModal .msm-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dsmPulse2 { 0%,60%,100% { transform:translateY(0);opacity:.4; } 30% { transform:translateY(-5px);opacity:1; } }
+  #dStyleModal .msm-chips { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #f1f5f9; }
+  #dStyleModal .msm-chip { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; user-select: none; }
+  #dStyleModal .msm-chip:hover { background: #e2e8f0; border-color: #94a3b8; color: #1e293b; }
+  #dStyleModal .msm-input-area { padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+  #dStyleModal .msm-unsaved { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,.15); border-radius: 20px; padding: 1px 8px; }
+  #dStyleModal .msm-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; flex-shrink: 0; }
+</style>
+
+<div class="modal fade" id="dStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:12px;overflow:hidden;">
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — Tabela Descarga</span>
+            <span id="dsmUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div id="dsmTestName" style="font-size:12px;opacity:.6;padding-left:2px;">—</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="dsmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="dsmOverlay">
+              <div class="spinner-border text-primary" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="dsmPreviewContent"></div>
+          </div>
+        </div>
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">Assistente de Design IA</div>
+          <div class="msm-chat-area" id="dsmChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Cabeçalho azul marinho, texto branco">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Cabeçalho cinza escuro, texto branco">Cabeçalho cinza</span>
+            <span class="msm-chip" data-s="Aumentar fonte das células para 12px">Fonte maior</span>
+            <span class="msm-chip" data-s="Remover o fundo alternado nas linhas, deixar todas brancas">Sem zebra</span>
+            <span class="msm-chip" data-s="Borda preta mais grossa 2px sólida">Borda grossa</span>
+            <span class="msm-chip" data-s="Coluna Célula com fundo azul escuro e texto branco">Célula destacada</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="dsmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-primary btn-sm d-flex align-items-center justify-content-center" id="dsmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto" id="dsmResetBtn">Restaurar padrão</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="dsmDefaultBtn">Salvar como padrão</button>
+        <button type="button" class="btn btn-sm btn-primary" id="dsmSaveBtn">Salvar visual</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var dModal = document.getElementById("dStyleModal");
+  if (!dModal) return;
+  var bsDModal = null;
+  function getDModal() { if (!bsDModal) bsDModal = new bootstrap.Modal(dModal); return bsDModal; }
+
+  var previewContent = document.getElementById("dsmPreviewContent");
+  var chatArea      = document.getElementById("dsmChatArea");
+  var overlay       = document.getElementById("dsmOverlay");
+  var inputEl       = document.getElementById("dsmInput");
+  var sendBtn       = document.getElementById("dsmSendBtn");
+  var saveBtn       = document.getElementById("dsmSaveBtn");
+  var defaultBtn    = document.getElementById("dsmDefaultBtn");
+  var resetBtn      = document.getElementById("dsmResetBtn");
+  var unsavedBadge  = document.getElementById("dsmUnsavedBadge");
+  var testNameEl    = document.getElementById("dsmTestName");
+  var previewHint   = document.getElementById("dsmPreviewHint");
+
+  var activeTestId = null, activeOrderId = null, pendingStyle = null;
+  var csrfToken = "<%= csrfToken %>";
+  var typingEl = null;
+
+  function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+  function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+  function setInputBusy(on) { sendBtn.disabled = on; inputEl.disabled = on; resetBtn.disabled = on; if (defaultBtn) defaultBtn.disabled = on; }
+  function addBubble(type, text) {
+    removeTyping();
+    var div = document.createElement("div");
+    div.className = "msm-bubble " + type;
+    div.textContent = text;
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    return div;
+  }
+  function showTyping() {
+    removeTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "msm-bubble ai msm-typing";
+    typingEl.innerHTML = "<span></span><span></span><span></span>";
+    chatArea.appendChild(typingEl);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+  function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+  function updatePreview(html) { previewContent.innerHTML = html || ""; }
+  function apiUrl(path) { return "/admin/report-service/orders/" + activeOrderId + "/discharge/" + activeTestId + "/" + path; }
+
+  async function callAi(instruction, apply) {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (instruction) body.set("instruction", instruction);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    if (apply) body.set("apply", "true");
+    var resp = await fetch(apiUrl("style-ai"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro na requisição."); }
+    return resp.json();
+  }
+  async function callReset() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    var resp = await fetch(apiUrl("style-reset"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) throw new Error("Erro ao resetar.");
+    return resp.json();
+  }
+  async function callDefault() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    var resp = await fetch(apiUrl("style-default"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro ao salvar padrão."); }
+    return resp.json();
+  }
+
+  document.querySelectorAll(".discharge-style-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      activeTestId  = Number(btn.getAttribute("data-test-id") || 0);
+      activeOrderId = btn.getAttribute("data-order-id") || "";
+      pendingStyle  = null;
+      chatArea.innerHTML = "";
+      inputEl.value = "";
+      previewHint.textContent = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = true;
+      testNameEl.textContent = btn.getAttribute("data-test-name") || ("Teste #" + activeTestId);
+      showOverlay(true);
+      getDModal().show();
+      callAi(null, false).then(function (r) {
+        showOverlay(false);
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+        previewHint.textContent = "Envie uma instrução para personalizar";
+        addBubble("ai", "Olá! Descreva o que deseja alterar: cores do cabeçalho, fontes, bordas, fundo das células, coluna de célula em destaque.");
+      }).catch(function (err) {
+        showOverlay(false);
+        previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+      });
+    });
+  });
+
+  function sendInstruction() {
+    var instruction = (inputEl.value || "").trim();
+    if (!instruction || sendBtn.disabled) return;
+    setInputBusy(true);
+    addBubble("user", instruction);
+    inputEl.value = "";
+    showTyping();
+    previewHint.textContent = "Aplicando alterações...";
+    callAi(instruction, false).then(function (r) {
+      removeTyping();
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      setUnsaved(true);
+      saveBtn.disabled = false;
+      if (defaultBtn) defaultBtn.disabled = false;
+      previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+      addBubble("ai", "Feito! Verifique o preview ao lado.");
+    }).catch(function (err) {
+      removeTyping();
+      addBubble("err", "Erro: " + (err.message || "Falha na IA."));
+      previewHint.textContent = "";
+    }).finally(function () { setInputBusy(false); inputEl.focus(); });
+  }
+
+  sendBtn.addEventListener("click", sendInstruction);
+  inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+  dModal.querySelectorAll(".msm-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); });
+  });
+
+  saveBtn.addEventListener("click", function () {
+    if (!pendingStyle) return;
+    setInputBusy(true);
+    saveBtn.disabled = true;
+    callAi(null, true).then(function () {
+      var styleBtn = document.querySelector('.discharge-style-btn[data-test-id="' + activeTestId + '"]');
+      if (styleBtn) {
+        styleBtn.setAttribute("data-has-style", "1");
+        var badge = styleBtn.querySelector(".badge");
+        if (badge) badge.remove();
+        styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-primary" style="font-size:9px;">custom</span>');
+      }
+      setUnsaved(false);
+      getDModal().hide();
+    }).catch(function (err) {
+      addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente."));
+      saveBtn.disabled = false;
+    }).finally(function () { setInputBusy(false); });
+  });
+
+  if (defaultBtn) {
+    defaultBtn.addEventListener("click", function () {
+      if (!pendingStyle) return;
+      setInputBusy(true);
+      defaultBtn.disabled = true;
+      callDefault().then(function (r) {
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || pendingStyle;
+        var styleBtn = document.querySelector('.discharge-style-btn[data-test-id="' + activeTestId + '"]');
+        if (styleBtn) {
+          styleBtn.setAttribute("data-has-style", "1");
+          var badge = styleBtn.querySelector(".badge");
+          if (badge) badge.remove();
+          styleBtn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-primary" style="font-size:9px;">custom</span>');
+        }
+        setUnsaved(false);
+        saveBtn.disabled = true;
+        previewHint.textContent = "Estilo salvo como padrão para novos testes de descarga";
+        addBubble("ai", "Este visual foi salvo como padrão.");
+      }).catch(function (err) {
+        addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente."));
+      }).finally(function () { setInputBusy(false); defaultBtn.disabled = !pendingStyle; });
+    });
+  }
+
+  resetBtn.addEventListener("click", function () {
+    if (!confirm("Restaurar o visual padrão deste teste de descarga?")) return;
+    setInputBusy(true);
+    callReset().then(function (r) {
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      chatArea.innerHTML = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+      previewHint.textContent = "Visual padrão restaurado";
+      addBubble("ai", "Visual restaurado para o padrão.");
+      var styleBtn = document.querySelector('.discharge-style-btn[data-test-id="' + activeTestId + '"]');
+      if (styleBtn) {
+        styleBtn.setAttribute("data-has-style", "0");
+        var badge = styleBtn.querySelector(".badge");
+        if (badge) badge.remove();
+      }
+    }).catch(function (err) {
+      addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));
+    }).finally(function () { setInputBusy(false); });
+  });
+})();
+</script>
+
+<style>
+  #dcStyleModal .msm-header { background: linear-gradient(135deg, #1c3a0a 0%, #4a7a30 100%); color: #fff; padding: 14px 18px 12px; border-radius: 12px 12px 0 0; }
+  #dcStyleModal .msm-preview-panel { flex: 1; min-width: 0; background: #f1f5f9; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; }
+  #dcStyleModal .msm-paper { background: #fff; border-radius: 6px; box-shadow: 0 2px 16px rgba(0,0,0,0.10); padding: 18px; flex: 1; position: relative; min-height: 180px; overflow-x: auto; }
+  #dcStyleModal .msm-paper-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; z-index: 5; gap: 8px; }
+  #dcStyleModal .msm-ai-panel { width: 310px; min-width: 240px; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0; background: #fff; }
+  #dcStyleModal .msm-ai-header { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 11.5px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 6px; letter-spacing: 0.02em; }
+  #dcStyleModal .msm-chat-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #dcStyleModal .msm-bubble { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+  #dcStyleModal .msm-bubble.user { align-self: flex-end; background: #3b82f6; color: #fff; border-bottom-right-radius: 3px; }
+  #dcStyleModal .msm-bubble.ai { align-self: flex-start; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+  #dcStyleModal .msm-bubble.err { align-self: flex-start; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-bottom-left-radius: 3px; }
+  #dcStyleModal .msm-chips { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #f1f5f9; }
+  #dcStyleModal .msm-chip { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; cursor: pointer; white-space: nowrap; user-select: none; }
+  #dcStyleModal .msm-chip:hover { background: #e2e8f0; border-color: #94a3b8; color: #1e293b; }
+  #dcStyleModal .msm-input-area { padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+  #dcStyleModal .msm-unsaved { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,.15); border-radius: 20px; padding: 1px 8px; }
+  #dcStyleModal .msm-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; flex-shrink: 0; }
+</style>
+
+<div class="modal fade" id="dcStyleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:12px;overflow:hidden;">
+      <div class="msm-header d-flex align-items-start gap-3">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span style="font-size:14px;font-weight:600;letter-spacing:.01em;">Customizar Visual — Gráfico Descarga</span>
+            <span id="dcsmUnsavedBadge" class="msm-unsaved d-none"><span class="msm-unsaved-dot"></span>Não salvo</span>
+          </div>
+          <div id="dcsmTestName" style="font-size:12px;opacity:.6;padding-left:2px;">—</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:2px;"></button>
+      </div>
+      <div class="modal-body p-0 d-flex" style="height:560px;max-height:70vh;min-height:360px;">
+        <div class="msm-preview-panel">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Visualização</span>
+            <span id="dcsmPreviewHint" style="font-size:11px;color:#94a3b8;"></span>
+          </div>
+          <div class="msm-paper">
+            <div class="msm-paper-overlay" id="dcsmOverlay">
+              <div class="spinner-border text-success" role="status" style="width:1.6rem;height:1.6rem;border-width:2.5px;"></div>
+              <div style="font-size:12px;color:#64748b;">Gerando preview...</div>
+            </div>
+            <div id="dcsmPreviewContent"></div>
+          </div>
+        </div>
+        <div class="msm-ai-panel">
+          <div class="msm-ai-header">Assistente de Design IA</div>
+          <div class="msm-chat-area" id="dcsmChatArea"></div>
+          <div class="msm-chips">
+            <span class="msm-chip" data-s="Linha vermelha, pontos vermelhos">Linha vermelha</span>
+            <span class="msm-chip" data-s="Linha azul escura, pontos azuis">Linha azul</span>
+            <span class="msm-chip" data-s="Cabeçalho azul marinho escuro">Cabeçalho azul</span>
+            <span class="msm-chip" data-s="Linha laranja com pontos laranja">Linha laranja</span>
+            <span class="msm-chip" data-s="Área preenchida mais visível, fill com opacidade 0.45">Área destacada</span>
+            <span class="msm-chip" data-s="Pontos maiores, aumentar stroke-width da linha para 3.5px">Linha mais grossa</span>
+          </div>
+          <div class="msm-input-area">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-control form-control-sm flex-grow-1" id="dcsmInput" placeholder="Descreva a alteração desejada..." style="border-radius:18px;font-size:12.5px;" />
+              <button class="btn btn-success btn-sm d-flex align-items-center justify-content-center" id="dcsmSendBtn" type="button" style="border-radius:50%;width:32px;height:32px;flex-shrink:0;padding:0;">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-auto" id="dcsmResetBtn">Restaurar padrão</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-sm btn-outline-success" id="dcsmDefaultBtn">Salvar como padrão</button>
+        <button type="button" class="btn btn-sm btn-success" id="dcsmSaveBtn">Salvar visual</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var dcModal = document.getElementById("dcStyleModal");
+  if (!dcModal) return;
+  var bsDcModal = null;
+  function getDcModal() { if (!bsDcModal) bsDcModal = new bootstrap.Modal(dcModal); return bsDcModal; }
+
+  var previewContent = document.getElementById("dcsmPreviewContent");
+  var chatArea      = document.getElementById("dcsmChatArea");
+  var overlay       = document.getElementById("dcsmOverlay");
+  var inputEl       = document.getElementById("dcsmInput");
+  var sendBtn       = document.getElementById("dcsmSendBtn");
+  var saveBtn       = document.getElementById("dcsmSaveBtn");
+  var defaultBtn    = document.getElementById("dcsmDefaultBtn");
+  var resetBtn      = document.getElementById("dcsmResetBtn");
+  var unsavedBadge  = document.getElementById("dcsmUnsavedBadge");
+  var testNameEl    = document.getElementById("dcsmTestName");
+  var previewHint   = document.getElementById("dcsmPreviewHint");
+
+  var activeTestId = null, activeOrderId = null, pendingStyle = null;
+  var csrfToken = "<%= csrfToken %>";
+  var typingEl = null;
+
+  function setUnsaved(on) { unsavedBadge.classList.toggle("d-none", !on); saveBtn.disabled = !on && !pendingStyle; }
+  function showOverlay(on) { overlay.style.display = on ? "flex" : "none"; }
+  function setInputBusy(on) { sendBtn.disabled = on; inputEl.disabled = on; resetBtn.disabled = on; if (defaultBtn) defaultBtn.disabled = on; }
+  function addBubble(type, text) {
+    removeTyping();
+    var div = document.createElement("div");
+    div.className = "msm-bubble " + type;
+    div.textContent = text;
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    return div;
+  }
+  function showTyping() {
+    removeTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "msm-bubble ai msm-typing";
+    typingEl.innerHTML = "<span></span><span></span><span></span>";
+    chatArea.appendChild(typingEl);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+  function removeTyping() { if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl); typingEl = null; }
+  function updatePreview(html) { previewContent.innerHTML = html || ""; }
+  function apiUrl(path) { return "/admin/report-service/orders/" + activeOrderId + "/discharge/" + activeTestId + "/" + path; }
+
+  async function callAi(instruction, apply) {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (instruction) body.set("instruction", instruction);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    if (apply) body.set("apply", "true");
+    var resp = await fetch(apiUrl("chart-style-ai"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro na requisição."); }
+    return resp.json();
+  }
+  async function callReset() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    var resp = await fetch(apiUrl("chart-style-reset"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) throw new Error("Erro ao resetar.");
+    return resp.json();
+  }
+  async function callDefault() {
+    var body = new URLSearchParams();
+    body.set("_csrf", csrfToken);
+    if (pendingStyle) body.set("current_style", JSON.stringify(pendingStyle));
+    var resp = await fetch(apiUrl("chart-style-default"), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+    if (!resp.ok) { var data = await resp.json().catch(function () { return {}; }); throw new Error(data.error || "Erro ao salvar padrão."); }
+    return resp.json();
+  }
+
+  document.querySelectorAll(".discharge-chart-style-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      activeTestId  = Number(btn.getAttribute("data-test-id") || 0);
+      activeOrderId = btn.getAttribute("data-order-id") || "";
+      pendingStyle  = null;
+      chatArea.innerHTML = "";
+      inputEl.value = "";
+      previewHint.textContent = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = true;
+      testNameEl.textContent = btn.getAttribute("data-test-name") || ("Teste #" + activeTestId);
+      showOverlay(true);
+      getDcModal().show();
+      callAi(null, false).then(function (r) {
+        showOverlay(false);
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || null;
+        if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+        previewHint.textContent = "Envie uma instrução para personalizar";
+        addBubble("ai", "Olá! Descreva o que deseja alterar: cor da linha, pontos, cabeçalho, área preenchida.");
+      }).catch(function (err) {
+        showOverlay(false);
+        previewContent.innerHTML = "<p style='color:#dc2626;font-size:12px;'>Erro ao carregar preview: " + (err.message || "") + "</p>";
+      });
+    });
+  });
+
+  function sendInstruction() {
+    var instruction = (inputEl.value || "").trim();
+    if (!instruction || sendBtn.disabled) return;
+    setInputBusy(true);
+    addBubble("user", instruction);
+    inputEl.value = "";
+    showTyping();
+    previewHint.textContent = "Aplicando alterações...";
+    callAi(instruction, false).then(function (r) {
+      removeTyping();
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      setUnsaved(true);
+      saveBtn.disabled = false;
+      if (defaultBtn) defaultBtn.disabled = false;
+      previewHint.textContent = "Preview atualizado — salve quando estiver satisfeito";
+      addBubble("ai", "Feito! Verifique o preview ao lado.");
+    }).catch(function (err) {
+      removeTyping();
+      addBubble("err", "Erro: " + (err.message || "Falha na IA."));
+      previewHint.textContent = "";
+    }).finally(function () { setInputBusy(false); inputEl.focus(); });
+  }
+
+  sendBtn.addEventListener("click", sendInstruction);
+  inputEl.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInstruction(); } });
+  dcModal.querySelectorAll(".msm-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () { inputEl.value = chip.getAttribute("data-s") || ""; inputEl.focus(); });
+  });
+
+  saveBtn.addEventListener("click", function () {
+    if (!pendingStyle) return;
+    setInputBusy(true);
+    saveBtn.disabled = true;
+    callAi(null, true).then(function () {
+      var btn = document.querySelector('.discharge-chart-style-btn[data-test-id="' + activeTestId + '"]');
+      if (btn) {
+        btn.setAttribute("data-has-chart-style", "1");
+        var badge = btn.querySelector(".badge");
+        if (badge) badge.remove();
+        btn.insertAdjacentHTML("beforeend", ' <span class="badge text-bg-success" style="font-size:9px;">custom</span>');
+      }
+      setUnsaved(false);
+      getDcModal().hide();
+    }).catch(function (err) {
+      addBubble("err", "Erro ao salvar: " + (err.message || "Tente novamente."));
+      saveBtn.disabled = false;
+    }).finally(function () { setInputBusy(false); });
+  });
+
+  if (defaultBtn) {
+    defaultBtn.addEventListener("click", function () {
+      if (!pendingStyle) return;
+      setInputBusy(true);
+      defaultBtn.disabled = true;
+      callDefault().then(function (r) {
+        updatePreview(r.previewHtml);
+        pendingStyle = r.styleConfig || pendingStyle;
+        setUnsaved(false);
+        saveBtn.disabled = true;
+        previewHint.textContent = "Estilo salvo como padrão para novos gráficos de descarga";
+        addBubble("ai", "Visual salvo como padrão.");
+      }).catch(function (err) {
+        addBubble("err", "Erro ao salvar padrão: " + (err.message || "Tente novamente."));
+      }).finally(function () { setInputBusy(false); defaultBtn.disabled = !pendingStyle; });
+    });
+  }
+
+  resetBtn.addEventListener("click", function () {
+    if (!confirm("Restaurar o visual padrão deste gráfico?")) return;
+    setInputBusy(true);
+    callReset().then(function (r) {
+      updatePreview(r.previewHtml);
+      pendingStyle = r.styleConfig || null;
+      chatArea.innerHTML = "";
+      setUnsaved(false);
+      saveBtn.disabled = true;
+      if (defaultBtn) defaultBtn.disabled = !pendingStyle;
+      previewHint.textContent = "Visual padrão restaurado";
+      addBubble("ai", "Visual restaurado para o padrão.");
+      var btn = document.querySelector('.discharge-chart-style-btn[data-test-id="' + activeTestId + '"]');
+      if (btn) { btn.setAttribute("data-has-chart-style", "0"); var badge = btn.querySelector(".badge"); if (badge) badge.remove(); }
+    }).catch(function (err) {
+      addBubble("err", "Erro ao restaurar: " + (err.message || "Tente novamente."));
+    }).finally(function () { setInputBusy(false); });
+  });
+})();
+</script>
+
+<!-- ── Modal: gráfico da curva de descarga (idêntico a discharge-editor.ejs) ── -->
+<style>
+  #dischargeChartModal .dch-stat-card { flex:1;padding:13px 16px;border-right:1px solid #f1f5f9;text-align:center;min-width:0; }
+  #dischargeChartModal .dch-stat-card:last-child { border-right:none; }
+  #dischargeChartModal .dch-stat-label { font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-weight:500; }
+  #dischargeChartModal .dch-stat-value { font-size:20px;font-weight:700;line-height:1.1; }
+  #dischargeChartModal .dch-stat-unit { font-size:11px;font-weight:400;color:#94a3b8;margin-left:2px; }
+  #dischargeChartModal .dch-cell-item { padding:8px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:11.5px;color:#475569;transition:background .12s;user-select:none;border-left:3px solid transparent;background:#fff; }
+  #dischargeChartModal .dch-cell-item:nth-child(even) { background:#f8fafc; }
+  #dischargeChartModal .dch-cell-item:hover { background:#e2e8f0;color:#1e293b; }
+  #dischargeChartModal .dch-cell-item.dch-selected { background:#eef5e8 !important;border-left-color:#4a7a30;color:#3d6b22;font-weight:700; }
+  #dischargeChartModal .dch-cell-header { padding:9px 12px 5px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8; }
+  #dischargeChartModal .dch-cell-total { font-size:12px;font-weight:600; }
+</style>
+
+<div class="modal fade" id="dischargeChartModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:880px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:14px;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#1c3a0a 0%,#2f5c18 50%,#4a7a30 100%);padding:18px 22px 15px;color:#fff;">
+        <div class="d-flex align-items-start justify-content-between gap-3">
+          <div>
+            <div style="font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.5;margin-bottom:5px;font-weight:600;">CURVA DE DESCARGA</div>
+            <div id="dChartTitle" style="font-size:17px;font-weight:700;letter-spacing:.01em;line-height:1.25;">—</div>
+          </div>
+          <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Fechar" style="margin-top:3px;opacity:.7;"></button>
+        </div>
+      </div>
+      <div class="modal-body p-0 d-flex" style="background:#f4f7fb;height:470px;">
+        <div id="dChartCellList" style="width:155px;min-width:155px;background:#fff;border-right:1px solid #eef2f7;overflow-y:auto;flex-shrink:0;"></div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+          <div id="dChartStats" style="display:flex;background:#fff;border-bottom:1px solid #eef2f7;flex-wrap:wrap;flex-shrink:0;"></div>
+          <div style="padding:16px 20px 6px;flex:1;min-height:0;">
+            <div style="background:#fff;border-radius:10px;padding:16px 16px 10px;box-shadow:0 1px 10px rgba(15,39,68,.07);height:100%;display:flex;align-items:center;">
+              <canvas id="dischargeChartCanvas" style="width:100%;"></canvas>
+            </div>
+          </div>
+          <div id="dChartFootnote" style="padding:4px 22px 12px;font-size:10.5px;color:#94a3b8;line-height:1.5;flex-shrink:0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  if (typeof Chart === "undefined") return;
+  var modal = document.getElementById("dischargeChartModal");
+  if (!modal) return;
+  var bsModal = null;
+  function getModal() { if (!bsModal) bsModal = new bootstrap.Modal(modal); return bsModal; }
+
+  var chartInstance = null;
+  var currentData   = null;
+  var canvas        = document.getElementById("dischargeChartCanvas");
+  var titleEl       = document.getElementById("dChartTitle");
+  var statsEl       = document.getElementById("dChartStats");
+  var footnoteEl    = document.getElementById("dChartFootnote");
+  var cellListEl    = document.getElementById("dChartCellList");
+
+  function esc(str) { return String(str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function statCard(label, mainText, unit, color) {
+    return '<div class="dch-stat-card">'
+      + '<div class="dch-stat-label">' + label + '</div>'
+      + '<div class="dch-stat-value" style="color:' + (color || "#1e293b") + ';">'
+      + mainText + (unit ? '<span class="dch-stat-unit">' + unit + "</span>" : "") + "</div></div>";
+  }
+
+  function updateStats(values, isTotal, seriesLabel, nominal) {
+    var valid = values.filter(function(v) { return v !== null && !isNaN(v); });
+    if (!valid.length) return;
+    var initial  = values[0];
+    var finalVal = values[values.length - 1];
+    var dropV    = initial - finalVal;
+    var dropPct  = initial > 0 ? (dropV / initial * 100) : 0;
+    var signV    = dropV >= 0 ? "−" : "+";
+    var dropColor = dropV > 0.001 ? "#dc2626" : (dropV < -0.001 ? "#16a34a" : "#1e293b");
+    var decimals  = isTotal ? 2 : 3;
+    statsEl.innerHTML =
+      statCard("Tensão inicial", initial.toFixed(decimals), "V", "#4a7a30") +
+      statCard("Tensão final",   finalVal.toFixed(decimals), "V", dropV > 0.001 ? "#b45309" : "#4a7a30") +
+      statCard("Queda total", signV + Math.abs(dropV).toFixed(decimals) + " V", "(" + Math.abs(dropPct).toFixed(1) + "%)", dropColor) +
+      (isTotal ? statCard("Pontos", values.length, "", "#1e293b") : statCard("Célula", esc(seriesLabel), "", "#4a7a30")) +
+      (isTotal && nominal !== null && !isNaN(nominal) ? statCard("V nominal", nominal.toFixed(0), "V", "#4a7a30") : "");
+  }
+
+  function plotChart(labels, values, seriesLabel, isTotal) {
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    var valid = values.filter(function(v) { return v !== null && !isNaN(v); });
+    if (!valid.length) return;
+    var seriesInit = values[0];
+    var minVal = Math.min.apply(null, valid);
+    var maxVal = Math.max.apply(null, valid);
+    var range  = maxVal - minVal;
+    var yPad   = range > 0 ? range * 0.18 : (maxVal * 0.05 || 1);
+    var decimals = isTotal ? 2 : 3;
+    var lineColor  = isTotal ? "#4a7a30" : "#6aaa42";
+    var hoverColor = isTotal ? "#5d8f3d" : "#4a7a30";
+    var ctx = canvas.getContext("2d");
+    var gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0,   isTotal ? "rgba(74,122,48,0.30)"  : "rgba(106,170,66,0.24)");
+    gradient.addColorStop(0.5, isTotal ? "rgba(93,143,61,0.10)"  : "rgba(106,170,66,0.08)");
+    gradient.addColorStop(1,   "rgba(0,0,0,0)");
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: { labels: labels, datasets: [{
+        label: seriesLabel, data: values, borderColor: lineColor, borderWidth: 2.5,
+        pointBackgroundColor: lineColor, pointBorderColor: "#ffffff", pointBorderWidth: 2,
+        pointRadius: 5, pointHoverRadius: 8, pointHoverBackgroundColor: hoverColor,
+        pointHoverBorderColor: "#ffffff", fill: true, backgroundColor: gradient, tension: 0.35, spanGaps: true
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: true, aspectRatio: 2.3,
+        interaction: { mode: "index", intersect: false },
+        animation: { duration: 380, easing: "easeOutQuart" },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#1a2e0a", titleColor: "#87b86a", bodyColor: "#d4e6c3",
+            borderColor: "#4a7a30", borderWidth: 1, padding: 12, cornerRadius: 9, displayColors: false,
+            callbacks: {
+              title: function(items) { return items[0].label; },
+              label: function(item) {
+                var val = item.parsed.y;
+                if (val === null || val === undefined) return ["  —"];
+                var dV = seriesInit - val;
+                var dPct = seriesInit > 0 ? (dV / seriesInit * 100) : 0;
+                var sg = dV >= 0 ? "−" : "+";
+                return ["  " + esc(seriesLabel) + ": " + val.toFixed(decimals) + " V",
+                  "  Queda: " + sg + Math.abs(dV).toFixed(decimals) + " V  (" + Math.abs(dPct).toFixed(1) + "%)"];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: "#eef2f7" }, border: { color: "#e2e8f0" }, ticks: { font: { size: 11 }, color: "#64748b", maxRotation: 40 } },
+          y: {
+            min: Math.max(0, parseFloat((minVal - yPad).toFixed(3))),
+            max: parseFloat((maxVal + yPad).toFixed(3)),
+            grid: { color: "#eef2f7" }, border: { color: "#e2e8f0" },
+            ticks: { font: { size: 11 }, color: "#64748b", callback: function(v) { return v.toFixed(decimals) + " V"; } },
+            title: { display: true, text: (isTotal ? "Tensão Total" : esc(seriesLabel)) + " (V)", font: { size: 11 }, color: "#94a3b8" }
+          }
+        }
+      }
+    });
+  }
+
+  function buildCellList(cells) {
+    var html = '<div class="dch-cell-header">SÉRIES</div>';
+    html += '<div class="dch-cell-item dch-cell-total dch-selected" data-idx="-1">&#8721; Tensão Total</div>';
+    cells.forEach(function(cell, idx) {
+      html += '<div class="dch-cell-item" data-idx="' + idx + '">' + esc(cell.name) + '</div>';
+    });
+    cellListEl.innerHTML = html;
+    cellListEl.querySelectorAll(".dch-cell-item").forEach(function(item) {
+      item.addEventListener("click", function() {
+        cellListEl.querySelectorAll(".dch-cell-item").forEach(function(i) { i.classList.remove("dch-selected"); });
+        item.classList.add("dch-selected");
+        var idx = parseInt(item.getAttribute("data-idx"), 10);
+        if (idx === -1) {
+          updateStats(currentData.values, true, "Tensão Total", currentData.nominal);
+          plotChart(currentData.labels, currentData.values, "Tensão Total", true);
+          footnoteEl.innerHTML = "Cada ponto &eacute; o <strong>somatório de todas as células</strong> naquele instante. Selecione uma célula na lista para ver sua curva individual.";
+        } else {
+          var cell = currentData.cells[idx];
+          updateStats(cell.values, false, cell.name, null);
+          plotChart(currentData.labels, cell.values, cell.name, false);
+          footnoteEl.innerHTML = "Curva individual da <strong>c&eacute;lula " + esc(cell.name) + "</strong>. Eixo Y em escala de célula única.";
+        }
+      });
+    });
+  }
+
+  window.openDischargeChart = function(testId) {
+    var el = document.getElementById("dischargeChartData_" + testId);
+    if (!el) return;
+    try { currentData = JSON.parse(el.textContent || "{}"); } catch(e) { return; }
+    currentData.nominal = currentData.nominal != null ? parseFloat(currentData.nominal) : null;
+    if (!Array.isArray(currentData.values) || !currentData.values.length) return;
+    titleEl.textContent = currentData.title || "Teste de Descarga";
+    buildCellList(Array.isArray(currentData.cells) ? currentData.cells : []);
+    updateStats(currentData.values, true, "Tensão Total", currentData.nominal);
+    plotChart(currentData.labels, currentData.values, "Tensão Total", true);
+    footnoteEl.innerHTML = "Cada ponto &eacute; o <strong>somatório de todas as c&eacute;lulas</strong> naquele instante. Selecione uma c&eacute;lula na lista para ver sua curva individual.";
+    getModal().show();
+  };
+
+  modal.addEventListener("hidden.bs.modal", function() {
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    currentData = null;
+  });
+})();
+</script>
+
+<%- include("../partials/footer") %>

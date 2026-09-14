@@ -36,7 +36,12 @@
       "Bash(xargs grep -l \"paginat\\\\|page-break\\\\|chapter\")",
       "Bash(xargs grep -l \"page-break\\\\|avoid-break\")",
       "Bash(xargs grep -l \"grid\\\\|Grid\")",
-      "Bash(xargs ls -lh)"
+      "Bash(xargs ls -lh)",
+      "Bash(node \"/c/Users/User/AppData/Local/Temp/claude/c--Users-User-OneDrive--rea-de-Trabalho-Projetos-Vextrom-VextromPlatform-VextromPlatform---Docker/5735f5db-338e-4ed5-a574-f2130bc82af5/scratchpad/test-fluke521-parser-v2.js\")",
+      "Bash(node --check report_service/src/repositories/serviceReportRepository.js)",
+      "Bash(node \"/c/Users/User/AppData/Local/Temp/claude/c--Users-User-OneDrive--rea-de-Trabalho-Projetos-Vextrom-VextromPlatform-VextromPlatform---Docker/5735f5db-338e-4ed5-a574-f2130bc82af5/scratchpad/test-fluke521-repo.js\")",
+      "Bash(node --check report_service/src/services/reportPreviewService.js)",
+      "Bash(node --check report_service/src/services/measurementStyleService.js)"
     ]
   }
 }

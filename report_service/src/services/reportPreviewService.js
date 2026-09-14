@@ -963,6 +963,143 @@ function renderAlberLeituraTable(alberLeituras, requestedId, styleConfig) {
     </div>`;
 }
 
+function generateDefaultFluke521Css(leituraId) {
+  const s = `[data-fluke521-id="${leituraId}"]`;
+  return [
+    `${s} .fluke521-info-cell{padding:5px 12px;white-space:nowrap;border-right:1px solid #1d4ed8;background:#2563eb;}`,
+    `${s} .fluke521-info-label{font-size:9.5px;color:#bfdbfe;margin-right:4px;}`,
+    `${s} .fluke521-info-value{font-size:11px;color:#ffffff;font-weight:700;}`,
+    `${s} .fluke521-stat-cell{padding:7px 12px;border-right:1px solid #e2e8f0;background:#ffffff;}`,
+    `${s} .fluke521-stat-label{font-size:9.5px;color:#64748b;margin-bottom:1px;}`,
+    `${s} .fluke521-stat-value{font-size:15px;font-weight:700;color:#1e293b;line-height:1.1;}`,
+    `${s} .fluke521-stat-unit{font-size:10px;font-weight:400;color:#94a3b8;margin-left:2px;}`,
+    `${s} .fluke521-title-th{border:1px solid #3b82f6;border-bottom:none;background:#2563eb;color:#ffffff;padding:7px 8px;font-size:13px;font-weight:600;letter-spacing:0.03em;text-align:left;width:100%;box-sizing:border-box;}`,
+    `${s} .fluke521-th{border:1px solid #3b82f6;background:#2563eb;color:#ffffff;padding:6px 8px;font-size:11px;font-weight:600;letter-spacing:0.03em;}`,
+    `${s} .fluke521-td{border:1px solid #3b82f6;padding:5px 8px;font-size:11px;vertical-align:middle;}`,
+    `${s} .fluke521-td-alt{border:1px solid #3b82f6;padding:5px 8px;font-size:11px;vertical-align:middle;background:#eff6ff;}`
+  ].join("\n");
+}
+
+// Renderiza a tabela de resistência/tensão/temperatura por célula (leituras_fluke521 +
+// celulas_fluke521). Estrutura análoga a renderAlberLeituraTable, mas sem agrupamento por
+// string/banco (o BT521 não distingue strings nesse arquivo) e com coluna de temperatura
+// opcional (só aparece se pelo menos uma célula tiver leitura de temperatura).
+function renderFluke521LeituraTable(leituras, requestedId, styleConfig) {
+  const tagId = Number(requestedId);
+  const list = Array.isArray(leituras) ? leituras : [];
+  const leitura = list.find((item) => Number(item && item.seq_id) === tagId)
+    || list.find((item) => Number(item && item.id) === tagId);
+  if (!leitura) return "";
+  const id = Number(leitura.id);
+
+  const sc = (styleConfig && typeof styleConfig === "object") ? styleConfig
+    : (leitura.style_config && typeof leitura.style_config === "object") ? leitura.style_config
+    : {};
+  const css = (sc.customCss && typeof sc.customCss === "string") ? sc.customCss : generateDefaultFluke521Css(id);
+
+  const celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
+
+  function fmtR(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(2); }
+  function fmtV(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(3); }
+  function fmtT(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(1); }
+  const avg = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
+
+  const rNums = celulas.map((c) => Number(c.resistenciaMohm)).filter((n) => Number.isFinite(n));
+  const vNums = celulas.map((c) => Number(c.tensaoVdc)).filter((n) => Number.isFinite(n));
+  const tNums = celulas
+    .map((c) => (c.temperaturaC === null || c.temperaturaC === undefined ? NaN : Number(c.temperaturaC)))
+    .filter((n) => Number.isFinite(n));
+
+  const rMin = rNums.length ? Math.min(...rNums) : null;
+  const rMax = rNums.length ? Math.max(...rNums) : null;
+  const rMed = avg(rNums);
+  const vMin = vNums.length ? Math.min(...vNums) : null;
+  const vMax = vNums.length ? Math.max(...vNums) : null;
+  const vMed = avg(vNums);
+  const tMed = avg(tNums);
+
+  // display_config.hiddenColumns: colunas que o usuário optou por ocultar (mesmo
+  // mecanismo do Alber). Chaves: celula | resistencia | tensao | temperatura | hora.
+  const displayConfig = leitura.display_config && typeof leitura.display_config === "object"
+    ? leitura.display_config : {};
+  const hidden = Array.isArray(displayConfig.hiddenColumns) ? displayConfig.hiddenColumns : [];
+  const showCelula = !hidden.includes("celula");
+  const showResistencia = !hidden.includes("resistencia");
+  const showTensao = !hidden.includes("tensao");
+  const showTemp = tNums.length > 0 && !hidden.includes("temperatura");
+
+  const infoCell = (label, value) =>
+    `<td class="fluke521-info-cell"><span class="fluke521-info-label">${label}</span><strong class="fluke521-info-value">${value}</strong></td>`;
+
+  const headerHtml = `
+    <table data-fluke521-id="${id}" style="width:100%;border-collapse:collapse;margin-bottom:0;page-break-inside:avoid;break-inside:avoid;">
+      <tr>
+        ${infoCell("Local", escapeHtml(leitura.location_name || "-"))}
+        ${infoCell("Equipamento", escapeHtml(leitura.device_name || "-"))}
+        ${leitura.battery_type ? infoCell("Tipo de bateria", escapeHtml(leitura.battery_type)) : ""}
+        ${leitura.capacity ? infoCell("Capacidade", escapeHtml(leitura.capacity)) : ""}
+      </tr>
+    </table>
+    <table data-fluke521-id="${id}" style="width:100%;border-collapse:collapse;margin-bottom:0;page-break-inside:avoid;break-inside:avoid;">
+      <tr>
+        ${showResistencia ? `
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Resistência média</div><div class="fluke521-stat-value">${escapeHtml(fmtR(rMed))}<span class="fluke521-stat-unit">mΩ</span></div></td>
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Resist. mínima</div><div class="fluke521-stat-value">${escapeHtml(fmtR(rMin))}<span class="fluke521-stat-unit">mΩ</span></div></td>
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Resist. máxima</div><div class="fluke521-stat-value">${escapeHtml(fmtR(rMax))}<span class="fluke521-stat-unit">mΩ</span></div></td>` : ""}
+        ${showTensao ? `
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Tensão média</div><div class="fluke521-stat-value">${escapeHtml(fmtV(vMed))}<span class="fluke521-stat-unit">V</span></div></td>
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Tensão mínima</div><div class="fluke521-stat-value">${escapeHtml(fmtV(vMin))}<span class="fluke521-stat-unit">V</span></div></td>
+        <td class="fluke521-stat-cell"><div class="fluke521-stat-label">Tensão máxima</div><div class="fluke521-stat-value">${escapeHtml(fmtV(vMax))}<span class="fluke521-stat-unit">V</span></div></td>` : ""}
+        ${showTemp ? `<td class="fluke521-stat-cell"><div class="fluke521-stat-label">Temp. média</div><div class="fluke521-stat-value">${escapeHtml(fmtT(tMed))}<span class="fluke521-stat-unit">°C</span></div></td>` : ""}
+        <td class="fluke521-stat-cell" style="border-right:none;"><div class="fluke521-stat-label">Células</div><div class="fluke521-stat-value">${celulas.length}</div></td>
+      </tr>
+    </table>`;
+
+  const showHora = celulas.some((c) => String(c.hora || "").trim()) && !hidden.includes("hora");
+  const cols = [
+    ...(showCelula ? ["Célula"] : []),
+    ...(showResistencia ? ["Resistência (mΩ)"] : []),
+    ...(showTensao ? ["Tensão (Vcc)"] : []),
+    ...(showTemp ? ["Temperatura (°C)"] : []),
+    ...(showHora ? ["Hora"] : [])
+  ];
+  const rows = celulas.map((c, idx) => {
+    const tdClass = idx % 2 === 0 ? "fluke521-td" : "fluke521-td-alt";
+    const cells = [
+      ...(showCelula ? [`<td class="${tdClass}">${escapeHtml(String(c.celulaNum))}</td>`] : []),
+      ...(showResistencia ? [`<td class="${tdClass}">${escapeHtml(fmtR(c.resistenciaMohm))}</td>`] : []),
+      ...(showTensao ? [`<td class="${tdClass}">${escapeHtml(fmtV(c.tensaoVdc))}</td>`] : []),
+      ...(showTemp ? [`<td class="${tdClass}">${escapeHtml(fmtT(c.temperaturaC))}</td>`] : []),
+      ...(showHora ? [`<td class="${tdClass}">${escapeHtml(String(c.hora || "-").trim() || "-")}</td>`] : [])
+    ].join("");
+    return `<tr style="page-break-inside:avoid;break-inside:avoid;">${cells}</tr>`;
+  }).join("");
+
+  // O atributo de escopo é repetido na própria tabela de dados (e não só no wrapper) porque
+  // a paginação do preview quebra blocos com mais de uma tabela em filhos separados por
+  // página — sem isto, as células saem de baixo de [data-fluke521-id] e o CSS com escopo
+  // (zebrado, bordas, cabeçalho) deixa de casar a partir da segunda página.
+  // Com todas as colunas ocultas, mantém só cabeçalho/estatísticas (a tag continua
+  // renderizando algo, em vez de ficar literal no relatório).
+  const tableHtml = cols.length ? `
+    <table data-fluke521-id="${id}" style="width:100%;border-collapse:collapse;line-height:1.3;page-break-inside:auto;">
+      <caption class="fluke521-title-th" style="caption-side:top;">${escapeHtml(leitura.device_name || leitura.location_name || "Leitura Fluke BT521")}</caption>
+      <thead style="display:table-header-group;">
+        <tr style="page-break-inside:avoid;break-inside:avoid;">
+          ${cols.map((c) => `<th class="fluke521-th">${c}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>` : "";
+
+  return `
+    <div class="report-inline-fluke521-wrap" data-fluke521-id="${id}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;">
+      <style>${css}</style>
+      ${headerHtml}
+      ${tableHtml}
+    </div>`;
+}
+
 function normalizeInlineCellValue(value, fallback = "-") {
   const raw = String(value == null ? "" : value).trim();
   return raw || fallback;
@@ -1095,7 +1232,8 @@ function renderDailyLogInlineItem(dailyLog, requestedId = null, context = null) 
     context.alberLeituras || [],
     context.dischargeTests || [],
     context.upsMeasures || [],
-    context.eventLogs || []
+    context.eventLogs || [],
+    context.leiturasFluke521 || []
   );
 }
 
@@ -1391,7 +1529,7 @@ function liftBlockTagFromParagraph(html, tagSrc, inlineReplacer) {
   });
 }
 
-function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = [], dischargeTests = [], upsMeasures = [], eventLogs = []) {
+function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipmentById, timesheetItems, dailyLogsById, dailyLogsOrdered, options = {}, technicianItems = [], orderEquipments = [], siteData = {}, measurementTables = [], alberLeituras = [], dischargeTests = [], upsMeasures = [], eventLogs = [], leiturasFluke521 = []) {
   const source = String(contentHtml || "");
   if (!source) return "<p><br></p>";
   const opts = {
@@ -1463,9 +1601,16 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
   const withAlberP = liftBlockTagFromParagraph(r7, alberSrc, alberFn);
   const r7b = withAlberP.replace(new RegExp(alberSrc, "gi"), alberFn);
 
+  // @fluke521=ID -> tabela de resistência/tensão/temperatura por célula (Fluke BT521).
+  // O teste de descarga do mesmo import usa @discharge=ID / @grafo=ID (discharge_tests).
+  const fluke521Src = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*fluke521(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
+  const fluke521Fn = (_match, rawId) => renderFluke521LeituraTable(leiturasFluke521, rawId) || _match;
+  const withFluke521P = liftBlockTagFromParagraph(r7b, fluke521Src, fluke521Fn);
+  const r7bf = withFluke521P.replace(new RegExp(fluke521Src, "gi"), fluke521Fn);
+
   const dischargeSrc = /(?:@|&#64;)(?:\s|&nbsp;|<[^>]+>)*discharge(?:\s|&nbsp;|<[^>]+>)*(?:=|&#61;)(?:\s|&nbsp;|<[^>]+>)*(\d+)/gi.source;
   const dischargeFn = (_match, rawId) => renderDischargeTestTable(dischargeTests, rawId) || _match;
-  const withDischargeP = liftBlockTagFromParagraph(r7b, dischargeSrc, dischargeFn);
+  const withDischargeP = liftBlockTagFromParagraph(r7bf, dischargeSrc, dischargeFn);
   const r7c = withDischargeP.replace(new RegExp(dischargeSrc, "gi"), dischargeFn);
 
   // @mesuaresUPS=ID -> cabeçalho (serial/firmware) + seções de medições importadas do Measures.xls
@@ -1503,6 +1648,7 @@ function injectTaggedImagesInHtml(contentHtml, imageById, componentItems, equipm
     siteData,
     measurementTables,
     alberLeituras,
+    leiturasFluke521,
     dischargeTests,
     upsMeasures,
     eventLogs,
@@ -1619,6 +1765,7 @@ function buildPreviewModel(payload, options = {}) {
   const upsMeasures = Array.isArray(payload.upsMeasures) ? payload.upsMeasures : [];
   const eventLogs = Array.isArray(payload.eventLogs) ? payload.eventLogs : [];
   const alberLeituras = Array.isArray(payload.alberLeituras) ? payload.alberLeituras : [];
+  const leiturasFluke521 = Array.isArray(payload.leiturasFluke521) ? payload.leiturasFluke521 : [];
   const dischargeTests = Array.isArray(payload.dischargeTests) ? payload.dischargeTests : [];
   const timesheetItems = Array.isArray(payload.timesheet) ? payload.timesheet : [];
   const technicianItems = Array.isArray(payload.technicians) ? payload.technicians : [];
@@ -1700,7 +1847,8 @@ function buildPreviewModel(payload, options = {}) {
           alberLeituras,
           dischargeTests,
           upsMeasures,
-          eventLogs
+          eventLogs,
+          leiturasFluke521
         ),
         content_html_preview: injectTaggedImagesInHtml(
           section.content_html || "<p><br></p>",
@@ -1718,7 +1866,8 @@ function buildPreviewModel(payload, options = {}) {
           alberLeituras,
           dischargeTests,
           upsMeasures,
-          eventLogs
+          eventLogs,
+          leiturasFluke521
         ),
         section_title_html: section.section_title_html || `<p>${section.section_title || "-"}</p>`,
         section_title_text: section.section_title_text || section.section_title || "-",
@@ -2093,6 +2242,8 @@ module.exports = {
   generateDefaultCss,
   renderAlberLeituraTable,
   generateDefaultAlberCss,
+  renderFluke521LeituraTable,
+  generateDefaultFluke521Css,
   renderDischargeTestTable,
   generateDefaultDischargeCss,
   generateDischargeSvgChart,

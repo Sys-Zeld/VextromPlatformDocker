@@ -911,6 +911,51 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE discharge_tests ALTER COLUMN seq_id SET NOT NULL;`);
   await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_discharge_tests_seq_id ON discharge_tests (service_report_id, seq_id);`);
 
+  // Leituras Fluke BT521: mesma ideia de leituras_alber/celulas_alber (cabeçalho + células
+  // com resistência/tensão/temperatura). A parte de teste de descarga do mesmo arquivo é
+  // gravada em discharge_tests (reaproveita a tabela, o gráfico e a customização visual já
+  // existentes) — fluke_leitura_id só marca a origem para exibir a etiqueta "via Fluke BT521".
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS leituras_fluke521 (
+      id                BIGSERIAL PRIMARY KEY,
+      service_report_id BIGINT NOT NULL REFERENCES service_report_reports(id) ON DELETE CASCADE,
+      seq_id            INTEGER NOT NULL,
+      location_name     TEXT NOT NULL DEFAULT '',
+      device_name       TEXT NOT NULL DEFAULT '',
+      device_id         TEXT NOT NULL DEFAULT '',
+      battery_series    TEXT NOT NULL DEFAULT '',
+      battery_type      TEXT NOT NULL DEFAULT '',
+      battery_number    INT NOT NULL DEFAULT 0,
+      battery_start_id  TEXT NOT NULL DEFAULT '',
+      capacity          TEXT NOT NULL DEFAULT '',
+      time_created      TEXT NOT NULL DEFAULT '',
+      time_modified     TEXT NOT NULL DEFAULT '',
+      nome_arquivo      TEXT NOT NULL DEFAULT '',
+      style_config      JSONB,
+      importado_em      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_leituras_fluke521_report_id ON leituras_fluke521 (service_report_id);`);
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leituras_fluke521_seq_id ON leituras_fluke521 (service_report_id, seq_id);`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS celulas_fluke521 (
+      id                  BIGSERIAL PRIMARY KEY,
+      leitura_id          BIGINT NOT NULL REFERENCES leituras_fluke521(id) ON DELETE CASCADE,
+      celula_num          INT NOT NULL,
+      resistencia_mohm    DOUBLE PRECISION NOT NULL DEFAULT 0,
+      tensao_vdc          DOUBLE PRECISION NOT NULL DEFAULT 0,
+      temperatura_c       DOUBLE PRECISION,
+      hora                TEXT NOT NULL DEFAULT ''
+    );
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_celulas_fluke521_leitura_id ON celulas_fluke521 (leitura_id);`);
+  // display_config.hiddenColumns: colunas que o usuário optou por ocultar na tabela
+  // (mesmo mecanismo de leituras_alber).
+  await db.query(`ALTER TABLE leituras_fluke521 ADD COLUMN IF NOT EXISTS display_config JSONB;`);
+
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS fluke_leitura_id BIGINT REFERENCES leituras_fluke521(id) ON DELETE SET NULL;`);
+
   await seedServiceReportEquipment();
   await seedServiceReportSample();
 }

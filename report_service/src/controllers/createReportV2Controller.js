@@ -134,7 +134,8 @@ const TABLE_STYLE_TYPES = [
   { key: "eventlog", label: "Event Log", get: getDefaultEventLogStyleConfig, settingKey: "report.preview.eventlog.style.default" }
 ];
 
-// Normaliza a tabela de ensaios/medições (mesmas regras do legado: máx. 12 colunas, 80 linhas).
+// Normaliza a tabela de ensaios/medições (máx. 12 colunas, 300 linhas — teto elevado de
+// 80 para suportar tabelas maiores sem truncar dados silenciosamente).
 function normalizeMeasurementInput(body) {
   const trim = (v) => String(v == null ? "" : v).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").trim();
   const rawCols = Array.isArray(body.columns) ? body.columns : [];
@@ -149,7 +150,7 @@ function normalizeMeasurementInput(body) {
       return cells;
     })
     .filter((row) => row.some((cell) => String(cell || "").trim()))
-    .slice(0, 80);
+    .slice(0, 300);
   return {
     id: Number(body.measurementId || body.measurement_id || 0),
     title: trim(body.title) || "Ensaios/Medições",

@@ -3799,9 +3799,10 @@ async function createDischargeTest(payload) {
       )
       INSERT INTO discharge_tests (
         service_report_id, seq_id, title, measurement_date, nominal_voltage,
-        notes, hour_labels, readings, col_celula_label, col_flutuacao_label, created_at, updated_at
+        notes, hour_labels, readings, col_celula_label, col_flutuacao_label, fluke_leitura_id,
+        created_at, updated_at
       )
-      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,NOW(),NOW())
+      VALUES ($1,(SELECT next_id FROM next_seq),$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,NOW(),NOW())
       RETURNING *
     `,
     [
@@ -3813,7 +3814,8 @@ async function createDischargeTest(payload) {
       JSON.stringify(payload.hourLabels || []),
       JSON.stringify(payload.readings || []),
       payload.colCelulaLabel || "",
-      payload.colFlutuacaoLabel || ""
+      payload.colFlutuacaoLabel || "",
+      payload.flukeLeituraId || null
     ]
   );
   await touchReport(payload.serviceReportId);
@@ -3889,6 +3891,186 @@ async function deleteDischargeTest(id, serviceReportId = null) {
     await touchReport(serviceReportId);
   }
   return result.rowCount > 0;
+}
+
+// ---- Leituras Fluke BT521 (resistência/tensão/temperatura por célula) ----------------
+// O teste de descarga do mesmo arquivo é gravado em discharge_tests (ver
+// createDischargeTest) e relacionado via discharge_tests.fluke_leitura_id.
+
+async function createLeituraFluke521(payload) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      `
+      WITH lock_report AS (
+        SELECT id FROM service_report_reports WHERE id = $1 FOR UPDATE
+      ),
+      next_seq AS (
+        SELECT gs AS next_id
+        FROM generate_series(
+          1,
+          COALESCE((SELECT MAX(seq_id) FROM leituras_fluke521 WHERE service_report_id = $1), 0) + 1
+        ) AS gs
+        WHERE NOT EXISTS (
+          SELECT 1 FROM leituras_fluke521 lf2
+          WHERE lf2.service_report_id = $1 AND lf2.seq_id = gs
+        )
+        ORDER BY gs LIMIT 1
+      )
+      INSERT INTO leituras_fluke521
+         (service_report_id, seq_id, location_name, device_name, device_id, battery_series,
+          battery_type, battery_number, battery_start_id, capacity, time_created, time_modified,
+          nome_arquivo, importado_em)
+       VALUES ($1,(SELECT next_id FROM next_seq),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+       RETURNING *`,
+      [
+        payload.serviceReportId,
+        payload.locationName || "",
+        payload.deviceName || "",
+        payload.deviceId || "",
+        payload.batterySeries || "",
+        payload.batteryType || "",
+        payload.batteryNumber || 0,
+        payload.batteryStartId || "",
+        payload.capacity || "",
+        payload.timeCreated || "",
+        payload.timeModified || "",
+        payload.nomeArquivo || ""
+      ]
+    );
+    const leitura = res.rows[0];
+
+    const celulas = Array.isArray(payload.celulas) ? payload.celulas : [];
+    for (const c of celulas) {
+      // eslint-disable-next-line no-await-in-loop
+      await client.query(
+        `INSERT INTO celulas_fluke521 (leitura_id, celula_num, resistencia_mohm, tensao_vdc, temperatura_c, hora)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [leitura.id, c.celulaNum, c.resistenciaMohm, c.tensaoVdc, c.temperaturaC, c.hora || ""]
+      );
+    }
+
+    await client.query("COMMIT");
+    await touchReport(payload.serviceReportId);
+    return getLeituraFluke521ById(leitura.id, payload.serviceReportId);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function listLeiturasFluke521ByReport(serviceReportId) {
+  const result = await db.query(
+    `SELECT lf.*,
+       COALESCE(
+         json_agg(
+           json_build_object(
+             'id', cf.id,
+             'celulaNum', cf.celula_num,
+             'resistenciaMohm', cf.resistencia_mohm,
+             'tensaoVdc', cf.tensao_vdc,
+             'temperaturaC', cf.temperatura_c,
+             'hora', cf.hora
+           ) ORDER BY cf.celula_num ASC
+         ) FILTER (WHERE cf.id IS NOT NULL),
+         '[]'::json
+       ) AS celulas
+     FROM leituras_fluke521 lf
+     LEFT JOIN celulas_fluke521 cf ON cf.leitura_id = lf.id
+     WHERE lf.service_report_id = $1
+     GROUP BY lf.id
+     ORDER BY lf.importado_em DESC`,
+    [serviceReportId]
+  );
+  return result.rows;
+}
+
+async function getLeituraFluke521ById(id, serviceReportId = null) {
+  const values = [id];
+  let where = "lf.id = $1";
+  if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+    values.push(Number(serviceReportId));
+    where += " AND lf.service_report_id = $2";
+  }
+  const result = await db.query(
+    `SELECT lf.*,
+       COALESCE(
+         json_agg(
+           json_build_object(
+             'id', cf.id,
+             'celulaNum', cf.celula_num,
+             'resistenciaMohm', cf.resistencia_mohm,
+             'tensaoVdc', cf.tensao_vdc,
+             'temperaturaC', cf.temperatura_c,
+             'hora', cf.hora
+           ) ORDER BY cf.celula_num ASC
+         ) FILTER (WHERE cf.id IS NOT NULL),
+         '[]'::json
+       ) AS celulas
+     FROM leituras_fluke521 lf
+     LEFT JOIN celulas_fluke521 cf ON cf.leitura_id = lf.id
+     WHERE ${where}
+     GROUP BY lf.id`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+// display_config: { hiddenColumns: ["temperatura", "hora", ...] }
+async function updateLeituraFluke521DisplayConfig(id, serviceReportId, displayConfig) {
+  const result = await db.query(
+    `
+      UPDATE leituras_fluke521
+      SET display_config = $3::jsonb
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(displayConfig || {})]
+  );
+  if (result.rows[0]) await touchReport(serviceReportId);
+  return result.rows[0] || null;
+}
+
+async function updateLeituraFluke521StyleConfig(id, serviceReportId, styleConfig) {
+  const result = await db.query(
+    `
+      UPDATE leituras_fluke521
+      SET style_config = $3::jsonb
+      WHERE id = $1 AND service_report_id = $2
+      RETURNING *
+    `,
+    [id, serviceReportId, JSON.stringify(styleConfig || null)]
+  );
+  return result.rows[0] || null;
+}
+
+// Apaga a leitura (células em cascata via FK) e o teste de descarga vinculado, se houver.
+async function deleteLeituraFluke521(id, serviceReportId = null) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const values = [id];
+    let where = "id = $1";
+    if (Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+      values.push(Number(serviceReportId));
+      where += " AND service_report_id = $2";
+    }
+    await client.query(`DELETE FROM discharge_tests WHERE fluke_leitura_id = $1`, [id]);
+    const result = await client.query(`DELETE FROM leituras_fluke521 WHERE ${where}`, values);
+    await client.query("COMMIT");
+    if (result.rowCount > 0 && Number.isInteger(Number(serviceReportId)) && Number(serviceReportId) > 0) {
+      await touchReport(serviceReportId);
+    }
+    return result.rowCount > 0;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function renameMeasurementTable(id, serviceReportId, title) {
@@ -4102,6 +4284,12 @@ module.exports = {
   updateDischargeTestStyleConfig,
   deleteDischargeTest,
   renameMeasurementTable,
-  renameDischargeTest
+  renameDischargeTest,
+  createLeituraFluke521,
+  listLeiturasFluke521ByReport,
+  getLeituraFluke521ById,
+  updateLeituraFluke521StyleConfig,
+  updateLeituraFluke521DisplayConfig,
+  deleteLeituraFluke521
 };
 

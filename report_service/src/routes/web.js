@@ -35,6 +35,19 @@ function createReportServiceWebRouter(deps) {
   router.post("/orders/:id/alber/:leituraId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleAi));
   router.post("/orders/:id/alber/:leituraId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleDefault));
   router.post("/orders/:id/alber/:leituraId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.alberStyleReset));
+  router.get("/orders/:id/fluke521", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.fluke521Editor));
+  router.post(
+    "/orders/:id/fluke521/import",
+    express.raw({ type: ["text/csv", "application/octet-stream", "text/plain"], limit: "5mb" }),
+    deps.csrfProtection,
+    deps.requireAdminAuth,
+    asyncHandler(controller.importFluke521File)
+  );
+  router.post("/orders/:id/fluke521/:leituraId/columns", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.updateFluke521DisplayConfig));
+  router.post("/orders/:id/fluke521/:leituraId/delete", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.deleteLeituraFluke521));
+  router.post("/orders/:id/fluke521/:leituraId/style-ai", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.fluke521StyleAi));
+  router.post("/orders/:id/fluke521/:leituraId/style-default", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.fluke521StyleDefault));
+  router.post("/orders/:id/fluke521/:leituraId/style-reset", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.fluke521StyleReset));
   router.get("/orders/:id/discharge", deps.csrfProtection, deps.requireAdminAuth, asyncHandler(controller.dischargeEditor));
   router.post(
     "/orders/:id/discharge/import",
