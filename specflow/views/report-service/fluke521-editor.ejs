@@ -39,6 +39,34 @@
   .discharge-table tbody td.td-celula { text-align: left; font-weight: 600; background: #f8fafc; position: sticky; left: 0; z-index: 1; border-right: 2px solid #cbd5e1; }
   .discharge-table tbody tr:nth-child(even) td { background: #f0f4fa; }
   .discharge-table tbody tr:nth-child(even) td.td-celula { background: #edf2f9; }
+  /* Cards de estatística por período, acima da tabela — mesmo visual da tela
+     Teste de Descarga e dos .discharge-stat-* do relatório. */
+  .discharge-stats-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .discharge-stat-card {
+    flex: 1 1 128px; min-width: 128px; max-width: 210px;
+    border: 1px solid #2d5a8e; border-radius: 6px; background: #fff; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 42, 74, 0.08);
+  }
+  .discharge-stat-card .dsc-period {
+    background: #1e3a5f; color: #fff; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 9px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .discharge-stat-card .dsc-body { padding: 4px 9px 5px; }
+  .discharge-stat-card .dsc-line {
+    display: flex; align-items: center; justify-content: space-between;
+    line-height: 1.5; white-space: nowrap;
+  }
+  .discharge-stat-card .dsc-line + .dsc-line { border-top: 1px solid #eef2f7; }
+  .discharge-stat-card .dsc-key {
+    color: #64748b; font-size: 9px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .discharge-stat-card .dsc-val {
+    color: #1e3a5f; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .discharge-stat-card .dsc-line-min .dsc-val { color: #b45309; }
+  .discharge-stat-card .dsc-line-avg .dsc-val { color: #334155; }
   .discharge-info-bar {
     display: flex; flex-wrap: wrap; gap: 0; background: #f8fafc; border: 1px solid #e2e8f0;
     border-radius: 6px 6px 0 0; border-bottom: none; padding: 10px 16px; align-items: center; font-size: 13px;
@@ -70,6 +98,7 @@
 
   <% if (saved) { %><div class="alert alert-success mb-0">Leitura Fluke BT521 salva com sucesso.</div><% } %>
   <% if (importError) { %><div class="alert alert-danger mb-0"><strong>Erro ao importar:</strong> <%= importError %></div><% } %>
+  <% if (typeof importWarning !== "undefined" && importWarning) { %><div class="alert alert-warning mb-0"><strong>Importado com avisos:</strong> <%= importWarning %></div><% } %>
 
   <!-- Import card -->
   <div class="card app-card">
@@ -78,8 +107,9 @@
         <div>
           <h2 class="h6 app-card-title mb-1">Importar Leituras Fluke BT521 (CSV)</h2>
           <div class="text-muted small">
-            Importa as duas medições do mesmo arquivo: resistência/tensão/temperatura por célula (tag <code>@fluke521=ID</code>)
+            Importa as medições do mesmo arquivo: resistência/tensão/temperatura por célula (tag <code>@fluke521=ID</code>)
             e teste de descarga (tag <code>@discharge=ID</code>, gráfico via <code>@grafo=ID</code>).
+            Arquivos com apenas uma das duas tabelas são importados normalmente.
           </div>
         </div>
       </div>
@@ -122,11 +152,17 @@
       <% if (dTest) {
         var dHourLabels = Array.isArray(dTest.hour_labels) ? dTest.hour_labels : [];
         var dReadings = Array.isArray(dTest.readings) ? dTest.readings : [];
-        var dChartLabels = [(dTest.col_flutuacao_label || 'Flutuação')];
+        // A tensão de flutuação vem do VDC da tabela "mΩ-Volt"; num arquivo só de descarga
+        // ela não existe. Somar nulos daria 0 e plantaria um primeiro ponto falso no
+        // gráfico, então a coluna inteira sai do eixo quando nenhuma célula a tem.
+        var dHasFlutuacao = dReadings.some(function(r) { return r.flutuacao !== null && r.flutuacao !== undefined && !isNaN(parseFloat(r.flutuacao)); });
+        var dChartLabels = dHasFlutuacao ? [(dTest.col_flutuacao_label || 'Flutuação')] : [];
         var dChartValues = [];
-        var dfSum = 0;
-        dReadings.forEach(function(r) { var v = parseFloat(r.flutuacao); if (!isNaN(v)) dfSum += v; });
-        dChartValues.push(parseFloat(dfSum.toFixed(3)));
+        if (dHasFlutuacao) {
+          var dfSum = 0;
+          dReadings.forEach(function(r) { var v = parseFloat(r.flutuacao); if (!isNaN(v)) dfSum += v; });
+          dChartValues.push(parseFloat(dfSum.toFixed(3)));
+        }
         dHourLabels.forEach(function(label, idx) {
           dChartLabels.push(label);
           var hSum = 0;
@@ -135,8 +171,10 @@
         });
         var dCellSeries = dReadings.map(function(r) {
           var cv = [];
-          var fv = parseFloat(r.flutuacao);
-          cv.push(isNaN(fv) ? null : parseFloat(fv.toFixed(3)));
+          if (dHasFlutuacao) {
+            var fv = parseFloat(r.flutuacao);
+            cv.push(isNaN(fv) ? null : parseFloat(fv.toFixed(3)));
+          }
           var horas = Array.isArray(r.horas) ? r.horas : [];
           horas.forEach(function(v) { var hv = parseFloat(v); cv.push(isNaN(hv) ? null : parseFloat(hv.toFixed(3))); });
           return { name: String(r.celula || ''), values: cv };
@@ -170,11 +208,20 @@
             <span class="fluke521-info-value"><%= leitura.capacity %></span>
           </div>
           <% } %>
+          <% if (celulas.length) { %>
           <div class="fluke521-info-pair">
             <span class="fluke521-info-label">Células</span>
             <span class="fluke521-info-value"><%= celulas.length %></span>
           </div>
+          <% } else { %>
+          <div class="fluke521-info-pair">
+            <span class="badge text-bg-warning">Somente teste de descarga</span>
+          </div>
+          <% } %>
           <div class="ms-auto d-flex gap-2 align-items-center">
+            <!-- Sem a tabela "mΩ-Volt" no arquivo não há o que renderizar em @fluke521:
+                 os controles da tabela de resistência/tensão ficam fora de cena. -->
+            <% if (celulas.length) { %>
             <code class="small text-primary">@fluke521=<%= leitura.seq_id %></code>
             <button class="btn btn-outline-secondary btn-sm" type="button" id="fluke521ViewBtn_<%= leitura.id %>" onclick="toggleFluke521Data(<%= leitura.id %>)">Ver dados</button>
             <button class="btn btn-outline-secondary btn-sm" type="button" onclick="toggleFluke521Columns(<%= leitura.id %>)">Colunas<% if (hiddenCols.length) { %> <span class="badge text-bg-secondary" style="font-size:9px;"><%= hiddenCols.length %> oculta(s)</span><% } %></button>
@@ -185,6 +232,7 @@
               data-has-style="<%= leitura.style_config && !leitura._uses_default_fluke521_style ? '1' : '0' %>">
               🎨 Visual<% if (leitura.style_config && leitura._uses_default_fluke521_style) { %> <span class="badge text-bg-secondary" style="font-size:9px;">padrão</span><% } else if (leitura.style_config) { %> <span class="badge text-bg-success" style="font-size:9px;">custom</span><% } %>
             </button>
+            <% } %>
             <form method="post" action="/admin/report-service/orders/<%= order.id %>/fluke521/<%= leitura.id %>/delete" class="m-0" onsubmit="return confirm('Excluir esta leitura Fluke BT521 (e o teste de descarga vinculado, se houver)?');">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
               <button class="btn btn-outline-danger btn-sm" type="submit">Excluir</button>
@@ -192,6 +240,7 @@
           </div>
         </div>
 
+        <% if (celulas.length) { %>
         <!-- Colunas visíveis na tabela (vale para a tela e para o relatório) -->
         <div id="fluke521Columns_<%= leitura.id %>" class="d-none mt-2 border rounded bg-light p-3">
           <form method="post" action="/admin/report-service/orders/<%= order.id %>/fluke521/<%= leitura.id %>/columns">
@@ -224,6 +273,12 @@
         <div id="fluke521Data_<%= leitura.id %>" class="d-none mt-2 fluke521-rendered">
           <%- leitura.rendered_html %>
         </div>
+        <% } else { %>
+        <div class="mt-2 text-muted small">
+          O arquivo <strong><%= leitura.nome_arquivo || "importado" %></strong> não traz a tabela de resistência/tensão
+          (<code>mΩ</code>/<code>Volt</code>/<code>Resistance</code>) — apenas o teste de descarga abaixo.
+        </div>
+        <% } %>
 
         <!-- Teste de descarga vinculado — seção independente, própria (mesmos dados/gráfico
              da tela Teste de Descarga), com seu próprio "Ver dados" separado do de cima. -->
@@ -267,12 +322,37 @@
           </div>
           <div id="dischargeData_<%= dTest.id %>" class="d-none mt-2">
             <% if (dReadings.length > 0) { %>
+            <%
+              // Cards de estatística por período, calculados pelo controller com a MESMA
+              // função do relatório (buildDischargeColumnStats).
+              var dSt = statsByTest && statsByTest.get ? statsByTest.get(Number(dTest.id)) : null;
+              var dFmtStat = function(v) { return (v === null || v === undefined) ? '-' : Number(v).toFixed(3); };
+              var dStatCards = [];
+              if (dSt) {
+                if (dHasFlutuacao) dStatCards.push({ label: (dTest.col_flutuacao_label || 'Flutuação (V)'), s: dSt.flutuacao });
+                (dSt.horas || []).forEach(function(s, h) { dStatCards.push({ label: String(dHourLabels[h] || ('T' + (h + 1))), s: s }); });
+              }
+            %>
+            <% if (dStatCards.length) { %>
+            <div class="discharge-stats-cards">
+              <% dStatCards.forEach(function(card) { %>
+              <div class="discharge-stat-card">
+                <div class="dsc-period"><%= card.label %></div>
+                <div class="dsc-body">
+                  <div class="dsc-line dsc-line-max"><span class="dsc-key">Máx</span><span class="dsc-val"><%= dFmtStat(card.s ? card.s.max : null) %></span></div>
+                  <div class="dsc-line dsc-line-min"><span class="dsc-key">Mín</span><span class="dsc-val"><%= dFmtStat(card.s ? card.s.min : null) %></span></div>
+                  <div class="dsc-line dsc-line-avg"><span class="dsc-key">Méd</span><span class="dsc-val"><%= dFmtStat(card.s ? card.s.avg : null) %></span></div>
+                </div>
+              </div>
+              <% }); %>
+            </div>
+            <% } %>
             <div class="discharge-table-wrap">
               <table class="discharge-table">
                 <thead>
                   <tr>
                     <th class="th-celula">Célula</th>
-                    <th class="th-flutuacao">Flutuação (V)</th>
+                    <% if (dHasFlutuacao) { %><th class="th-flutuacao">Flutuação (V)</th><% } %>
                     <% dHourLabels.forEach(function(h) { %><th class="th-hora"><%= h %></th><% }); %>
                   </tr>
                 </thead>
@@ -280,7 +360,7 @@
                   <% dReadings.forEach(function(row) { var horas = Array.isArray(row.horas) ? row.horas : []; %>
                   <tr>
                     <td class="td-celula"><%= row.celula %></td>
-                    <td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td>
+                    <% if (dHasFlutuacao) { %><td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td><% } %>
                     <% horas.forEach(function(v) { %><td><%= v !== null && v !== undefined ? v : '-' %></td><% }); %>
                   </tr>
                   <% }); %>
@@ -642,7 +722,15 @@
           msgEl.textContent = (data && data.error) ? data.error : "Erro ao importar.";
           msgEl.style.color = "red";
         } else {
-          window.location.reload();
+          // Avisos (ex.: arquivo só com a tabela de descarga) vão na query string: o reload
+          // logo abaixo apagaria qualquer mensagem escrita aqui na tela.
+          var warns = (data && Array.isArray(data.warnings)) ? data.warnings : [];
+          if (warns.length) {
+            window.location = "/admin/report-service/orders/" + orderId
+              + "/fluke521?import_warning=" + encodeURIComponent(warns.join(" | "));
+          } else {
+            window.location.reload();
+          }
         }
       });
     }).catch(function (err) {

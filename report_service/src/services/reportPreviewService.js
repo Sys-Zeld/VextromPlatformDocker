@@ -999,6 +999,11 @@ function renderFluke521LeituraTable(leituras, requestedId, styleConfig) {
 
   const celulas = Array.isArray(leitura.celulas) ? leitura.celulas : [];
 
+  // Import só com a tabela de descarga: a leitura existe (metadados + vínculo com o teste)
+  // mas não tem célula alguma. Renderizar daria um cabeçalho com estatísticas "-" e corpo
+  // vazio — mesma decisão de renderDischargeTestTable quando não há leituras.
+  if (!celulas.length) return "";
+
   function fmtR(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(2); }
   function fmtV(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(3); }
   function fmtT(v) { return (v == null || v === "") ? "-" : Number(v).toFixed(1); }
@@ -1954,8 +1959,68 @@ function generateDefaultDischargeCss(testId) {
     `${s} .discharge-th-celula{border:1px solid #2d5a8e;background:#1e3a5f;color:#ffffff;padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:0.03em;text-align:left;}`,
     `${s} .discharge-td{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:center;}`,
     `${s} .discharge-td-alt{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:center;background:#f0f4fa;}`,
-    `${s} .discharge-td-celula{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:left;font-weight:600;background:#f8fafc;}`
+    `${s} .discharge-td-celula{border:1px solid #cbd5e1;padding:5px 10px;font-size:11px;vertical-align:middle;text-align:left;font-weight:600;background:#f8fafc;}`,
+    generateDischargeStatCardsCss(testId)
   ].join("\n");
+}
+
+// CSS dos cards de estatística, separado do resto de propósito: renderDischargeTestTable o
+// emite SEMPRE, mesmo quando o teste tem style_config customizado. Sem isso, um teste já
+// estilizado pela IA (cujo customCss não conhece estas classes) mostraria os cards crus —
+// sem cor e com rótulo colado no número.
+//
+// O visual acompanha o da tabela: faixa de título no mesmo azul-marinho do <th>, corpo claro,
+// número alinhado à direita. A mínima recebe âmbar porque num teste de descarga é o valor
+// diagnóstico — é ela que denuncia a célula fraca.
+function generateDischargeStatCardsCss(testId) {
+  const s = `[data-discharge-id="${testId}"]`;
+  return [
+    `${s} .discharge-stat-cell{border:1px solid #2d5a8e;background:#ffffff;padding:0;vertical-align:top;text-align:left;}`,
+    `${s} .discharge-stat-period{background:#1e3a5f;color:#ffffff;font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;white-space:nowrap;overflow:hidden;}`,
+    `${s} .discharge-stat-body{padding:4px 8px 5px;}`,
+    // display:table/table-cell (em vez de flex) para o rótulo e o número ficarem nas
+    // extremidades de forma previsível em qualquer renderizador de PDF.
+    `${s} .discharge-stat-line{display:table;width:100%;line-height:1.5;white-space:nowrap;}`,
+    `${s} .discharge-stat-line + .discharge-stat-line{border-top:1px solid #eef2f7;}`,
+    `${s} .discharge-stat-key{display:table-cell;color:#64748b;font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;text-align:left;vertical-align:middle;}`,
+    `${s} .discharge-stat-val{display:table-cell;color:#1e3a5f;font-size:11.5px;font-weight:700;text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums;}`,
+    `${s} .discharge-stat-line-min .discharge-stat-val{color:#b45309;}`,
+    `${s} .discharge-stat-line-avg .discharge-stat-val{color:#334155;}`
+  ].join("\n");
+}
+
+// Estatísticas por período do teste de descarga: para cada coluna (flutuação + cada
+// checkpoint T<n>) devolve { max, min, avg, count } sobre TODAS as células, ignorando os
+// valores não medidos (null). count = quantas células entraram na conta, para que a
+// renderização possa mostrar "-" numa coluna sem nenhum valor em vez de 0 ou NaN.
+//
+// Fonte única da matemática: o relatório/PDF e as duas telas de edição consomem esta
+// função, para que nenhuma delas calcule média de um jeito diferente.
+function buildDischargeColumnStats(readings, options) {
+  const rows = Array.isArray(readings) ? readings : [];
+  const opts = options || {};
+  const hourCount = Number(opts.hourCount) || 0;
+  const includeFlutuacao = opts.includeFlutuacao !== false;
+
+  const summarize = (values) => {
+    const nums = values
+      .map((v) => (v === null || v === undefined || v === "" ? NaN : Number(v)))
+      .filter((n) => Number.isFinite(n));
+    if (!nums.length) return { max: null, min: null, avg: null, count: 0 };
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return {
+      max: Math.max(...nums),
+      min: Math.min(...nums),
+      avg: sum / nums.length,
+      count: nums.length
+    };
+  };
+
+  return {
+    flutuacao: includeFlutuacao ? summarize(rows.map((r) => r.flutuacao)) : null,
+    horas: Array.from({ length: hourCount }, (_, h) =>
+      summarize(rows.map((r) => (Array.isArray(r.horas) ? r.horas[h] : null))))
+  };
 }
 
 function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
@@ -1978,18 +2043,72 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
 
   const celulaLabel = String(test.col_celula_label || "").trim() || "Célula";
   const flutuacaoLabel = String(test.col_flutuacao_label || "").trim() || "Flutuação (V)";
+
+  // Importações do Fluke BT521 sem a tabela "mΩ-Volt" não têm tensão de flutuação (ela vem
+  // do VDC dessa tabela). Uma coluna inteira de "-" não informa nada: omite-se o cabeçalho
+  // e as células quando nenhuma leitura tem o valor.
+  const hasFlutuacao = readings.some((row) => row.flutuacao != null);
+
   const headerCells = [
     `<th class="discharge-th-celula">${escapeHtml(celulaLabel)}</th>`,
-    `<th class="discharge-th">${escapeHtml(flutuacaoLabel)}</th>`,
+    ...(hasFlutuacao ? [`<th class="discharge-th">${escapeHtml(flutuacaoLabel)}</th>`] : []),
     ...hourLabels.map((h) => `<th class="discharge-th">${escapeHtml(String(h))}</th>`)
   ].join("");
+
+  // Cards de estatística ACIMA da tabela: um card por período (mais o da flutuação, quando
+  // existe), cada um com máxima/mínima/média daquela coluna. Mesmo padrão visual dos cards
+  // de @fluke521/@alber, e por isso montados com <table>/<td> em vez de flex: é o layout
+  // que o Puppeteer renderiza de forma previsível no PDF.
+  const stats = buildDischargeColumnStats(readings, {
+    hourCount: hourLabels.length,
+    includeFlutuacao: hasFlutuacao
+  });
+  const fmtStat = (v) => (v === null || v === undefined ? "-" : Number(v).toFixed(3));
+
+  const statCards = [
+    ...(hasFlutuacao ? [{ label: flutuacaoLabel, s: stats.flutuacao }] : []),
+    ...stats.horas.map((s, h) => ({ label: String(hourLabels[h] || `T${h + 1}`), s }))
+  ];
+
+  const statLine = (kind, key, value) =>
+    `<div class="discharge-stat-line discharge-stat-line-${kind}">`
+    + `<span class="discharge-stat-key">${key}</span>`
+    + `<span class="discharge-stat-val">${escapeHtml(value)}</span></div>`;
+
+  const statCardCell = (card) =>
+    `<td class="discharge-stat-cell">`
+    + `<div class="discharge-stat-period">${escapeHtml(card.label)}</div>`
+    + `<div class="discharge-stat-body">`
+    + statLine("max", "Máx", fmtStat(card.s ? card.s.max : null))
+    + statLine("min", "Mín", fmtStat(card.s ? card.s.min : null))
+    + statLine("avg", "Méd", fmtStat(card.s ? card.s.avg : null))
+    + `</div></td>`;
+
+  // Quebra em linhas de no máximo 6 cards: com muitos checkpoints, uma única linha
+  // comprimiria cada card até os números ficarem ilegíveis na folha.
+  const STAT_CARDS_PER_ROW = 6;
+  const statCardRows = [];
+  for (let c = 0; c < statCards.length; c += STAT_CARDS_PER_ROW) {
+    statCardRows.push(statCards.slice(c, c + STAT_CARDS_PER_ROW));
+  }
+  const statCardsHtml = statCards.length
+    ? `<table data-discharge-id="${id}" style="width:100%;border-collapse:collapse;margin:0 0 6px 0;table-layout:fixed;page-break-inside:avoid;break-inside:avoid;">`
+      + statCardRows.map((row) => {
+        // Preenche a última linha com células vazias para os cards não esticarem.
+        const filler = row.length < STAT_CARDS_PER_ROW && statCardRows.length > 1
+          ? `<td style="border:none;"></td>`.repeat(STAT_CARDS_PER_ROW - row.length)
+          : "";
+        return `<tr style="page-break-inside:avoid;break-inside:avoid;">${row.map(statCardCell).join("")}${filler}</tr>`;
+      }).join("")
+      + `</table>`
+    : "";
 
   const rows = readings.map((row, idx) => {
     const tdClass = idx % 2 === 0 ? "discharge-td" : "discharge-td-alt";
     const horas = Array.isArray(row.horas) ? row.horas : [];
     const cells = [
       `<td class="discharge-td-celula">${escapeHtml(String(row.celula))}</td>`,
-      `<td class="${tdClass}">${row.flutuacao != null ? escapeHtml(String(row.flutuacao)) : "-"}</td>`,
+      ...(hasFlutuacao ? [`<td class="${tdClass}">${row.flutuacao != null ? escapeHtml(String(row.flutuacao)) : "-"}</td>`] : []),
       ...horas.map((v) => `<td class="${tdClass}">${v != null ? escapeHtml(String(v)) : "-"}</td>`)
     ].join("");
     return `<tr style="page-break-inside:avoid;break-inside:avoid;">${cells}</tr>`;
@@ -1997,7 +2116,13 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
 
   return `
     <div class="report-inline-discharge-wrap" data-discharge-id="${id}" data-table-title="${escapeHtml(test.title || "")}" style="margin:8px 0 16px 0;break-inside:avoid;page-break-inside:avoid;overflow-x:auto;">
+      <!-- O CSS dos cards vem SEMPRE, e antes do css do teste: um style_config customizado
+           (gerado pela IA antes destes cards existirem) não conhece as classes novas e
+           deixaria os cards sem cor nem alinhamento. Vindo antes, segue sobrescrevível
+           por uma customização futura que mencione as mesmas classes. -->
+      <style>${generateDischargeStatCardsCss(id)}</style>
       <style>${css}</style>
+      ${statCardsHtml}
       <table data-discharge-id="${id}" style="width:100%;border-collapse:collapse;line-height:1.3;white-space:nowrap;">
         <thead style="display:table-header-group;">
           <tr style="page-break-inside:avoid;break-inside:avoid;">${headerCells}</tr>
@@ -2031,8 +2156,15 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex, styleCon
   if (!readings.length) return "";
 
   const cellIdx = Number(seriesIndex); // -1 = tensão total; 0+ = índice da célula (0-based)
-  const xLabels = [String(test.col_flutuacao_label || "").trim() || "Flutuação", ...hourLabels];
+
+  // Sem tensão de flutuação (import do BT521 só com a tabela de descarga) o ponto inicial
+  // somaria nulos e o gráfico começaria num zero inexistente: o eixo começa no 1º checkpoint.
+  const hasFlutuacao = readings.some((row) => row.flutuacao != null);
+  const xLabels = hasFlutuacao
+    ? [String(test.col_flutuacao_label || "").trim() || "Flutuação", ...hourLabels]
+    : [...hourLabels];
   const n = xLabels.length;
+  const hourAt = (ci) => (hasFlutuacao ? ci - 1 : ci); // índice em row.horas para a coluna ci
 
   let yValues, seriesLabel, isTotal;
   if (cellIdx < 0) {
@@ -2040,9 +2172,9 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex, styleCon
     seriesLabel = "Tensão Total";
     yValues = xLabels.map((_, ci) =>
       readings.reduce((sum, row) => {
-        const v = ci === 0
+        const v = (hasFlutuacao && ci === 0)
           ? parseFloat(row.flutuacao)
-          : parseFloat((Array.isArray(row.horas) ? row.horas : [])[ci - 1]);
+          : parseFloat((Array.isArray(row.horas) ? row.horas : [])[hourAt(ci)]);
         return sum + (isNaN(v) ? 0 : v);
       }, 0)
     );
@@ -2052,9 +2184,9 @@ function generateDischargeSvgChart(dischargeTests, testId, seriesIndex, styleCon
     if (!reading) return "";
     seriesLabel = String(reading.celula || `Célula ${cellIdx + 1}`);
     yValues = xLabels.map((_, ci) => {
-      const v = ci === 0
+      const v = (hasFlutuacao && ci === 0)
         ? parseFloat(reading.flutuacao)
-        : parseFloat((Array.isArray(reading.horas) ? reading.horas : [])[ci - 1]);
+        : parseFloat((Array.isArray(reading.horas) ? reading.horas : [])[hourAt(ci)]);
       return isNaN(v) ? null : v;
     });
   }
@@ -2245,6 +2377,7 @@ module.exports = {
   renderFluke521LeituraTable,
   generateDefaultFluke521Css,
   renderDischargeTestTable,
+  buildDischargeColumnStats,
   generateDefaultDischargeCss,
   generateDischargeSvgChart,
   generateDefaultDischargeChartCss,

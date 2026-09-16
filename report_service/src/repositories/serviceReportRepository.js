@@ -3838,6 +3838,9 @@ async function getDischargeTestById(id, serviceReportId) {
   return result.rows[0] || null;
 }
 
+// payload.readings é OPCIONAL: só sobrescreve as leituras quando vem um array. O
+// COALESCE abaixo mantém o valor atual quando o parâmetro chega null, para que quem
+// salva apenas os metadados/rótulos nunca apague a matriz de medições por omissão.
 async function updateDischargeTest(id, serviceReportId, payload) {
   const result = await db.query(
     `
@@ -3850,6 +3853,7 @@ async function updateDischargeTest(id, serviceReportId, payload) {
         hour_labels = $7::jsonb,
         col_celula_label = $8,
         col_flutuacao_label = $9,
+        readings = COALESCE($10::jsonb, readings),
         updated_at = NOW()
       WHERE id = $1 AND service_report_id = $2
       RETURNING *
@@ -3863,7 +3867,8 @@ async function updateDischargeTest(id, serviceReportId, payload) {
       payload.notes || "",
       JSON.stringify(Array.isArray(payload.hourLabels) ? payload.hourLabels : []),
       payload.colCelulaLabel || "",
-      payload.colFlutuacaoLabel || ""
+      payload.colFlutuacaoLabel || "",
+      Array.isArray(payload.readings) ? JSON.stringify(payload.readings) : null
     ]
   );
   if (result.rows[0]) await touchReport(serviceReportId);

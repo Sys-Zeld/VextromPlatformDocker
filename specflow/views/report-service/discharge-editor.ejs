@@ -40,6 +40,56 @@
   .discharge-table tbody td.td-celula { text-align: left; font-weight: 600; background: #f8fafc; position: sticky; left: 0; z-index: 1; border-right: 2px solid #cbd5e1; }
   .discharge-table tbody tr:nth-child(even) td { background: #f0f4fa; }
   .discharge-table tbody tr:nth-child(even) td.td-celula { background: #edf2f9; }
+  /* Grade editável: célula da tabela mais justa, já que o input traz o próprio padding. */
+  .discharge-edit-table tbody td { padding: 3px 5px; }
+  .discharge-edit-table input { text-align: center; }
+  .discharge-edit-table input:invalid { border-color: #dc2626; background: #fef2f2; }
+  /* Botão ✕ de excluir coluna, no cabeçalho da grade de edição. */
+  .discharge-edit-table thead th { position: relative; }
+  .discharge-edit-table .dcol-del {
+    border: none; background: rgba(255,255,255,0.22); color: #fff;
+    border-radius: 3px; line-height: 1; cursor: pointer;
+    font-size: 10px; padding: 1px 4px; margin-left: 6px;
+  }
+  .discharge-edit-table .dcol-del:hover { background: #dc2626; }
+  /* Coluna marcada para exclusão: riscada e com os campos desativados. Os inputs
+     permanecem no DOM (só desabilitados) para que os índices de coluna não mudem
+     antes do envio — é por esse índice que o servidor identifica a coluna. */
+  .discharge-edit-table th.dcol-doomed .dcol-label { text-decoration: line-through; opacity: 0.6; }
+  .discharge-edit-table th.dcol-doomed { background: #7f1d1d !important; border-color: #7f1d1d !important; }
+  .discharge-edit-table th.dcol-doomed .dcol-del { background: #dc2626; }
+  .discharge-edit-table td.dcol-doomed { background: #fee2e2 !important; }
+  .discharge-edit-table td.dcol-doomed input { text-decoration: line-through; color: #991b1b; }
+  .discharge-edit-table .dcol-collapsed { display: none; }
+  /* Cards de estatística por período, acima da tabela. Mesmo visual do relatório: faixa
+     de título no azul-marinho do cabeçalho da tabela, corpo claro, número à direita.
+     A mínima em âmbar por ser o valor diagnóstico (denuncia a célula fraca). */
+  .discharge-stats-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .discharge-stat-card {
+    flex: 1 1 128px; min-width: 128px; max-width: 210px;
+    border: 1px solid #2d5a8e; border-radius: 6px; background: #fff; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 42, 74, 0.08);
+  }
+  .discharge-stat-card .dsc-period {
+    background: #1e3a5f; color: #fff; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 9px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .discharge-stat-card .dsc-body { padding: 4px 9px 5px; }
+  .discharge-stat-card .dsc-line {
+    display: flex; align-items: center; justify-content: space-between;
+    line-height: 1.5; white-space: nowrap;
+  }
+  .discharge-stat-card .dsc-line + .dsc-line { border-top: 1px solid #eef2f7; }
+  .discharge-stat-card .dsc-key {
+    color: #64748b; font-size: 9px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .discharge-stat-card .dsc-val {
+    color: #1e3a5f; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .discharge-stat-card .dsc-line-min .dsc-val { color: #b45309; }
+  .discharge-stat-card .dsc-line-avg .dsc-val { color: #334155; }
   .discharge-info-bar {
     display: flex;
     flex-wrap: wrap;
@@ -128,11 +178,17 @@
         var totalHoras = hourLabels.length;
       %>
       <%
-        var chartLabels = [(test.col_flutuacao_label || 'Flutuação')];
+        // Testes importados do Fluke BT521 só com a tabela de descarga não têm tensão de
+        // flutuação (ela vem do VDC da tabela "mΩ-Volt"). Somar nulos daria 0 e criaria um
+        // primeiro ponto falso, então a coluna sai do gráfico e da tabela quando vazia.
+        var hasFlutuacao = readings.some(function(r) { return r.flutuacao !== null && r.flutuacao !== undefined && !isNaN(parseFloat(r.flutuacao)); });
+        var chartLabels = hasFlutuacao ? [(test.col_flutuacao_label || 'Flutuação')] : [];
         var chartValues = [];
-        var fSum = 0;
-        readings.forEach(function(r) { var v = parseFloat(r.flutuacao); if (!isNaN(v)) fSum += v; });
-        chartValues.push(parseFloat(fSum.toFixed(3)));
+        if (hasFlutuacao) {
+          var fSum = 0;
+          readings.forEach(function(r) { var v = parseFloat(r.flutuacao); if (!isNaN(v)) fSum += v; });
+          chartValues.push(parseFloat(fSum.toFixed(3)));
+        }
         hourLabels.forEach(function(label, idx) {
           chartLabels.push(label);
           var hSum = 0;
@@ -141,8 +197,10 @@
         });
         var cellSeries = readings.map(function(r) {
           var cv = [];
-          var fv = parseFloat(r.flutuacao);
-          cv.push(isNaN(fv) ? null : parseFloat(fv.toFixed(3)));
+          if (hasFlutuacao) {
+            var fv = parseFloat(r.flutuacao);
+            cv.push(isNaN(fv) ? null : parseFloat(fv.toFixed(3)));
+          }
           var horas = Array.isArray(r.horas) ? r.horas : [];
           horas.forEach(function(v) { var hv = parseFloat(v); cv.push(isNaN(hv) ? null : parseFloat(hv.toFixed(3))); });
           return { name: String(r.celula || ''), values: cv };
@@ -218,12 +276,38 @@
         <!-- Data table (oculta por padrão) -->
         <div id="dischargeData_<%= test.id %>" class="d-none mt-2">
           <% if (readings.length > 0) { %>
+          <%
+            // Cards de estatística por período — os números vêm calculados pelo controller
+            // com a MESMA função do relatório (buildDischargeColumnStats), para a tela não
+            // divergir do PDF.
+            var st = statsByTest && statsByTest.get ? statsByTest.get(Number(test.id)) : null;
+            var fmtStat = function(v) { return (v === null || v === undefined) ? '-' : Number(v).toFixed(3); };
+            var statCards = [];
+            if (st) {
+              if (hasFlutuacao) statCards.push({ label: (test.col_flutuacao_label || 'Flutuação (V)'), s: st.flutuacao });
+              (st.horas || []).forEach(function(s, h) { statCards.push({ label: String(hourLabels[h] || ('T' + (h + 1))), s: s }); });
+            }
+          %>
+          <% if (statCards.length) { %>
+          <div class="discharge-stats-cards">
+            <% statCards.forEach(function(card) { %>
+            <div class="discharge-stat-card">
+              <div class="dsc-period"><%= card.label %></div>
+              <div class="dsc-body">
+                <div class="dsc-line dsc-line-max"><span class="dsc-key">Máx</span><span class="dsc-val"><%= fmtStat(card.s ? card.s.max : null) %></span></div>
+                <div class="dsc-line dsc-line-min"><span class="dsc-key">Mín</span><span class="dsc-val"><%= fmtStat(card.s ? card.s.min : null) %></span></div>
+                <div class="dsc-line dsc-line-avg"><span class="dsc-key">Méd</span><span class="dsc-val"><%= fmtStat(card.s ? card.s.avg : null) %></span></div>
+              </div>
+            </div>
+            <% }); %>
+          </div>
+          <% } %>
           <div class="discharge-table-wrap">
             <table class="discharge-table">
               <thead>
                 <tr>
                   <th class="th-celula">Célula</th>
-                  <th class="th-flutuacao">Flutuação (V)</th>
+                  <% if (hasFlutuacao) { %><th class="th-flutuacao">Flutuação (V)</th><% } %>
                   <% hourLabels.forEach(function(h) { %>
                     <th class="th-hora"><%= h %></th>
                   <% }); %>
@@ -235,7 +319,7 @@
                 %>
                 <tr>
                   <td class="td-celula"><%= row.celula %></td>
-                  <td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td>
+                  <% if (hasFlutuacao) { %><td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td><% } %>
                   <% horas.forEach(function(v) { %>
                     <td><%= v !== null && v !== undefined ? v : '-' %></td>
                   <% }); %>
@@ -251,7 +335,8 @@
 
         <!-- Edit form (oculto por padrão) -->
         <div id="dischargeEditor_<%= test.id %>" class="d-none mt-2">
-          <form method="post" action="/admin/report-service/orders/<%= order.id %>/discharge/<%= test.id %>/update" class="row g-2">
+          <form method="post" action="/admin/report-service/orders/<%= order.id %>/discharge/<%= test.id %>/update" class="row g-2"
+            data-discharge-form="<%= test.id %>">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <div class="col-12 col-md-5">
               <label class="form-label form-label-sm mb-1">Título</label>
@@ -293,6 +378,92 @@
                       value="<%= label %>" placeholder="<%= label %>" />
                   </div>
                   <% }); %>
+                </div>
+              </div>
+            </div>
+            <% } %>
+
+            <!-- Grade de leituras: os valores medidos, editáveis célula × checkpoint.
+                 Vai num campo JSON único (readings_json) e não em inputs nomeados porque
+                 express.urlencoded limita o corpo a 1000 parâmetros — um banco de 180
+                 células × 6 checkpoints geraria 1260 campos e a requisição seria recusada. -->
+            <% if (readings.length > 0) { %>
+            <input type="hidden" name="readings_json" id="readingsJson_<%= test.id %>" value="" />
+            <!-- Colunas marcadas para exclusão: {"flutuacao":bool,"horas":[índices]}. A
+                 exclusão é aplicada no Salvar, junto com as edições de valor, para que
+                 marcar uma coluna não descarte o que já foi digitado na grade. -->
+            <input type="hidden" name="deleted_cols_json" id="deletedColsJson_<%= test.id %>" value="" />
+            <div class="col-12">
+              <div class="border rounded p-2 bg-light">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <div class="fw-semibold small">
+                    Leituras medidas
+                    <span class="text-muted fw-normal">(<%= readings.length %> células × <%= hourLabels.length %> checkpoints)</span>
+                  </div>
+                  <div class="text-muted" style="font-size:11px;">
+                    Campo vazio = não medido (sai como &quot;-&quot; no relatório). Aceita valor negativo.
+                    Use <strong>✕</strong> no cabeçalho para excluir a coluna inteira.
+                  </div>
+                  <% if (!hasFlutuacao) { %>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:11px;"
+                    id="dischargeShowFlut_<%= test.id %>" onclick="showDischargeFlutuacao(<%= test.id %>)">
+                    + Mostrar flutuação
+                  </button>
+                  <% } %>
+                </div>
+                <div id="dischargeDelWarn_<%= test.id %>" class="alert alert-warning py-1 px-2 mb-2 d-none" style="font-size:12px;">
+                  <span id="dischargeDelWarnText_<%= test.id %>"></span>
+                  <button type="button" class="btn btn-link btn-sm p-0 ms-2" style="font-size:12px;"
+                    onclick="clearDischargeColDeletes(<%= test.id %>)">Desfazer</button>
+                </div>
+                <div class="discharge-table-wrap" style="max-height:420px;overflow-y:auto;">
+                  <table class="discharge-table discharge-edit-table" data-test-id="<%= test.id %>">
+                    <thead>
+                      <tr>
+                        <th class="th-celula"><%= test.col_celula_label || 'Célula' %></th>
+                        <!-- Coluna de flutuação: fica recolhida quando nenhuma célula tem o
+                             valor (import só de descarga, ou a coluna foi excluída antes).
+                             Continua no DOM, e o botão "Mostrar flutuação" a revela, para
+                             que dê para preencher à mão o que não veio no CSV. -->
+                        <th class="th-flutuacao<%= hasFlutuacao ? '' : ' dcol-collapsed' %>" data-col-kind="flutuacao">
+                          <span class="dcol-label"><%= test.col_flutuacao_label || 'Flutuação (V)' %></span>
+                          <button type="button" class="dcol-del" title="Excluir esta coluna"
+                            onclick="toggleDischargeColDelete(<%= test.id %>, 'flutuacao', -1)">✕</button>
+                        </th>
+                        <% hourLabels.forEach(function(h, hIdx) { %>
+                        <th class="th-hora" data-col-kind="hora" data-col-idx="<%= hIdx %>">
+                          <span class="dcol-label"><%= h %></span>
+                          <button type="button" class="dcol-del" title="Excluir esta coluna"
+                            onclick="toggleDischargeColDelete(<%= test.id %>, 'hora', <%= hIdx %>)">✕</button>
+                        </th>
+                        <% }); %>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <% readings.forEach(function(row, rIdx) {
+                        var horas = Array.isArray(row.horas) ? row.horas : [];
+                      %>
+                      <tr data-test-id="<%= test.id %>" data-row-idx="<%= rIdx %>">
+                        <td class="td-celula"><%= row.celula %></td>
+                        <td class="<%= hasFlutuacao ? '' : 'dcol-collapsed' %>" data-col-kind="flutuacao">
+                          <!-- step="any": com um step fixo o browser recusa o submit inteiro
+                               ("Please enter a valid value") se um valor gravado não cair na
+                               grade do step — ex.: leitura com 4 decimais. -->
+                          <input type="number" step="any" class="form-control form-control-sm d-flutuacao"
+                            value="<%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '' %>"
+                            style="width:96px;" />
+                        </td>
+                        <% hourLabels.forEach(function(_h, hIdx) { %>
+                        <td data-col-kind="hora" data-col-idx="<%= hIdx %>">
+                          <input type="number" step="any" class="form-control form-control-sm d-hora" data-hora-idx="<%= hIdx %>"
+                            value="<%= horas[hIdx] !== null && horas[hIdx] !== undefined ? horas[hIdx] : '' %>"
+                            style="width:96px;" />
+                        </td>
+                        <% }); %>
+                      </tr>
+                      <% }); %>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1098,6 +1269,114 @@
       editorEl.classList.add("d-none");
       if (ch) ch.textContent = "✏️ Editar";
     }
+  };
+
+  // Serializa a grade de leituras no campo JSON antes do submit. Manda apenas o índice da
+  // linha e os valores — a identidade da célula e o nº de checkpoints são resolvidos no
+  // servidor a partir do registro gravado, então esta função não precisa (nem pode) alterá-los.
+  // Ligado ao evento submit do form (e não ao clique do botão) para cobrir também o submit
+  // por Enter dentro de um campo, que não passa pelo botão e enviaria o JSON vazio.
+  document.querySelectorAll("form[data-discharge-form]").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      window.syncDischargeReadings(form.getAttribute("data-discharge-form"));
+    });
+  });
+
+  // Colunas marcadas para exclusão, por teste: { <testId>: { flutuacao: bool, horas: Set } }.
+  var dDoomed = {};
+
+  function dDoomedFor(id) {
+    if (!dDoomed[id]) dDoomed[id] = { flutuacao: false, horas: {} };
+    return dDoomed[id];
+  }
+
+  // Marca/desmarca uma coluna. Nada é excluído aqui — só no Salvar, junto com as edições
+  // de valor, para que marcar uma coluna não descarte o que já foi digitado na grade.
+  window.toggleDischargeColDelete = function (id, kind, idx) {
+    var state = dDoomedFor(id);
+    if (kind === "flutuacao") state.flutuacao = !state.flutuacao;
+    else if (state.horas[idx]) delete state.horas[idx];
+    else state.horas[idx] = true;
+    renderDischargeColDeletes(id);
+  };
+
+  // Revela a coluna de flutuação recolhida, para preencher à mão valores que não vieram no
+  // CSV. Se ficar toda vazia, o próximo carregamento a recolhe de novo — nada a persistir.
+  window.showDischargeFlutuacao = function (id) {
+    var table = document.querySelector(".discharge-edit-table[data-test-id='" + id + "']");
+    if (table) {
+      table.querySelectorAll("[data-col-kind='flutuacao']").forEach(function (cell) {
+        cell.classList.remove("dcol-collapsed");
+      });
+    }
+    var btn = document.getElementById("dischargeShowFlut_" + id);
+    if (btn) btn.classList.add("d-none");
+  };
+
+  window.clearDischargeColDeletes = function (id) {
+    dDoomed[id] = { flutuacao: false, horas: {} };
+    renderDischargeColDeletes(id);
+  };
+
+  function renderDischargeColDeletes(id) {
+    var state = dDoomedFor(id);
+    var table = document.querySelector(".discharge-edit-table[data-test-id='" + id + "']");
+    if (!table) return;
+
+    var names = [];
+    table.querySelectorAll("th[data-col-kind], td[data-col-kind]").forEach(function (cell) {
+      var kind = cell.getAttribute("data-col-kind");
+      var doomed = kind === "flutuacao"
+        ? state.flutuacao
+        : Boolean(state.horas[Number(cell.getAttribute("data-col-idx"))]);
+      cell.classList.toggle("dcol-doomed", doomed);
+      var input = cell.querySelector("input");
+      if (input) input.disabled = doomed;
+      if (doomed && cell.tagName === "TH") {
+        var label = cell.querySelector(".dcol-label");
+        names.push(label ? label.textContent.trim() : kind);
+      }
+    });
+
+    var warn = document.getElementById("dischargeDelWarn_" + id);
+    var text = document.getElementById("dischargeDelWarnText_" + id);
+    if (warn && text) {
+      if (names.length) {
+        text.innerHTML = "Ao salvar, " + (names.length === 1 ? "a coluna" : "as " + names.length + " colunas")
+          + " <strong>" + names.join("</strong>, <strong>") + "</strong> "
+          + (names.length === 1 ? "será excluída" : "serão excluídas")
+          + " com todos os seus valores. Só a reimportação do CSV recupera.";
+        warn.classList.remove("d-none");
+      } else {
+        warn.classList.add("d-none");
+      }
+    }
+  }
+
+  window.syncDischargeReadings = function (id) {
+    var state = dDoomedFor(id);
+    var delInput = document.getElementById("deletedColsJson_" + id);
+    if (delInput) {
+      delInput.value = JSON.stringify({
+        flutuacao: state.flutuacao,
+        horas: Object.keys(state.horas).map(Number)
+      });
+    }
+
+    var input = document.getElementById("readingsJson_" + id);
+    if (!input) return;
+    var rows = [];
+    document.querySelectorAll(".discharge-edit-table[data-test-id='" + id + "'] tbody tr[data-row-idx]").forEach(function (tr) {
+      var fEl = tr.querySelector(".d-flutuacao");
+      var horas = [];
+      tr.querySelectorAll(".d-hora").forEach(function (el) { horas.push(el.value); });
+      rows.push({
+        idx: Number(tr.getAttribute("data-row-idx")),
+        flutuacao: fEl ? fEl.value : "",
+        horas: horas
+      });
+    });
+    input.value = JSON.stringify(rows);
   };
 
   window.cancelDischargeEditor = function (id) {

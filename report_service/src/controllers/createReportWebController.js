@@ -18,7 +18,7 @@ const {
 const env = require("../../../specflow/config/env");
 const { getReportConfigSettings, saveReportConfigSettings } = require("../services/reportConfigSettings");
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
-const { buildPreviewModel } = require("../services/reportPreviewService");
+const { buildPreviewModel, buildDischargeColumnStats } = require("../services/reportPreviewService");
 const {
   buildStyleConfig,
   getDefaultMeasurementStyleConfig,
@@ -713,6 +713,85 @@ function createReportWebController(deps) {
     }
 
     return order;
+  }
+
+  // Colunas que a grade marcou para excluir: {"flutuacao":bool,"horas":[índices]}.
+  // Os índices são posições em hour_labels ANTES da exclusão — é assim que a grade os
+  // envia, já que os inputs só ficam desabilitados, nunca saem do DOM.
+  function parseDischargeColumnDeletions(rawJson) {
+    const empty = { flutuacao: false, horas: new Set() };
+    if (typeof rawJson !== "string" || !rawJson.trim()) return empty;
+    let parsed;
+    try { parsed = JSON.parse(rawJson); } catch (_e) { return empty; }
+    if (!parsed || typeof parsed !== "object") return empty;
+    const horas = new Set();
+    (Array.isArray(parsed.horas) ? parsed.horas : []).forEach((v) => {
+      const n = Number(v);
+      if (Number.isInteger(n) && n >= 0) horas.add(n);
+    });
+    return { flutuacao: parsed.flutuacao === true, horas };
+  }
+
+  // Normaliza a matriz de leituras enviada pela grade de edição do teste de descarga e
+  // aplica a exclusão de colunas.
+  //
+  // O cliente manda só VALORES, indexados: [{ idx, flutuacao, horas: [...] }]. A identidade
+  // das células (row.celula) e a quantidade de linhas continuam vindo do registro gravado —
+  // um payload malformado não pode renomear célula nem criar linha, apenas alterar números
+  // já existentes e remover colunas que existem.
+  //
+  // Devolve `null` quando não há nada a aplicar, e nesse caso o repo preserva as leituras
+  // atuais (COALESCE). Campo vazio vira null = "não medido", que a tabela renderiza como "-".
+  async function buildDischargeReadingsUpdate(rawJson, deletions, testId, serviceReportId) {
+    const del = deletions || { flutuacao: false, horas: new Set() };
+    const hasDeletions = del.flutuacao || del.horas.size > 0;
+
+    let parsed = [];
+    if (typeof rawJson === "string" && rawJson.trim()) {
+      try {
+        const raw = JSON.parse(rawJson);
+        if (Array.isArray(raw)) parsed = raw;
+      } catch (_e) { /* payload inválido: segue só com as exclusões, se houver */ }
+    }
+    if (!parsed.length && !hasDeletions) return null;
+
+    const test = await repo.getDischargeTestById(testId, serviceReportId);
+    if (!test) return null;
+    const current = Array.isArray(test.readings) ? test.readings : [];
+    if (!current.length) return null;
+    const hourCount = Array.isArray(test.hour_labels) ? test.hour_labels.length : 0;
+
+    const toNumOrNull = (v) => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = parseFloat(String(v).replace(",", "."));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const byIdx = new Map();
+    parsed.forEach((row) => {
+      const idx = Number(row && row.idx);
+      if (Number.isInteger(idx) && idx >= 0) byIdx.set(idx, row);
+    });
+
+    return current.map((row, idx) => {
+      const sent = byIdx.get(idx);
+      const stored = Array.isArray(row.horas) ? row.horas : [];
+      const sentHoras = sent && Array.isArray(sent.horas) ? sent.horas : [];
+
+      // Resolve cada checkpoint pelo índice ORIGINAL (o que o cliente não mandar mantém o
+      // valor atual) e só depois descarta os índices excluídos — filtrar antes
+      // desalinharia os valores restantes em relação a hour_labels.
+      const horas = Array.from({ length: hourCount }, (_, h) => {
+        if (sent && h < sentHoras.length) return toNumOrNull(sentHoras[h]);
+        return stored[h] !== undefined ? stored[h] : null;
+      }).filter((_v, h) => !del.horas.has(h));
+
+      const flutuacao = del.flutuacao
+        ? null
+        : (sent ? toNumOrNull(sent.flutuacao) : (row.flutuacao !== undefined ? row.flutuacao : null));
+
+      return { ...row, flutuacao, horas };
+    });
   }
 
   async function loadOrderEditorData(orderId) {
@@ -2315,11 +2394,20 @@ function createReportWebController(deps) {
       const dischargeTests = await repo.listDischargeTestsByReport(report.id);
       const saved = req.query.saved === "1";
       const importError = sanitizeInput(req.query.import_error) || null;
+      // Mesma função que o relatório usa, para a tela nunca divergir do PDF na média.
+      const statsByTest = new Map(dischargeTests.map((t) => [
+        Number(t.id),
+        buildDischargeColumnStats(t.readings, {
+          hourCount: Array.isArray(t.hour_labels) ? t.hour_labels.length : 0,
+          includeFlutuacao: (Array.isArray(t.readings) ? t.readings : []).some((r) => r.flutuacao != null)
+        })
+      ]));
       return res.render("report-service/discharge-editor", {
         pageTitle: `Teste de Descarga — ${data.order.service_order_display || "OS"}`,
         order: withServiceOrderDisplay(data.order),
         report,
         dischargeTests,
+        statsByTest,
         saved,
         importError,
         csrfToken: req.csrfToken(),
@@ -2369,16 +2457,22 @@ function createReportWebController(deps) {
       const notes = sanitizeInput(req.body.notes) || "";
       const colCelulaLabel = sanitizeInput(req.body.col_celula_label) || "";
       const colFlutuacaoLabel = sanitizeInput(req.body.col_flutuacao_label) || "";
+      // Exclusão de coluna: os rótulos e os valores têm de ser filtrados pelos MESMOS
+      // índices, senão hour_labels e readings[].horas saem desalinhados e a tabela passa
+      // a exibir cada valor sob o cabeçalho errado.
+      const deletions = parseDischargeColumnDeletions(req.body.deleted_cols_json);
       const hourLabels = [];
       let i = 0;
       while (req.body[`hour_label_${i}`] !== undefined) {
-        hourLabels.push(sanitizeInput(req.body[`hour_label_${i}`]) || "");
+        if (!deletions.horas.has(i)) hourLabels.push(sanitizeInput(req.body[`hour_label_${i}`]) || "");
         i++;
       }
       if (Number.isInteger(testId) && testId > 0) {
+        const readings = await buildDischargeReadingsUpdate(req.body.readings_json, deletions, testId, report.id);
         await repo.updateDischargeTest(testId, report.id, {
           title, measurementDate, nominalVoltage, notes,
-          hourLabels, colCelulaLabel, colFlutuacaoLabel
+          hourLabels, colCelulaLabel, colFlutuacaoLabel,
+          readings
         });
       }
       return res.redirect(`/admin/report-service/orders/${orderId}/discharge?saved=1`);
@@ -3500,6 +3594,14 @@ function createReportWebController(deps) {
       // Cada leitura tem no máximo um teste de descarga vinculado (1:1, criado junto no import).
       const dischargeByLeitura = new Map();
       (dischargeTests || []).forEach((t) => { if (t.fluke_leitura_id) dischargeByLeitura.set(Number(t.fluke_leitura_id), t); });
+      // Mesma função que o relatório usa, para a tela nunca divergir do PDF na média.
+      const statsByTest = new Map((dischargeTests || []).map((t) => [
+        Number(t.id),
+        buildDischargeColumnStats(t.readings, {
+          hourCount: Array.isArray(t.hour_labels) ? t.hour_labels.length : 0,
+          includeFlutuacao: (Array.isArray(t.readings) ? t.readings : []).some((r) => r.flutuacao != null)
+        })
+      ]));
 
       return res.render("report-service/fluke521-editor", {
         pageTitle: `Leituras Fluke BT521 - ${orderView.service_order_display || orderView.service_order_code || "-"}`,
@@ -3507,8 +3609,13 @@ function createReportWebController(deps) {
         report,
         leituras,
         dischargeByLeitura,
+        statsByTest,
         saved: req.query.saved === "1",
         importError: req.query.import_error ? decodeURIComponent(req.query.import_error) : null,
+        // Avisos do parser (ex.: arquivo só com a tabela de descarga) — o import responde
+        // JSON e recarrega a tela, então eles voltam pela query string para não se perderem.
+        // A query já chega decodificada pelo Express; só sanitiza (não decodifica de novo).
+        importWarning: sanitizeInput(req.query.import_warning) || null,
         csrfToken: req.csrfToken(),
         appVersion: env.APP_VERSION || "1"
       });
@@ -3530,6 +3637,11 @@ function createReportWebController(deps) {
       if (!parsed.isValid) {
         return res.status(422).json({ ok: false, error: (parsed.errors || []).join(" | ") || "Arquivo inválido." });
       }
+
+      // parsed.mode: "full" | "resistance-only" | "discharge-only". A leitura é criada nos
+      // três casos — ela carrega os metadados do arquivo (local, equipamento, bateria) e é
+      // o que vincula o teste de descarga a esta tela via discharge_tests.fluke_leitura_id.
+      // Em "discharge-only" ela fica sem células e a tela omite a tabela de resistência.
 
       const leitura = await repo.createLeituraFluke521({
         serviceReportId: report.id,
@@ -3566,8 +3678,8 @@ function createReportWebController(deps) {
 
       return res.status(201).json({
         ok: true,
-        data: { id: leitura.id, cellCount: leitura.celulas.length, dischargeCreated },
-        warnings: parsed.errors || []
+        data: { id: leitura.id, cellCount: leitura.celulas.length, dischargeCreated, mode: parsed.mode },
+        warnings: parsed.warnings || []
       });
     },
 

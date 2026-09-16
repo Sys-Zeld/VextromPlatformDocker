@@ -1,7 +1,7 @@
 "use strict";
 
 // Fluke BT521 (leituras de bateria) CSV parser.
-// Um único arquivo traz duas medições distintas em blocos separados:
+// Um único arquivo traz até duas medições distintas em blocos separados:
 //   - Tabela "mΩ-Volt (Temperature)": resistência interna + tensão de flutuação por célula
 //   - Tabela "DISCHARGE VOLTS": tensão por célula em cada checkpoint do teste de descarga
 // Os blocos são identificados como "Table<N>,"<rótulo>"" seguido de uma linha de traços,
@@ -9,10 +9,17 @@
 // instrumento numera slots de 1 a 6 e só exporta os que foram usados), então a
 // identificação do bloco é feita pelo rótulo/conteúdo, nunca pelo índice N.
 //
+// As duas tabelas são INDEPENDENTES: o instrumento exporta só o que foi medido. Um arquivo
+// pode conter as duas, apenas a de resistência/tensão ou apenas a de descarga. Daí os três
+// modos de saída (`mode`): "full" | "resistance-only" | "discharge-only". A ausência de uma
+// das tabelas é AVISO (`warnings`), não erro — só é erro fatal quando nenhuma das duas é
+// encontrada. Assim um arquivo somente de descarga importa normalmente.
+//
 // Saída: `celulas` (resistência/tensão/temperatura por célula, para leituras_fluke521 +
 // celulas_fluke521) e `discharge` (hourLabels + readings no MESMO formato que
 // dischargeParserService produz, para reaproveitar a tabela discharge_tests — a tensão de
-// flutuação de cada célula vem do VDC da tabela de resistência, casada pelo nº da célula).
+// flutuação de cada célula vem do VDC da tabela de resistência, casada pelo nº da célula;
+// sem essa tabela `flutuacao` fica null e quem renderiza omite a coluna).
 //
 // Todas as funções são puras — sem I/O, sem efeitos colaterais.
 
@@ -79,6 +86,21 @@ function isTableStartLine(fields) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+// Linha de traços que separa o rótulo do bloco do cabeçalho das colunas. O instrumento
+// exporta esse separador COM aspas ("--------------------"), então o teste tem de rodar
+// sobre o campo já destacado — comparar o texto cru deixaria as aspas na string, o regex
+// falharia e a linha de traços seria consumida como se fosse o cabeçalho das colunas.
+function isSeparatorLine(fields) {
+  return fields.length > 0 && fields.every((f) => f === "" || /^<?-{3,}>?$/.test(f));
+}
+
+// O arquivo termina com um bloco de reimportação do Battery Manager: uma linha de aviso,
+// um separador "<-------------------->" e dezenas de linhas base64. Nada ali é medição, e
+// sem este corte tudo isso entra como linhas de dados da última tabela.
+function isFooterLine(fields) {
+  return fields.some((f) => /do not remove or modify/i.test(f));
+}
+
 // Percorre o arquivo inteiro e devolve { header, blocks }. blocks é a lista bruta de
 // tabelas encontradas, cada uma com { tableIndex, label, headerRow, dataRows }.
 function scanFile(lines) {
@@ -99,11 +121,12 @@ function scanFile(lines) {
     const trimmed = lines[i].trim();
     if (!trimmed) { i++; continue; }
     const fields = parseCsvLine(trimmed).map(unquote);
+    if (isFooterLine(fields)) break;
     const tableIndex = isTableStartLine(fields);
     if (tableIndex === null) { i++; continue; }
     const label = fields[1] || "";
     i++;
-    while (i < lines.length && /^-{3,}$/.test(lines[i].trim())) i++;
+    while (i < lines.length && isSeparatorLine(parseCsvLine(lines[i].trim()).map(unquote))) i++;
     if (i >= lines.length) break;
     const headerRow = parseCsvLine(lines[i].trim()).map(unquote);
     i++;
@@ -112,7 +135,10 @@ function scanFile(lines) {
       const rowTrimmed = lines[i].trim();
       if (!rowTrimmed) { i++; break; }
       const rowFields = parseCsvLine(rowTrimmed).map(unquote);
+      if (isFooterLine(rowFields)) { i = lines.length; break; }
       if (isTableStartLine(rowFields) !== null) break;
+      // Alguns blocos repetem o separador depois do cabeçalho — nunca é dado.
+      if (isSeparatorLine(rowFields)) { i++; continue; }
       dataRows.push(rowFields);
       i++;
     }
@@ -122,18 +148,35 @@ function scanFile(lines) {
   return { header, blocks };
 }
 
-function findResistanceBlock(blocks) {
-  return (
-    blocks.find((b) => /resist|m[ΩΩ]|mohm/i.test(b.label)) ||
-    blocks.find((b) => b.headerRow.some((h) => /resistance/i.test(h)))
-  );
+// Colunas "T<n>(...)" (checkpoints) só existem na tabela de descarga — é a assinatura
+// mais confiável do bloco, já que o rótulo pode vir truncado/mal codificado.
+function hasCheckpointColumns(block) {
+  return block.headerRow.some((h) => /^t\d+\(/i.test(h.trim()));
 }
 
-function findDischargeBlock(blocks) {
-  return (
-    blocks.find((b) => /discharge/i.test(b.label)) ||
-    blocks.find((b) => b.headerRow.some((h) => /^t\d+\(/i.test(h.trim())))
-  );
+function isDischargeBlock(block) {
+  return /discharge/i.test(block.label) || hasCheckpointColumns(block);
+}
+
+function isResistanceBlock(block) {
+  // O rótulo real é "mΩ-Volt (Temperature)", mas o Ω se perde quando o arquivo não vem em
+  // UTF-8 ("m?-Volt", "m-Volt"), então "volt" sozinho também qualifica — seguro porque os
+  // blocos de descarga ("DISCHARGE VOLTS") já foram descartados antes deste teste.
+  if (/resist|m[ΩΩ]|mohm|volt/i.test(block.label)) return true;
+  return block.headerRow.some((h) => /resistance|mohm|m[ΩΩ]/i.test(h) || h.toLowerCase().trim() === "vdc");
+}
+
+// Separa os blocos por medição. A descarga é identificada PRIMEIRO e excluída da busca
+// pela tabela de resistência: "DISCHARGE VOLTS" contém "VOLTS" e casaria com o teste de
+// rótulo da resistência, roubando o bloco errado em arquivos somente de descarga.
+function classifyBlocks(blocks) {
+  const dischargeBlocks = [];
+  const others = [];
+  blocks.forEach((b) => (isDischargeBlock(b) ? dischargeBlocks : others).push(b));
+  return {
+    resistanceBlock: others.find(isResistanceBlock) || null,
+    dischargeBlock: dischargeBlocks[0] || null
+  };
 }
 
 function toFloatOrNull(v) {
@@ -226,26 +269,44 @@ function buildMetadataSummary(header, fileName) {
 }
 
 function parseFluke521Csv(rawContent, fileName) {
+  // `errors` = impedem a importação (nenhuma medição aproveitável no arquivo).
+  // `warnings` = importa, mas o operador precisa saber o que ficou de fora.
   const errors = [];
+  const warnings = [];
   const lines = splitLines(rawContent);
   const { header, blocks } = scanFile(lines);
 
-  const resistanceBlock = findResistanceBlock(blocks);
-  const dischargeBlock = findDischargeBlock(blocks);
-
-  if (!resistanceBlock) errors.push('Tabela de resistência/tensão não encontrada (esperado rótulo com "mΩ"/"Volt"/"Resistance").');
-  if (!dischargeBlock) errors.push('Tabela de teste de descarga não encontrada (esperado rótulo "DISCHARGE" ou colunas "T<n>(...)").');
+  const { resistanceBlock, dischargeBlock } = classifyBlocks(blocks);
 
   const celulas = buildCelulas(resistanceBlock);
   const vdcByCelula = new Map(celulas.map((c) => [c.celulaNum, c.tensaoVdc]));
   const discharge = buildDischarge(dischargeBlock, vdcByCelula);
 
-  if (header.batteryNumber) {
-    if (celulas.length && celulas.length !== header.batteryNumber) {
-      errors.push(`Nº de células no cabeçalho (${header.batteryNumber}) difere das linhas da tabela de resistência/tensão (${celulas.length}).`);
+  const hasResistance = celulas.length > 0;
+  const hasDischarge = Boolean(discharge);
+
+  // Nenhuma das duas tabelas rendeu dados → só aqui a importação é abortada.
+  if (!hasResistance && !hasDischarge) {
+    errors.push('Nenhuma medição encontrada no arquivo: esperada a tabela de resistência/tensão (rótulo com "mΩ"/"Volt"/"Resistance") e/ou a tabela de descarga (rótulo "DISCHARGE" ou colunas "T<n>(...)").');
+  } else {
+    if (!hasResistance) {
+      warnings.push(dischargeBlock && resistanceBlock
+        ? 'A tabela de resistência/tensão ("mΩ"/"Volt"/"Resistance") está presente mas sem linhas de dados — importado apenas o teste de descarga.'
+        : 'Arquivo sem tabela de resistência/tensão ("mΩ"/"Volt"/"Resistance") — importado apenas o teste de descarga. A coluna de tensão de flutuação fica vazia, pois ela vem do VDC dessa tabela.');
     }
-    if (discharge && discharge.readings.length !== header.batteryNumber) {
-      errors.push(`Nº de células no cabeçalho (${header.batteryNumber}) difere das linhas da tabela de descarga (${discharge.readings.length}).`);
+    if (!hasDischarge) {
+      warnings.push(dischargeBlock
+        ? 'A tabela de descarga não tem nenhum checkpoint com valor medido — importadas apenas as leituras de resistência/tensão.'
+        : 'Arquivo sem tabela de teste de descarga — importadas apenas as leituras de resistência/tensão.');
+    }
+  }
+
+  if (header.batteryNumber) {
+    if (hasResistance && celulas.length !== header.batteryNumber) {
+      warnings.push(`Nº de células no cabeçalho (${header.batteryNumber}) difere das linhas da tabela de resistência/tensão (${celulas.length}).`);
+    }
+    if (hasDischarge && discharge.readings.length !== header.batteryNumber) {
+      warnings.push(`Nº de células no cabeçalho (${header.batteryNumber}) difere das linhas da tabela de descarga (${discharge.readings.length}).`);
     }
   }
 
@@ -253,8 +314,15 @@ function parseFluke521Csv(rawContent, fileName) {
   const notes = buildMetadataSummary(header, fileName);
 
   return {
-    isValid: celulas.length > 0 || Boolean(discharge),
+    isValid: hasResistance || hasDischarge,
     errors,
+    warnings,
+    mode: hasResistance && hasDischarge ? "full"
+      : hasResistance ? "resistance-only"
+      : hasDischarge ? "discharge-only"
+      : "none",
+    hasResistance,
+    hasDischarge,
     header: { ...header, nomeArquivo: String(fileName || "").trim() },
     subject,
     notes,

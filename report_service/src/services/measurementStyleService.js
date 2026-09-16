@@ -423,6 +423,13 @@ A tabela usa as seguintes classes CSS com escopo "${scope}":
 - .discharge-td → células de dados (linhas pares)
 - .discharge-td-alt → células de dados (linhas ímpares, cor alternada)
 - .discharge-td-celula → coluna Célula nas linhas de dados
+- .discharge-stat-cell → card de estatística de um período, acima da tabela
+- .discharge-stat-period → faixa de título do card (nome do período, ex.: "T1 (06:39:22)")
+- .discharge-stat-body → corpo do card, abaixo da faixa de título
+- .discharge-stat-line → linha de uma métrica dentro do card
+- .discharge-stat-line-max / .discharge-stat-line-min / .discharge-stat-line-avg → a linha da máxima / mínima / média
+- .discharge-stat-key → rótulo da métrica no card ("Máx", "Mín", "Méd")
+- .discharge-stat-val → valor numérico da métrica no card
 
 REGRAS OBRIGATÓRIAS:
 1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.
