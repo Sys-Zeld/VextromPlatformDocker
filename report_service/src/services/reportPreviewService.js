@@ -2498,6 +2498,7 @@ module.exports = {
   formatDischargeValue,
   resolveDischargeLimits,
   dischargeLimitBreach,
+  generateDischargeStatCardsCss,
   generateDefaultDischargeCss,
   generateDischargeSvgChart,
   generateDefaultDischargeChartCss,

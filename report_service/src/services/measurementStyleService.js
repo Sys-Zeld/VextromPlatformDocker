@@ -430,6 +430,12 @@ A tabela usa as seguintes classes CSS com escopo "${scope}":
 - .discharge-stat-line-max / .discharge-stat-line-min / .discharge-stat-line-avg → a linha da máxima / mínima / média
 - .discharge-stat-key → rótulo da métrica no card ("Máx", "Mín", "Méd")
 - .discharge-stat-val → valor numérico da métrica no card
+- .discharge-block-title → TÍTULO do teste de descarga, acima dos cards (a faixa de texto no topo do bloco)
+- .discharge-limits-legend → linha da legenda dos limites de comparação, abaixo dos cards
+- .discharge-limits-title → rótulo "Limites de comparação:" da legenda
+- .discharge-limits-item → cada item da legenda ("abaixo de X", "acima de Y")
+- .discharge-limits-swatch → quadradinho de cor da legenda (a cor de fundo dele vem da cor
+  configurada pelo usuário e é aplicada inline, portanto não a altere por CSS)
 
 REGRAS OBRIGATÓRIAS:
 1. Retorne APENAS o bloco CSS completo modificado — sem explicações, sem markdown, sem blocos de código \`\`\`.

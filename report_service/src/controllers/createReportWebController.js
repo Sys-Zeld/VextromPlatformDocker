@@ -23,7 +23,8 @@ const {
   buildDischargeColumnStats,
   formatDischargeValue,
   resolveDischargeLimits,
-  dischargeLimitBreach
+  dischargeLimitBreach,
+  generateDischargeStatCardsCss
 } = require("../services/reportPreviewService");
 const {
   buildStyleConfig,
@@ -719,6 +720,22 @@ function createReportWebController(deps) {
     }
 
     return order;
+  }
+
+  // CSS entregue ao agente visual como "CSS atual".
+  //
+  // Um style_config salvo antes do título/cards existirem não contém essas regras. A IA
+  // recebe só o CSS atual e é instruída a preservar o que já existe, então nesse caso ela
+  // não veria a aparência do título e não teria o que modificar — o pedido "deixe o título
+  // maior" não surtiria efeito. Completa-se então com a base das regras de card/título.
+  //
+  // .discharge-block-title serve de sentinela: é a classe mais recente, e sua presença
+  // indica um CSS já gerado depois que o bloco passou a ter título.
+  function buildDischargeCssForAi(activeStyle, testId, generateDefaultCss) {
+    const custom = activeStyle && activeStyle.customCss;
+    if (!custom) return generateDefaultCss(testId);
+    if (custom.includes(".discharge-block-title")) return custom;
+    return `${generateDischargeStatCardsCss(testId)}\n${custom}`;
   }
 
   // Limites de comparação e cores do destaque, vindos do formulário do teste de descarga.
@@ -2559,7 +2576,7 @@ function createReportWebController(deps) {
         return res.json({ previewHtml, styleConfig: activeStyle });
       }
 
-      const currentCss = (activeStyle && activeStyle.customCss) || generateDefaultDischargeCss(testId);
+      const currentCss = buildDischargeCssForAi(activeStyle, testId, generateDefaultDischargeCss);
       const newCss = await applyDischargeStyleViaAi(currentCss, testId, String(instruction).trim(), reviseTextWithAi);
       const newStyleConfig = { customCss: newCss };
       const previewHtml = buildDischargePreviewHtml(test, newStyleConfig);
