@@ -3854,6 +3854,7 @@ async function updateDischargeTest(id, serviceReportId, payload) {
         col_celula_label = $8,
         col_flutuacao_label = $9,
         readings = COALESCE($10::jsonb, readings),
+        display_config = $11::jsonb,
         updated_at = NOW()
       WHERE id = $1 AND service_report_id = $2
       RETURNING *
@@ -3868,7 +3869,10 @@ async function updateDischargeTest(id, serviceReportId, payload) {
       JSON.stringify(Array.isArray(payload.hourLabels) ? payload.hourLabels : []),
       payload.colCelulaLabel || "",
       payload.colFlutuacaoLabel || "",
-      Array.isArray(payload.readings) ? JSON.stringify(payload.readings) : null
+      Array.isArray(payload.readings) ? JSON.stringify(payload.readings) : null,
+      // display_config vem SEMPRE do formulário (que sempre envia os campos de limite), então
+      // aqui é atribuição direta, não COALESCE: é assim que limpar os campos remove os limites.
+      payload.displayConfig ? JSON.stringify(payload.displayConfig) : null
     ]
   );
   if (result.rows[0]) await touchReport(serviceReportId);

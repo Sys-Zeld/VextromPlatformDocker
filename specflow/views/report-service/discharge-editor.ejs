@@ -61,6 +61,12 @@
   .discharge-edit-table td.dcol-doomed { background: #fee2e2 !important; }
   .discharge-edit-table td.dcol-doomed input { text-decoration: line-through; color: #991b1b; }
   .discharge-edit-table .dcol-collapsed { display: none; }
+  /* Título do teste, acima dos cards — mesmo visual do .discharge-block-title do relatório. */
+  .discharge-block-title {
+    font-size: 12px; font-weight: 700; color: #1e3a5f; text-transform: uppercase;
+    letter-spacing: 0.04em; margin: 0 0 6px 0; padding-bottom: 3px;
+    border-bottom: 2px solid #1e3a5f;
+  }
   /* Cards de estatística por período, acima da tabela. Mesmo visual do relatório: faixa
      de título no azul-marinho do cabeçalho da tabela, corpo claro, número à direita.
      A mínima em âmbar por ser o valor diagnóstico (denuncia a célula fraca). */
@@ -90,6 +96,18 @@
   }
   .discharge-stat-card .dsc-line-min .dsc-val { color: #b45309; }
   .discharge-stat-card .dsc-line-avg .dsc-val { color: #334155; }
+  /* Cards do editor: recalculados a cada tecla, ainda não gravados. O selo "prévia" e a
+     borda tracejada distinguem do card do painel "Ver dados", que mostra o que está no banco. */
+  .discharge-stats-cards.discharge-stats-live { margin-bottom: 8px; }
+  .discharge-stat-card.dsc-preview { border-style: dashed; }
+  .discharge-stat-card .dsc-badge {
+    float: right; font-size: 8px; font-weight: 600; letter-spacing: 0.04em;
+    background: rgba(255, 255, 255, 0.22); border-radius: 3px; padding: 0 4px; margin-left: 6px;
+  }
+  .discharge-stat-card.dsc-doomed { opacity: 0.5; border-color: #dc2626; }
+  .discharge-stat-card.dsc-doomed .dsc-period { background: #7f1d1d; text-decoration: line-through; }
+  .discharge-stat-card.dsc-doomed .dsc-val { text-decoration: line-through; }
+  .discharge-stat-card.dcol-collapsed { display: none; }
   .discharge-info-bar {
     display: flex;
     flex-wrap: wrap;
@@ -281,13 +299,17 @@
             // com a MESMA função do relatório (buildDischargeColumnStats), para a tela não
             // divergir do PDF.
             var st = statsByTest && statsByTest.get ? statsByTest.get(Number(test.id)) : null;
-            var fmtStat = function(v) { return (v === null || v === undefined) ? '-' : Number(v).toFixed(3); };
+            // fmtDischargeValue vem do controller: é a MESMA função do relatório (x,xxx).
+            var fmtStat = fmtDischargeValue;
             var statCards = [];
             if (st) {
               if (hasFlutuacao) statCards.push({ label: (test.col_flutuacao_label || 'Flutuação (V)'), s: st.flutuacao });
               (st.horas || []).forEach(function(s, h) { statCards.push({ label: String(hourLabels[h] || ('T' + (h + 1))), s: s }); });
             }
           %>
+          <% if (test.title && String(test.title).trim()) { %>
+          <div class="discharge-block-title"><%= test.title %></div>
+          <% } %>
           <% if (statCards.length) { %>
           <div class="discharge-stats-cards">
             <% statCards.forEach(function(card) { %>
@@ -314,14 +336,24 @@
                 </tr>
               </thead>
               <tbody>
+                <%
+                  // Mesmas funções do relatório: a tela destaca exatamente o que o PDF destaca.
+                  var vLim = dischargeLimitsOf(test);
+                  var bStyle = function(breach) {
+                    return breach ? ' style="background:' + vLim.colors[breach] + ';font-weight:700;"' : '';
+                  };
+                %>
                 <% readings.forEach(function(row) {
                   var horas = Array.isArray(row.horas) ? row.horas : [];
+                  var fB = hasFlutuacao ? dischargeBreachOf(row.flutuacao, vLim) : null;
+                  var hB = horas.map(function(v) { return dischargeBreachOf(v, vLim); });
+                  var rowB = fB || hB.filter(function(b) { return b; })[0] || null;
                 %>
                 <tr>
-                  <td class="td-celula"><%= row.celula %></td>
-                  <% if (hasFlutuacao) { %><td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td><% } %>
-                  <% horas.forEach(function(v) { %>
-                    <td><%= v !== null && v !== undefined ? v : '-' %></td>
+                  <td class="td-celula"<%- bStyle(rowB) %>><%= row.celula %></td>
+                  <% if (hasFlutuacao) { %><td<%- bStyle(fB) %>><%= fmtDischargeValue(row.flutuacao) %></td><% } %>
+                  <% horas.forEach(function(v, hi) { %>
+                    <td<%- bStyle(hB[hi]) %>><%= fmtDischargeValue(v) %></td>
                   <% }); %>
                 </tr>
                 <% }); %>
@@ -353,6 +385,44 @@
             <div class="col-12 col-md-3">
               <label class="form-label form-label-sm mb-1">Observações</label>
               <input class="form-control form-control-sm" name="notes" value="<%= test.notes || '' %>" placeholder="Observações opcionais" />
+            </div>
+
+            <%
+              // Limites já gravados, normalizados pela MESMA função do relatório.
+              var lim = dischargeLimitsOf(test);
+            %>
+            <div class="col-12">
+              <div class="border rounded p-2 bg-light">
+                <div class="fw-semibold small mb-2">
+                  Limites de comparação
+                  <span class="text-muted fw-normal" style="font-size:11px;">
+                    — valores fora da faixa ficam destacados na tabela e no relatório.
+                    Deixe em branco para não comparar daquele lado.
+                  </span>
+                </div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Valor mínimo</label>
+                    <input class="form-control form-control-sm" name="limit_min" type="number" step="any"
+                      value="<%= lim.min !== null ? lim.min : '' %>" placeholder="Ex: 1.900" />
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label form-label-sm mb-1">Cor do mínimo</label>
+                    <input class="form-control form-control-sm form-control-color" name="limit_color_min"
+                      type="color" value="<%= lim.colors.min %>" title="Cor de destaque para abaixo do mínimo" />
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label form-label-sm mb-1">Valor máximo</label>
+                    <input class="form-control form-control-sm" name="limit_max" type="number" step="any"
+                      value="<%= lim.max !== null ? lim.max : '' %>" placeholder="Ex: 2.300" />
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label form-label-sm mb-1">Cor do máximo</label>
+                    <input class="form-control form-control-sm form-control-color" name="limit_color_max"
+                      type="color" value="<%= lim.colors.max %>" title="Cor de destaque para acima do máximo" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <% var hourLabels = Array.isArray(test.hour_labels) ? test.hour_labels : []; %>
@@ -415,6 +485,34 @@
                   <span id="dischargeDelWarnText_<%= test.id %>"></span>
                   <button type="button" class="btn btn-link btn-sm p-0 ms-2" style="font-size:12px;"
                     onclick="clearDischargeColDeletes(<%= test.id %>)">Desfazer</button>
+                </div>
+
+                <!-- Os mesmos cards do painel "Ver dados", agora dentro do editor: abrir o
+                     editor esconde aquele painel, então sem esta cópia não haveria card
+                     nenhum à vista enquanto se digita. Estes recalculam a cada tecla, a
+                     partir dos inputs — por isso trazem o selo "prévia", para não confundir
+                     o que está na tela com o que já foi gravado.
+                     A coluna de flutuação sempre existe aqui (só recolhida quando vazia),
+                     para o card aparecer assim que o primeiro valor for digitado. -->
+                <div class="discharge-stats-cards discharge-stats-live" data-test-id="<%= test.id %>">
+                  <div class="discharge-stat-card dsc-preview<%= hasFlutuacao ? '' : ' dcol-collapsed' %>" data-stat-kind="flutuacao">
+                    <div class="dsc-period"><%= test.col_flutuacao_label || 'Flutuação (V)' %><span class="dsc-badge">prévia</span></div>
+                    <div class="dsc-body">
+                      <div class="dsc-line dsc-line-max"><span class="dsc-key">Máx</span><span class="dsc-val" data-stat="max">-</span></div>
+                      <div class="dsc-line dsc-line-min"><span class="dsc-key">Mín</span><span class="dsc-val" data-stat="min">-</span></div>
+                      <div class="dsc-line dsc-line-avg"><span class="dsc-key">Méd</span><span class="dsc-val" data-stat="avg">-</span></div>
+                    </div>
+                  </div>
+                  <% hourLabels.forEach(function(h, hIdx) { %>
+                  <div class="discharge-stat-card dsc-preview" data-stat-kind="hora" data-stat-idx="<%= hIdx %>">
+                    <div class="dsc-period"><%= h %><span class="dsc-badge">prévia</span></div>
+                    <div class="dsc-body">
+                      <div class="dsc-line dsc-line-max"><span class="dsc-key">Máx</span><span class="dsc-val" data-stat="max">-</span></div>
+                      <div class="dsc-line dsc-line-min"><span class="dsc-key">Mín</span><span class="dsc-val" data-stat="min">-</span></div>
+                      <div class="dsc-line dsc-line-avg"><span class="dsc-key">Méd</span><span class="dsc-val" data-stat="avg">-</span></div>
+                    </div>
+                  </div>
+                  <% }); %>
                 </div>
                 <div class="discharge-table-wrap" style="max-height:420px;overflow-y:auto;">
                   <table class="discharge-table discharge-edit-table" data-test-id="<%= test.id %>">
@@ -1282,6 +1380,83 @@
     });
   });
 
+  // ── Cards de estatística ao vivo ────────────────────────────────────────────────────
+  // Espelham, enquanto se digita, a MESMA conta do servidor (buildDischargeColumnStats):
+  // ignoram vazio/não numérico em vez de tratá-los como zero, e mostram "-" na coluna sem
+  // nenhum valor. Se estas duas regras divergirem do servidor, a prévia mentiria.
+  function dStatsOf(values) {
+    var nums = [];
+    values.forEach(function (raw) {
+      if (raw === null || raw === undefined || String(raw).trim() === "") return;
+      var n = parseFloat(String(raw).replace(",", "."));
+      if (isFinite(n)) nums.push(n);
+    });
+    if (!nums.length) return { max: null, min: null, avg: null };
+    var sum = 0, max = nums[0], min = nums[0];
+    nums.forEach(function (n) { sum += n; if (n > max) max = n; if (n < min) min = n; });
+    return { max: max, min: min, avg: sum / nums.length };
+  }
+
+  // Espelha formatDischargeValue do servidor: sempre 3 casas e vírgula (x,xxx). Roda no
+  // browser, então é a única cópia da função — coberta pelo teste de equivalência.
+  function dFmtStat(v) {
+    if (v === null || v === undefined || v === "") return "-";
+    var n = Number(v);
+    if (!isFinite(n)) return "-";
+    return n.toFixed(3).replace(".", ",");
+  }
+
+  // Recalcula UMA coluna (a que foi editada). Varrer a grade inteira a cada tecla custaria
+  // ~1260 leituras de DOM num banco de 180 células; por coluna são ~180.
+  function refreshDischargeStatCard(id, kind, idx) {
+    var table = document.querySelector(".discharge-edit-table[data-test-id='" + id + "']");
+    var wrap = document.querySelector(".discharge-stats-live[data-test-id='" + id + "']");
+    if (!table || !wrap) return;
+
+    var selector = kind === "flutuacao" ? ".d-flutuacao" : ".d-hora[data-hora-idx='" + idx + "']";
+    var values = [];
+    table.querySelectorAll("tbody " + selector).forEach(function (el) { values.push(el.value); });
+    var st = dStatsOf(values);
+
+    var cardSel = kind === "flutuacao"
+      ? ".discharge-stat-card[data-stat-kind='flutuacao']"
+      : ".discharge-stat-card[data-stat-kind='hora'][data-stat-idx='" + idx + "']";
+    var card = wrap.querySelector(cardSel);
+    if (!card) return;
+    ["max", "min", "avg"].forEach(function (k) {
+      var el = card.querySelector(".dsc-val[data-stat='" + k + "']");
+      if (el) el.textContent = dFmtStat(st[k]);
+    });
+    // A coluna de flutuação some quando fica vazia e reaparece ao receber o primeiro valor,
+    // acompanhando a regra do relatório (coluna só existe quando alguma célula tem o valor).
+    if (kind === "flutuacao") card.classList.toggle("dcol-collapsed", st.max === null);
+  }
+
+  function refreshAllDischargeStatCards(id) {
+    var table = document.querySelector(".discharge-edit-table[data-test-id='" + id + "']");
+    if (!table) return;
+    refreshDischargeStatCard(id, "flutuacao", -1);
+    var seen = {};
+    table.querySelectorAll("tbody .d-hora").forEach(function (el) {
+      var h = el.getAttribute("data-hora-idx");
+      if (seen[h]) return;
+      seen[h] = true;
+      refreshDischargeStatCard(id, "hora", Number(h));
+    });
+  }
+
+  // Um único listener delegado por grade, em vez de um por input (seriam 1260).
+  document.querySelectorAll(".discharge-edit-table[data-test-id]").forEach(function (table) {
+    var id = table.getAttribute("data-test-id");
+    table.addEventListener("input", function (ev) {
+      var el = ev.target;
+      if (!el || !el.classList) return;
+      if (el.classList.contains("d-flutuacao")) refreshDischargeStatCard(id, "flutuacao", -1);
+      else if (el.classList.contains("d-hora")) refreshDischargeStatCard(id, "hora", Number(el.getAttribute("data-hora-idx")));
+    });
+    refreshAllDischargeStatCards(id); // estado inicial, a partir dos valores gravados
+  });
+
   // Colunas marcadas para exclusão, por teste: { <testId>: { flutuacao: bool, horas: Set } }.
   var dDoomed = {};
 
@@ -1337,6 +1512,18 @@
         names.push(label ? label.textContent.trim() : kind);
       }
     });
+
+    // O card da coluna marcada também fica riscado: a prévia tem de mostrar o que será
+    // o resultado do Salvar, e uma coluna prestes a sumir não deve parecer intacta.
+    var wrap = document.querySelector(".discharge-stats-live[data-test-id='" + id + "']");
+    if (wrap) {
+      wrap.querySelectorAll(".discharge-stat-card[data-stat-kind]").forEach(function (card) {
+        var doomed = card.getAttribute("data-stat-kind") === "flutuacao"
+          ? state.flutuacao
+          : Boolean(state.horas[Number(card.getAttribute("data-stat-idx"))]);
+        card.classList.toggle("dsc-doomed", doomed);
+      });
+    }
 
     var warn = document.getElementById("dischargeDelWarn_" + id);
     var text = document.getElementById("dischargeDelWarnText_" + id);

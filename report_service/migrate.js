@@ -867,6 +867,12 @@ async function migrateServiceReport() {
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS style_config JSONB;`);
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_celula_label TEXT NOT NULL DEFAULT '';`);
   await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS col_flutuacao_label TEXT NOT NULL DEFAULT '';`);
+  // display_config: limites de comparação e as cores do destaque, no mesmo espírito do
+  // display_config de leituras_alber. Forma:
+  //   { limits: { min: <número|null>, max: <número|null> },
+  //     colors: { min: "#rrggbb", max: "#rrggbb" } }
+  // Valor fora dos limites destaca a célula na tabela (tela e relatório).
+  await db.query(`ALTER TABLE discharge_tests ADD COLUMN IF NOT EXISTS display_config JSONB;`);
 
   // seq_id: ID sequencial por OS, reutilizando IDs deletados
   await db.query(`ALTER TABLE service_report_measurement_tables ADD COLUMN IF NOT EXISTS seq_id INTEGER;`);

@@ -1985,7 +1985,12 @@ function generateDischargeStatCardsCss(testId) {
     `${s} .discharge-stat-key{display:table-cell;color:#64748b;font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;text-align:left;vertical-align:middle;}`,
     `${s} .discharge-stat-val{display:table-cell;color:#1e3a5f;font-size:11.5px;font-weight:700;text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums;}`,
     `${s} .discharge-stat-line-min .discharge-stat-val{color:#b45309;}`,
-    `${s} .discharge-stat-line-avg .discharge-stat-val{color:#334155;}`
+    `${s} .discharge-stat-line-avg .discharge-stat-val{color:#334155;}`,
+    `${s} .discharge-block-title{font-size:12px;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 6px 0;padding-bottom:3px;border-bottom:2px solid #1e3a5f;}`,
+    `${s} .discharge-limits-legend{margin:0 0 6px 0;font-size:9.5px;color:#475569;}`,
+    `${s} .discharge-limits-title{font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin-right:6px;}`,
+    `${s} .discharge-limits-item{margin-right:12px;white-space:nowrap;}`,
+    `${s} .discharge-limits-swatch{display:inline-block;width:9px;height:9px;border:1px solid #94a3b8;margin-right:4px;vertical-align:-1px;}`
   ].join("\n");
 }
 
@@ -2023,6 +2028,68 @@ function buildDischargeColumnStats(readings, options) {
   };
 }
 
+// Formato único dos valores da tabela de descarga: sempre 3 casas decimais e vírgula
+// (x,xxx), como manda o laudo em pt-BR. As 3 casas são fixas de propósito — "2,3" e "2,300"
+// não comunicam a mesma precisão de instrumento, e uma coluna com casas variando fica
+// impossível de comparar a olho. Não medido continua "-".
+//
+// Exportada e injetada nas views (fmtDischargeValue) para que o relatório e as telas usem
+// literalmente a mesma função, em vez de três cópias que podem divergir.
+function formatDischargeValue(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "-";
+  return n.toFixed(3).replace(".", ",");
+}
+
+// Cores padrão do destaque de limite. Amarelo nos dois lados por ser o pedido original;
+// o usuário pode diferenciar min e max depois, e é por isso que são duas entradas.
+const DISCHARGE_LIMIT_DEFAULT_COLORS = { min: "#fef08a", max: "#fef08a" };
+
+// Lê display_config.{limits,colors} de um teste e devolve uma forma normalizada e segura.
+// Um limite ausente/inválido vira null = "não compara desse lado", então dá para definir só
+// a mínima (o caso comum num teste de descarga, onde o que interessa é a célula que caiu).
+// A cor só é aceita como #rgb/#rrggbb: ela vai para dentro de um atributo style no HTML do
+// relatório, e texto arbitrário vindo do banco ali seria injeção de CSS.
+function resolveDischargeLimits(test) {
+  const dc = test && test.display_config && typeof test.display_config === "object" ? test.display_config : {};
+  const rawLimits = dc.limits && typeof dc.limits === "object" ? dc.limits : {};
+  const rawColors = dc.colors && typeof dc.colors === "object" ? dc.colors : {};
+
+  const num = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const color = (v, fallback) =>
+    (typeof v === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(v.trim())) ? v.trim() : fallback;
+
+  const min = num(rawLimits.min);
+  const max = num(rawLimits.max);
+  return {
+    min,
+    max,
+    // Limites invertidos (min > max) marcariam tudo: trata como não configurado.
+    active: (min !== null || max !== null) && !(min !== null && max !== null && min > max),
+    colors: {
+      min: color(rawColors.min, DISCHARGE_LIMIT_DEFAULT_COLORS.min),
+      max: color(rawColors.max, DISCHARGE_LIMIT_DEFAULT_COLORS.max)
+    }
+  };
+}
+
+// Qual lado do limite o valor violou: "min", "max" ou null. Valor não medido nunca é
+// violação — "não medido" e "fora do limite" são coisas distintas num laudo.
+function dischargeLimitBreach(value, limits) {
+  if (!limits || !limits.active) return null;
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (limits.min !== null && n < limits.min) return "min";
+  if (limits.max !== null && n > limits.max) return "max";
+  return null;
+}
+
 function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
   const tagId = Number(requestedId);
   const list = Array.isArray(dischargeTests) ? dischargeTests : [];
@@ -2049,6 +2116,13 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
   // e as células quando nenhuma leitura tem o valor.
   const hasFlutuacao = readings.some((row) => row.flutuacao != null);
 
+  // Destaque por limite: a célula fora da faixa recebe a cor do lado violado, e a coluna
+  // "Célula" da linha ganha uma marca na mesma cor — sem ela, achar a célula problemática
+  // num banco de 180 linhas exigiria varrer a tabela inteira a olho.
+  // Declarado aqui, antes dos cards: statCardsHtml é montado na sequência e já consulta os
+  // limites, então deixar isto mais abaixo cairia na zona morta temporal do const.
+  const limits = resolveDischargeLimits(test);
+
   const headerCells = [
     `<th class="discharge-th-celula">${escapeHtml(celulaLabel)}</th>`,
     ...(hasFlutuacao ? [`<th class="discharge-th">${escapeHtml(flutuacaoLabel)}</th>`] : []),
@@ -2063,26 +2137,55 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
     hourCount: hourLabels.length,
     includeFlutuacao: hasFlutuacao
   });
-  const fmtStat = (v) => (v === null || v === undefined ? "-" : Number(v).toFixed(3));
+  const fmtStat = formatDischargeValue;
 
   const statCards = [
     ...(hasFlutuacao ? [{ label: flutuacaoLabel, s: stats.flutuacao }] : []),
     ...stats.horas.map((s, h) => ({ label: String(hourLabels[h] || `T${h + 1}`), s }))
   ];
 
-  const statLine = (kind, key, value) =>
-    `<div class="discharge-stat-line discharge-stat-line-${kind}">`
-    + `<span class="discharge-stat-key">${key}</span>`
-    + `<span class="discharge-stat-val">${escapeHtml(value)}</span></div>`;
+  const statLine = (kind, key, value, breach) => {
+    const style = breach ? ` style="background:${limits.colors[breach]};border-radius:2px;padding:0 3px;"` : "";
+    return `<div class="discharge-stat-line discharge-stat-line-${kind}">`
+      + `<span class="discharge-stat-key">${key}</span>`
+      + `<span class="discharge-stat-val"${style}>${escapeHtml(value)}</span></div>`;
+  };
 
-  const statCardCell = (card) =>
-    `<td class="discharge-stat-cell">`
-    + `<div class="discharge-stat-period">${escapeHtml(card.label)}</div>`
-    + `<div class="discharge-stat-body">`
-    + statLine("max", "Máx", fmtStat(card.s ? card.s.max : null))
-    + statLine("min", "Mín", fmtStat(card.s ? card.s.min : null))
-    + statLine("avg", "Méd", fmtStat(card.s ? card.s.avg : null))
-    + `</div></td>`;
+  // No card, destaca-se o próprio extremo que violou o limite: se a mínima do período está
+  // abaixo do mínimo configurado, é ela que acende — é o resumo apontando onde olhar.
+  const statCardCell = (card) => {
+    const s = card.s;
+    const minBreach = dischargeLimitBreach(s ? s.min : null, limits);
+    const maxBreach = dischargeLimitBreach(s ? s.max : null, limits);
+    return `<td class="discharge-stat-cell">`
+      + `<div class="discharge-stat-period">${escapeHtml(card.label)}</div>`
+      + `<div class="discharge-stat-body">`
+      + statLine("max", "Máx", fmtStat(s ? s.max : null), maxBreach)
+      + statLine("min", "Mín", fmtStat(s ? s.min : null), minBreach)
+      + statLine("avg", "Méd", fmtStat(s ? s.avg : null), null)
+      + `</div></td>`;
+  };
+
+  // Título do teste, acima dos cards. O data-table-title do wrapper alimenta o índice de
+  // tabelas e a legenda "Tabela X.Y" do rodapé, mas não exibe o título no bloco — então
+  // aqui não há duplicação. Título vazio não rende uma barra vazia.
+  const blockTitle = String(test.title || "").trim();
+  const blockTitleHtml = blockTitle
+    ? `<div class="discharge-block-title">${escapeHtml(blockTitle)}</div>`
+    : "";
+
+  // Legenda: sem ela, uma célula amarela no PDF impresso não diz contra o que foi comparada.
+  const limitsLegend = limits.active
+    ? `<div class="discharge-limits-legend">`
+      + `<span class="discharge-limits-title">Limites de comparação:</span>`
+      + (limits.min !== null
+        ? `<span class="discharge-limits-item"><span class="discharge-limits-swatch" style="background:${limits.colors.min};"></span>`
+          + `abaixo de ${escapeHtml(formatDischargeValue(limits.min))}</span>` : "")
+      + (limits.max !== null
+        ? `<span class="discharge-limits-item"><span class="discharge-limits-swatch" style="background:${limits.colors.max};"></span>`
+          + `acima de ${escapeHtml(formatDischargeValue(limits.max))}</span>` : "")
+      + `</div>`
+    : "";
 
   // Quebra em linhas de no máximo 6 cards: com muitos checkpoints, uma única linha
   // comprimiria cada card até os números ficarem ilegíveis na folha.
@@ -2103,13 +2206,25 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
       + `</table>`
     : "";
 
+  const breachStyle = (breach) => {
+    if (!breach) return "";
+    const bg = limits.colors[breach];
+    return ` style="background:${bg};font-weight:700;"`;
+  };
+
   const rows = readings.map((row, idx) => {
     const tdClass = idx % 2 === 0 ? "discharge-td" : "discharge-td-alt";
     const horas = Array.isArray(row.horas) ? row.horas : [];
+
+    const flutBreach = hasFlutuacao ? dischargeLimitBreach(row.flutuacao, limits) : null;
+    const horaBreaches = horas.map((v) => dischargeLimitBreach(v, limits));
+    // A marca da linha usa o primeiro lado violado encontrado na linha.
+    const rowBreach = flutBreach || horaBreaches.find((b) => b) || null;
+
     const cells = [
-      `<td class="discharge-td-celula">${escapeHtml(String(row.celula))}</td>`,
-      ...(hasFlutuacao ? [`<td class="${tdClass}">${row.flutuacao != null ? escapeHtml(String(row.flutuacao)) : "-"}</td>`] : []),
-      ...horas.map((v) => `<td class="${tdClass}">${v != null ? escapeHtml(String(v)) : "-"}</td>`)
+      `<td class="discharge-td-celula"${breachStyle(rowBreach)}>${escapeHtml(String(row.celula))}</td>`,
+      ...(hasFlutuacao ? [`<td class="${tdClass}"${breachStyle(flutBreach)}>${escapeHtml(formatDischargeValue(row.flutuacao))}</td>`] : []),
+      ...horas.map((v, h) => `<td class="${tdClass}"${breachStyle(horaBreaches[h])}>${escapeHtml(formatDischargeValue(v))}</td>`)
     ].join("");
     return `<tr style="page-break-inside:avoid;break-inside:avoid;">${cells}</tr>`;
   }).join("");
@@ -2122,7 +2237,9 @@ function renderDischargeTestTable(dischargeTests, requestedId, styleConfig) {
            por uma customização futura que mencione as mesmas classes. -->
       <style>${generateDischargeStatCardsCss(id)}</style>
       <style>${css}</style>
+      ${blockTitleHtml}
       ${statCardsHtml}
+      ${limitsLegend}
       <table data-discharge-id="${id}" style="width:100%;border-collapse:collapse;line-height:1.3;white-space:nowrap;">
         <thead style="display:table-header-group;">
           <tr style="page-break-inside:avoid;break-inside:avoid;">${headerCells}</tr>
@@ -2378,6 +2495,9 @@ module.exports = {
   generateDefaultFluke521Css,
   renderDischargeTestTable,
   buildDischargeColumnStats,
+  formatDischargeValue,
+  resolveDischargeLimits,
+  dischargeLimitBreach,
   generateDefaultDischargeCss,
   generateDischargeSvgChart,
   generateDefaultDischargeChartCss,

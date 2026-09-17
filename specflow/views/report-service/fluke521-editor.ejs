@@ -39,6 +39,12 @@
   .discharge-table tbody td.td-celula { text-align: left; font-weight: 600; background: #f8fafc; position: sticky; left: 0; z-index: 1; border-right: 2px solid #cbd5e1; }
   .discharge-table tbody tr:nth-child(even) td { background: #f0f4fa; }
   .discharge-table tbody tr:nth-child(even) td.td-celula { background: #edf2f9; }
+  /* Título do teste, acima dos cards — mesmo visual do .discharge-block-title do relatório. */
+  .discharge-block-title {
+    font-size: 12px; font-weight: 700; color: #1e3a5f; text-transform: uppercase;
+    letter-spacing: 0.04em; margin: 0 0 6px 0; padding-bottom: 3px;
+    border-bottom: 2px solid #1e3a5f;
+  }
   /* Cards de estatística por período, acima da tabela — mesmo visual da tela
      Teste de Descarga e dos .discharge-stat-* do relatório. */
   .discharge-stats-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -326,13 +332,17 @@
               // Cards de estatística por período, calculados pelo controller com a MESMA
               // função do relatório (buildDischargeColumnStats).
               var dSt = statsByTest && statsByTest.get ? statsByTest.get(Number(dTest.id)) : null;
-              var dFmtStat = function(v) { return (v === null || v === undefined) ? '-' : Number(v).toFixed(3); };
+              // fmtDischargeValue vem do controller: é a MESMA função do relatório (x,xxx).
+              var dFmtStat = fmtDischargeValue;
               var dStatCards = [];
               if (dSt) {
                 if (dHasFlutuacao) dStatCards.push({ label: (dTest.col_flutuacao_label || 'Flutuação (V)'), s: dSt.flutuacao });
                 (dSt.horas || []).forEach(function(s, h) { dStatCards.push({ label: String(dHourLabels[h] || ('T' + (h + 1))), s: s }); });
               }
             %>
+            <% if (dTest.title && String(dTest.title).trim()) { %>
+            <div class="discharge-block-title"><%= dTest.title %></div>
+            <% } %>
             <% if (dStatCards.length) { %>
             <div class="discharge-stats-cards">
               <% dStatCards.forEach(function(card) { %>
@@ -357,11 +367,23 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <% dReadings.forEach(function(row) { var horas = Array.isArray(row.horas) ? row.horas : []; %>
+                  <%
+                    // Mesmas funções do relatório: a tela destaca o que o PDF destaca.
+                    var dLim = dischargeLimitsOf(dTest);
+                    var dBStyle = function(breach) {
+                      return breach ? ' style="background:' + dLim.colors[breach] + ';font-weight:700;"' : '';
+                    };
+                  %>
+                  <% dReadings.forEach(function(row) {
+                    var horas = Array.isArray(row.horas) ? row.horas : [];
+                    var fB = dHasFlutuacao ? dischargeBreachOf(row.flutuacao, dLim) : null;
+                    var hB = horas.map(function(v) { return dischargeBreachOf(v, dLim); });
+                    var rowB = fB || hB.filter(function(b) { return b; })[0] || null;
+                  %>
                   <tr>
-                    <td class="td-celula"><%= row.celula %></td>
-                    <% if (dHasFlutuacao) { %><td><%= row.flutuacao !== null && row.flutuacao !== undefined ? row.flutuacao : '-' %></td><% } %>
-                    <% horas.forEach(function(v) { %><td><%= v !== null && v !== undefined ? v : '-' %></td><% }); %>
+                    <td class="td-celula"<%- dBStyle(rowB) %>><%= row.celula %></td>
+                    <% if (dHasFlutuacao) { %><td<%- dBStyle(fB) %>><%= fmtDischargeValue(row.flutuacao) %></td><% } %>
+                    <% horas.forEach(function(v, hi) { %><td<%- dBStyle(hB[hi]) %>><%= fmtDischargeValue(v) %></td><% }); %>
                   </tr>
                   <% }); %>
                 </tbody>

@@ -18,7 +18,13 @@ const {
 const env = require("../../../specflow/config/env");
 const { getReportConfigSettings, saveReportConfigSettings } = require("../services/reportConfigSettings");
 const { getReportServiceEmailSettings, getTemplateByPurpose } = require("../services/emailSettings");
-const { buildPreviewModel, buildDischargeColumnStats } = require("../services/reportPreviewService");
+const {
+  buildPreviewModel,
+  buildDischargeColumnStats,
+  formatDischargeValue,
+  resolveDischargeLimits,
+  dischargeLimitBreach
+} = require("../services/reportPreviewService");
 const {
   buildStyleConfig,
   getDefaultMeasurementStyleConfig,
@@ -713,6 +719,35 @@ function createReportWebController(deps) {
     }
 
     return order;
+  }
+
+  // Limites de comparação e cores do destaque, vindos do formulário do teste de descarga.
+  // Campo vazio = sem limite daquele lado (dá para configurar só a mínima, que é o caso
+  // comum). Cor só é aceita em #rgb/#rrggbb — ela é interpolada num atributo style do HTML
+  // do relatório, e texto livre ali seria injeção de CSS. Devolve null quando não há limite
+  // nenhum, o que zera o display_config e desliga o destaque.
+  function buildDischargeDisplayConfig(body) {
+    const num = (v) => {
+      if (v === null || v === undefined || String(v).trim() === "") return null;
+      const n = parseFloat(String(v).replace(",", "."));
+      return Number.isFinite(n) ? n : null;
+    };
+    const color = (v, fallback) => {
+      const s = String(v || "").trim();
+      return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s.toLowerCase() : fallback;
+    };
+
+    const min = num(body.limit_min);
+    const max = num(body.limit_max);
+    if (min === null && max === null) return null;
+
+    return {
+      limits: { min, max },
+      colors: {
+        min: color(body.limit_color_min, "#fef08a"),
+        max: color(body.limit_color_max, "#fef08a")
+      }
+    };
   }
 
   // Colunas que a grade marcou para excluir: {"flutuacao":bool,"horas":[índices]}.
@@ -2408,6 +2443,11 @@ function createReportWebController(deps) {
         report,
         dischargeTests,
         statsByTest,
+        // Mesmas funções que o relatório usa (formato x,xxx e destaque por limite) — a tela
+        // não reimplementa nenhuma delas.
+        fmtDischargeValue: formatDischargeValue,
+        dischargeLimitsOf: resolveDischargeLimits,
+        dischargeBreachOf: dischargeLimitBreach,
         saved,
         importError,
         csrfToken: req.csrfToken(),
@@ -2472,7 +2512,8 @@ function createReportWebController(deps) {
         await repo.updateDischargeTest(testId, report.id, {
           title, measurementDate, nominalVoltage, notes,
           hourLabels, colCelulaLabel, colFlutuacaoLabel,
-          readings
+          readings,
+          displayConfig: buildDischargeDisplayConfig(req.body || {})
         });
       }
       return res.redirect(`/admin/report-service/orders/${orderId}/discharge?saved=1`);
@@ -3610,6 +3651,11 @@ function createReportWebController(deps) {
         leituras,
         dischargeByLeitura,
         statsByTest,
+        // Mesmas funções que o relatório usa (formato x,xxx e destaque por limite) — a tela
+        // não reimplementa nenhuma delas.
+        fmtDischargeValue: formatDischargeValue,
+        dischargeLimitsOf: resolveDischargeLimits,
+        dischargeBreachOf: dischargeLimitBreach,
         saved: req.query.saved === "1",
         importError: req.query.import_error ? decodeURIComponent(req.query.import_error) : null,
         // Avisos do parser (ex.: arquivo só com a tabela de descarga) — o import responde
