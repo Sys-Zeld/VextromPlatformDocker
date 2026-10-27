@@ -12,21 +12,24 @@ const ROLES = {
   ADMINISTRATOR: "administrator",
   COORDINATOR: "coordinator",
   TECHNICIAN: "technician",
-  MANAGER: "manager"
+  MANAGER: "manager",
+  EXPENSE_USER: "expense_user"
 };
 
 const ROLE_LABELS = {
   [ROLES.ADMINISTRATOR]: "Administrador",
   [ROLES.COORDINATOR]: "Coordenador",
   [ROLES.TECHNICIAN]: "Técnico",
-  [ROLES.MANAGER]: "Gestor"
+  [ROLES.MANAGER]: "Gestor",
+  [ROLES.EXPENSE_USER]: "Colaborador (Despesas)"
 };
 
 const ROLE_DESCRIPTIONS = {
   [ROLES.ADMINISTRATOR]: "Acesso total, incluindo backup, configuração do sistema e gestão de usuários.",
   [ROLES.COORDINATOR]: "Cria OS, faz cadastros e exclusões gerais. Não administra o sistema.",
   [ROLES.TECHNICIAN]: "Edita OS e relatórios. Sem acesso ao SentinelGrid nem à manutenção do sistema.",
-  [ROLES.MANAGER]: "Somente visualização de OS e do SentinelGrid."
+  [ROLES.MANAGER]: "Somente visualização de OS e do SentinelGrid.",
+  [ROLES.EXPENSE_USER]: "Sem acesso aos módulos da plataforma (contas antigas do Relatório de Despesas, que agora tem login próprio)."
 };
 
 // Capacidades — o vocabulário que as rotas usam para se proteger.
@@ -81,7 +84,12 @@ const ROLE_CAPABILITIES = {
     CAPABILITIES.RECORDS_READ,
     CAPABILITIES.ORDERS_READ,
     CAPABILITIES.SENTINELGRID_READ
-  ])
+  ]),
+
+  // Contas antigas criadas pelo módulo de despesas (que hoje tem login
+  // próprio): nenhuma capacidade na plataforma. O perfil é mantido para essas
+  // contas não caírem no perfil padrão (Técnico) e ganharem acesso indevido.
+  [ROLES.EXPENSE_USER]: new Set()
 };
 
 // Perfis do modelo antigo continuam entrando.
@@ -92,7 +100,8 @@ const LEGACY_ROLE_ALIASES = {
   coordenador: ROLES.COORDINATOR,
   tecnico: ROLES.TECHNICIAN,
   "técnico": ROLES.TECHNICIAN,
-  gestor: ROLES.MANAGER
+  gestor: ROLES.MANAGER,
+  colaborador: ROLES.EXPENSE_USER
 };
 
 const ROLE_SET = new Set(Object.values(ROLES));
