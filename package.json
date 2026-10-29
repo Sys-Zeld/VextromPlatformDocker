@@ -1,6 +1,6 @@
 {
   "name": "VextromPlatform",
-  "version": "2.0.1",
+  "version": "2.2.1",
   "description": "System VextromPlatform",
   "moduleVersions": {
     "specflow": "beta",
