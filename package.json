@@ -33,6 +33,7 @@
     "expenses:enable": "node scripts/modules-toggle.js enable expenses",
     "expenses:disable": "node scripts/modules-toggle.js disable expenses",
     "expenses:admin:create": "node expenses/scripts/create-admin.js",
+    "expenses:db:reset": "node expenses/scripts/reset-database.js",
     "sentinelgrid:reconcile-orders": "node scripts/sentinelgrid-reconcile-orders.js",
     "modules:enable:all": "node scripts/modules-toggle.js enable all",
     "modules:disable:all": "node scripts/modules-toggle.js disable all",
