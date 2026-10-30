@@ -61,6 +61,16 @@ const ExpensesLoginPage = lazy(() => import("./pages/expenses/auth/LoginPage"));
 const ExpensesForgotPasswordPage = lazy(() => import("./pages/expenses/auth/ForgotPasswordPage"));
 const ExpensesTokenPasswordPage = lazy(() => import("./pages/expenses/auth/TokenPasswordPage"));
 const ExpensesChangePasswordPage = lazy(() => import("./pages/expenses/auth/ChangePasswordPage"));
+const ExpensesMobileShell = lazy(() => import("./pages/expenses/mobile/MobileShell"));
+const ExpensesMobileReportsPage = lazy(() => import("./pages/expenses/mobile/MobileReportsPage"));
+const ExpensesMobileReportFormPage = lazy(() => import("./pages/expenses/mobile/MobileReportFormPage"));
+const ExpensesMobileReportPage = lazy(() => import("./pages/expenses/mobile/MobileReportPage"));
+const ExpensesMobileItemPage = lazy(() => import("./pages/expenses/mobile/MobileItemPage"));
+const ExpensesMobileDashboardPage = lazy(() => import("./pages/expenses/mobile/MobileDashboardPage"));
+const ExpensesMobileNotificationsPage = lazy(() => import("./pages/expenses/mobile/MobileNotificationsPage"));
+const ExpensesMobileHistoryPage = lazy(() => import("./pages/expenses/mobile/MobileHistoryPage"));
+const ExpensesMobileChangePasswordPage = lazy(() => import("./pages/expenses/mobile/MobileChangePasswordPage"));
+const ExpensesMobileMorePage = lazy(() => import("./pages/expenses/mobile/MobileMorePage"));
 
 function RouteFallback() {
   return (
@@ -84,6 +94,22 @@ export default function App() {
         <Route path="/expenses/forgot-password" element={<ExpensesForgotPasswordPage />} />
         <Route path="/expenses/set-password" element={<ExpensesTokenPasswordPage />} />
         <Route path="/expenses/reset-password" element={<ExpensesTokenPasswordPage />} />
+        {/* Despesas no celular: fora do Layout, só funções do Colaborador. */}
+        <Route element={<ExpensesGuard />}>
+          <Route element={<ExpensesMobileShell />}>
+            <Route path="/expenses/m" element={<ExpensesMobileReportsPage />} />
+            <Route path="/expenses/m/reports/new" element={<ExpensesMobileReportFormPage />} />
+            <Route path="/expenses/m/reports/:id" element={<ExpensesMobileReportPage />} />
+            <Route path="/expenses/m/reports/:id/edit" element={<ExpensesMobileReportFormPage />} />
+            <Route path="/expenses/m/reports/:id/items/new" element={<ExpensesMobileItemPage />} />
+            <Route path="/expenses/m/reports/:id/items/:itemId" element={<ExpensesMobileItemPage />} />
+            <Route path="/expenses/m/painel" element={<ExpensesMobileDashboardPage />} />
+            <Route path="/expenses/m/notifications" element={<ExpensesMobileNotificationsPage />} />
+            <Route path="/expenses/m/history" element={<ExpensesMobileHistoryPage />} />
+            <Route path="/expenses/m/change-password" element={<ExpensesMobileChangePasswordPage />} />
+            <Route path="/expenses/m/more" element={<ExpensesMobileMorePage />} />
+          </Route>
+        </Route>
         <Route element={<Layout />}>
           <Route path="/" element={<OrdersPage />} />
           <Route path="/orders/:id/editor" element={<OrderEditorPage />} />

@@ -7,7 +7,8 @@ import { PageHeader, errorMessage } from "../shared";
 import { useExpensesMe } from "./ExpensesGuard";
 
 // Troca de senha pelo próprio usuário. Obrigatória após senha provisória.
-export default function ChangePasswordPage() {
+// `embedded`: dentro de outra moldura (versão mobile), que já mostra o título.
+export default function ChangePasswordPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const me = useExpensesMe();
@@ -20,6 +21,9 @@ export default function ChangePasswordPage() {
   const [done, setDone] = useState(false);
 
   const mismatch = Boolean(confirm) && next !== confirm;
+  const subtitle = forced
+    ? "Você entrou com uma senha provisória. Defina uma senha pessoal para continuar."
+    : "Ao trocar a senha, as outras sessões abertas são encerradas.";
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy || mismatch) return;
@@ -40,10 +44,7 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="d-flex flex-column gap-4" style={{ maxWidth: 520 }}>
-      <PageHeader
-        title="Trocar senha"
-        subtitle={forced ? "Você entrou com uma senha provisória. Defina uma senha pessoal para continuar." : "Ao trocar a senha, as outras sessões abertas são encerradas."}
-      />
+      {embedded ? <p className="text-muted small mb-0">{subtitle}</p> : <PageHeader title="Trocar senha" subtitle={subtitle} />}
       {done && <Alert variant="success" dismissible onClose={() => setDone(false)} className="mb-0">Senha alterada.</Alert>}
       {error && <Alert variant="danger" className="mb-0">{error}</Alert>}
       <Card>

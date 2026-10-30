@@ -7,6 +7,7 @@ import SgIcon, { SgIconName, isSgIconName } from "./sentinelgrid/SgIcon";
 import MaintenanceAlertsPopup from "./sentinelgrid/MaintenanceAlertsPopup";
 import NotificationBell from "./expenses/NotificationBell";
 import { AuthUser, getMe, getMeta, logout as expensesLogout } from "../api/expenses";
+import { isMobileDevice, setViewPreference } from "../pages/expenses/mobile/uiMode";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -289,6 +290,10 @@ export default function Layout() {
     qc.removeQueries({ queryKey: ["expenses"] });
     window.location.href = "/app/expenses/login?logout=1";
   };
+  const onExpensesMobileView = () => {
+    setViewPreference("mobile");
+    window.location.href = "/app/expenses/m";
+  };
   const capabilities = [
     ...(isExpenses ? [] : session?.capabilities ?? []),
     ...(mod.key === "expenses" ? expensesNavCapabilities(expensesMeta?.actor) : [])
@@ -460,6 +465,12 @@ export default function Layout() {
                   {currentUser.roleLabel && <small className="d-block text-muted lh-1">{currentUser.roleLabel}</small>}
                 </span>
               </span>
+            )}
+            {isExpenses && expensesMe && isMobileDevice() && (
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onExpensesMobileView} title="Voltar para a versão mobile">
+                <span className="material-symbols-outlined align-middle">smartphone</span>
+                <span className="d-none d-md-inline ms-1">Versão mobile</span>
+              </button>
             )}
             {isExpenses && expensesMe && (
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onExpensesLogout} title="Sair do módulo">

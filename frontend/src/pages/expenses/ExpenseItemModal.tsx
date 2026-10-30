@@ -37,9 +37,9 @@ interface Pending {
   message?: string;
 }
 
-const EMPTY: ItemInput = { expenseDate: "", categoryId: "", description: "", justification: "", amount: "", merchant: "", notes: "" };
+export const EMPTY_ITEM: ItemInput = { expenseDate: "", categoryId: "", description: "", justification: "", amount: "", merchant: "", notes: "" };
 
-const toInput = (i: ExpenseItem): ItemInput => ({
+export const toInput = (i: ExpenseItem): ItemInput => ({
   expenseDate: String(i.expense_date).slice(0, 10),
   categoryId: i.category_id,
   description: i.description,
@@ -50,7 +50,7 @@ const toInput = (i: ExpenseItem): ItemInput => ({
 });
 
 // Aceita só dígitos e uma vírgula com até 2 casas (o servidor revalida).
-function sanitizeAmount(raw: string): string {
+export function sanitizeAmount(raw: string): string {
   const cleaned = raw.replace(/[^\d,]/g, "");
   const [int, ...rest] = cleaned.split(",");
   return rest.length ? `${int},${rest.join("").slice(0, 2)}` : int;
@@ -60,7 +60,7 @@ const fmtSize = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 102
 
 export default function ExpenseItemModal(props: Props) {
   const { show, reportId, item, categories, allowedExtensions, maxFileMb } = props;
-  const [form, setForm] = useState<ItemInput>(EMPTY);
+  const [form, setForm] = useState<ItemInput>(EMPTY_ITEM);
   const [savedItem, setSavedItem] = useState<ExpenseItem | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
@@ -73,7 +73,7 @@ export default function ExpenseItemModal(props: Props) {
 
   useEffect(() => {
     if (!show) return;
-    setForm(item ? toInput(item) : EMPTY);
+    setForm(item ? toInput(item) : EMPTY_ITEM);
     setSavedItem(item);
     setPending([]);
     setError(null);

@@ -287,12 +287,23 @@ if (env.reactAppEnabled) {
   app.use("/app/sentinelgrid", requireSentinelGridAccess(accessControl.CAPABILITIES.SENTINELGRID_READ));
   // Despesas: telas de login/senha são públicas; o resto exige a sessão do módulo.
   const EXPENSES_PUBLIC_PAGES = new Set(["/login", "/forgot-password", "/set-password", "/reset-password"]);
+  const expensesDevice = require("../expenses/src/lib/device");
   app.use("/app/expenses", (req, res, next) => {
     if (!expensesAccess) return sendStandardError(req, res, 404);
+    // Celular recebe a versão mobile (só funções do Colaborador). O cookie leva a
+    // decisão ao SPA, que a segue nas navegações internas (ex.: após o login).
+    const mobile = expensesDevice.isMobileRequest(req);
+    res.cookie(expensesDevice.UI_COOKIE, mobile ? "mobile" : "desktop", { sameSite: "lax", path: "/app/expenses", secure: req.secure });
+    res.vary("User-Agent");
+    res.vary("Sec-CH-UA-Mobile");
     if (EXPENSES_PUBLIC_PAGES.has(req.path)) return next();
     return expensesAccess.resolveActor(req)
       .then((actor) => {
         if (!actor) return res.redirect(`/app/expenses/login?next=${encodeURIComponent(req.originalUrl)}`);
+        const wantsDesktop = (req.cookies && req.cookies[expensesDevice.VIEW_COOKIE]) === "desktop";
+        if (mobile && !wantsDesktop && req.method === "GET" && !expensesDevice.isMobilePath(req.path)) {
+          return res.redirect(`/app/expenses${expensesDevice.mobilePathFor(req.path)}`);
+        }
         const isAdminArea = req.path === "/admin" || req.path.startsWith("/admin/");
         if (isAdminArea && !actor.canManage) return sendStandardError(req, res, 403);
         return next();

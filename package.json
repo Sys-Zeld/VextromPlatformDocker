@@ -7,14 +7,14 @@
     "module_spec": "0.0.1",
     "report_service": "1.0.1",
     "sentinelgrid": "0.2.0",
-    "expenses": "0.1.0"
+    "expenses": "0.2.0"
   },
   "moduleStatuses": {
     "specflow": "active",
     "module_spec": "in_development",
     "report_service": "active",
     "sentinelgrid": "in_development",
-    "expenses": "in_development"
+    "expenses": "active"
   },
   "main": "src/app.js",
   "scripts": {
