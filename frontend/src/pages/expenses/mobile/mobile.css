@@ -1,0 +1,260 @@
+/* Versão mobile do Relatório de Despesas: coluna única, ações no rodapé ao
+   alcance do polegar. Cores vêm das variáveis do tema (claro/escuro). */
+
+.exm-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--surface-2, #f4f6f5);
+  color: var(--text, #212529);
+}
+
+/* O CSS legado (specflow/public/css/app.css) põe um ícone automático em todo
+   .btn; aqui os ícones são explícitos, então o automático sai. */
+.exm-shell .btn.btn:not(.btn-no-icon)::before { content: none; display: none; }
+
+.exm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top);
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #dee2e6);
+}
+
+.exm-topbar__logo { height: 28px; }
+.exm-topbar__title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exm-topbar__back { margin-left: -8px; }
+
+.exm-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+}
+.exm-iconbtn:active { background: var(--surface-3, #e9ecef); }
+
+.exm-main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px calc(96px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Cards de relatório/despesa: a área toda é tocável. */
+.exm-card {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #dee2e6);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: inherit;
+  text-decoration: none;
+}
+.exm-card:active { background: var(--surface-3, #f1f3f5); }
+.exm-card__row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.exm-card__title { font-weight: 600; margin: 4px 0 2px; overflow-wrap: anywhere; }
+.exm-card__meta { font-size: 0.85rem; color: var(--muted-text, #6c757d); }
+.exm-card__amount { font-weight: 700; white-space: nowrap; }
+
+.exm-section-title {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-text, #6c757d);
+}
+
+/* Barra de ação fixa no rodapé. */
+.exm-actionbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1020;
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--surface, #fff);
+  border-top: 1px solid var(--border, #dee2e6);
+}
+.exm-actionbar > * { flex: 1; min-height: 48px; }
+
+/* Botão flutuante (novo relatório). */
+.exm-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 1020;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 26px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+/* Campos maiores: alvo de toque e evita o zoom automático do iOS (< 16px). */
+.exm-main .form-control,
+.exm-main .form-select { min-height: 48px; font-size: 16px; }
+.exm-main textarea.form-control { min-height: 96px; }
+
+/* Recibos: grade de miniaturas com remover no canto. */
+.exm-receipts { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.exm-receipts:empty { display: none; }
+.exm-receipt {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border: 1px solid var(--border, #dee2e6);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-text, #6c757d);
+}
+.exm-receipt.is-error { border-color: var(--bs-danger, #dc3545); }
+.exm-receipt > a { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: inherit; }
+.exm-receipt img { width: 100%; height: 100%; object-fit: cover; }
+.exm-receipt .material-symbols-outlined { font-size: 40px; }
+.exm-receipt__overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+.exm-receipt__badge {
+  position: absolute; left: 4px; right: 4px; bottom: 4px;
+  padding: 2px 4px; border-radius: 6px;
+  font-size: 0.7rem; text-align: center; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.exm-receipt__remove {
+  position: absolute; top: 4px; right: 4px;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+}
+.exm-receipt__remove .material-symbols-outlined { font-size: 18px; }
+
+.exm-pick { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 52px; }
+
+.exm-main .form-control.exm-amount { font-size: 1.5rem; font-weight: 600; }
+
+/* Categoria em botões: um toque em vez de abrir um select. */
+.exm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.exm-chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong, #ced4da);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  color: inherit;
+}
+.exm-chip.is-active { border-color: var(--primary, #4f7f2a); background: var(--primary, #4f7f2a); color: #fff; }
+
+/* Abas no rodapé (telas principais). */
+.exm-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1020;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface, #fff);
+  border-top: 1px solid var(--border, #dee2e6);
+}
+.exm-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 60px;
+  font-size: 0.72rem;
+  color: var(--muted-text, #6c757d);
+  text-decoration: none;
+}
+.exm-tab.is-active { color: var(--primary, #4f7f2a); font-weight: 600; }
+.exm-tab__icon { position: relative; display: inline-flex; }
+.exm-tab__badge {
+  position: absolute;
+  top: -4px;
+  left: 14px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bs-danger, #dc3545);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.exm-shell.has-tabs .exm-main { padding-bottom: calc(152px + env(safe-area-inset-bottom)); }
+.exm-shell.has-tabs .exm-fab { bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+/* Indicadores do painel. */
+.exm-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.exm-kpi {
+  padding: 12px;
+  border: 1px solid var(--border, #dee2e6);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  text-align: center;
+}
+.exm-kpi__value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+.exm-kpi__label { font-size: 0.75rem; color: var(--muted-text, #6c757d); }
+.exm-kpi.is-alert .exm-kpi__value { color: var(--bs-warning-text-emphasis, #997404); }
+
+/* Lista de opções (aba "Mais"). */
+.exm-list { border: 1px solid var(--border, #dee2e6); border-radius: 12px; overflow: hidden; background: var(--surface, #fff); }
+.exm-list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border, #dee2e6);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.exm-list__item:last-child { border-bottom: 0; }
+.exm-list__item:active { background: var(--surface-3, #f1f3f5); }
+.exm-list__item > .material-symbols-outlined:first-child { color: var(--muted-text, #6c757d); }
+.exm-list__label { flex: 1; }
+.exm-list__hint { font-size: 0.75rem; color: var(--muted-text, #6c757d); }
+
+.exm-unread { border-left: 4px solid var(--primary, #4f7f2a); }
+
+/* Filtro de status: uma linha que rola na horizontal, de borda a borda. */
+.exm-chips--scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+  scrollbar-width: none;
+}
+.exm-chips--scroll::-webkit-scrollbar { display: none; }
+.exm-chips--scroll .exm-chip { flex: 0 0 auto; white-space: nowrap; }

@@ -28,7 +28,9 @@
                         ? "tune"
                         : (moduleItem.key === "report-service"
                           ? "monitoring"
-                          : "build_circle")) %>
+                          : (moduleItem.key === "expenses"
+                            ? "receipt"
+                            : "build_circle"))) %>
                   </span>
                 <% } %>
                 <h2 class="h5 app-card-title mb-0"><%= moduleItem.name %></h2>

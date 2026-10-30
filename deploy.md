@@ -718,7 +718,6 @@ docker compose \
 
 # Rodar migrations se houver alterações no banco
 ta
-```
 
 ### Invalidar sessões admin
 

@@ -176,6 +176,14 @@ if (env.sentinelgridEnabled) {
   ({ registerSentinelGrid } = require("../sentinelgrid/src/app"));
 }
 
+let registerExpenses = null;
+// Preenchido no registro do módulo: { resolveActor(req) } pela sessão PRÓPRIA
+// do módulo de despesas. Usado pelo gate do SPA em /app/expenses.
+let expensesAccess = null;
+if (env.expensesEnabled) {
+  ({ registerExpenses } = require("../expenses/src/app"));
+}
+
 let registerModuleSpec = null;
 let moduleSpecRepo = null;
 let moduleSpecValidateMappingsPayload = null;
@@ -259,10 +267,49 @@ if (env.reactAppEnabled) {
   // redirecionado ao /admin/login ANTES de qualquer tela renderizar (evita o
   // "flash" da UI); chamadas fetch recebem 401. Gate aplicado ao estático e ao
   // fallback de rotas do SPA.
-  app.use("/app", requireAdminAuth);
+  //
+  // Exceção: o Relatório de Despesas tem LOGIN PRÓPRIO (independente do hub).
+  // Suas telas e os arquivos estáticos do bundle (JS/CSS/imagens — código, sem
+  // dados) passam sem a sessão do hub; os dados ficam atrás da sessão do módulo.
+  // Lista FECHADA de estáticos do build Vite (base /app/): bundle em /assets,
+  // imagens públicas em /img e o script de tema. Nada além disso passa.
+  const SPA_PUBLIC_STATIC = /^\/(?:assets\/[\w.-]+\.(?:js|css|woff2?|ttf|svg|png|jpe?g|webp)|img\/[\w.-]+\.(?:png|svg|jpe?g|webp)|theme-init\.js)$/i;
+  const isHubIndependentSpaPath = (p) =>
+    Boolean(expensesAccess) && (p === "/expenses" || p.startsWith("/expenses/") || SPA_PUBLIC_STATIC.test(p));
+  // Caminho relativo a /app: em app.use("/app") o req.path já vem sem o prefixo,
+  // mas em app.get("/app/*") vem completo — normaliza pelos dois casos.
+  const spaRelativePath = (req) => String(req.originalUrl || "").split("?")[0].replace(/^\/app(?=\/|$)/, "") || "/";
+  const requireHubAuthForSpa = (req, res, next) =>
+    (isHubIndependentSpaPath(spaRelativePath(req)) ? next() : requireAdminAuth(req, res, next));
+  app.use("/app", requireHubAuthForSpa);
   // Técnico não entra no SentinelGrid: barra antes de o SPA carregar, em vez de
   // deixar a tela abrir e quebrar em 403 a cada chamada.
   app.use("/app/sentinelgrid", requireSentinelGridAccess(accessControl.CAPABILITIES.SENTINELGRID_READ));
+  // Despesas: telas de login/senha são públicas; o resto exige a sessão do módulo.
+  const EXPENSES_PUBLIC_PAGES = new Set(["/login", "/forgot-password", "/set-password", "/reset-password"]);
+  const expensesDevice = require("../expenses/src/lib/device");
+  app.use("/app/expenses", (req, res, next) => {
+    if (!expensesAccess) return sendStandardError(req, res, 404);
+    // Celular recebe a versão mobile (só funções do Colaborador). O cookie leva a
+    // decisão ao SPA, que a segue nas navegações internas (ex.: após o login).
+    const mobile = expensesDevice.isMobileRequest(req);
+    res.cookie(expensesDevice.UI_COOKIE, mobile ? "mobile" : "desktop", { sameSite: "lax", path: "/app/expenses", secure: req.secure });
+    res.vary("User-Agent");
+    res.vary("Sec-CH-UA-Mobile");
+    if (EXPENSES_PUBLIC_PAGES.has(req.path)) return next();
+    return expensesAccess.resolveActor(req)
+      .then((actor) => {
+        if (!actor) return res.redirect(`/app/expenses/login?next=${encodeURIComponent(req.originalUrl)}`);
+        const wantsDesktop = (req.cookies && req.cookies[expensesDevice.VIEW_COOKIE]) === "desktop";
+        if (mobile && !wantsDesktop && req.method === "GET" && !expensesDevice.isMobilePath(req.path)) {
+          return res.redirect(`/app/expenses${expensesDevice.mobilePathFor(req.path)}`);
+        }
+        const isAdminArea = req.path === "/admin" || req.path.startsWith("/admin/");
+        if (isAdminArea && !actor.canManage) return sendStandardError(req, res, 403);
+        return next();
+      })
+      .catch(next);
+  });
   // CSP ESTRITA só para o SPA (sobrescreve a global do Helmet nas respostas /app). O bundle Vite
   // não tem <script> inline (verificado no dist/index.html) → script-src pode ser 'self' puro,
   // fechando a brecha de XSS por script injetado. style-src mantém 'unsafe-inline' porque o React
@@ -295,7 +342,7 @@ if (env.reactAppEnabled) {
       }
     }
   }));
-  app.get("/app/*", requireAdminAuth, (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+  app.get("/app/*", requireHubAuthForSpa, (req, res) => res.sendFile(path.join(frontendDist, "index.html")));
 }
 app.get("/docs/report/img/*", (req, res, next) => Promise.resolve((async () => {
   const rel = objectStorage.normalizeKey(req.params[0] || "");
@@ -2186,6 +2233,7 @@ function renderAdminModuleHubPage(req, res) {
   // MODULE_ACCESS_KEYS, então hasModuleAccess sempre negava para não-admin.
   const canAccessSentinelGrid = accessControl.hasCapability(req.adminRole, accessControl.CAPABILITIES.SENTINELGRID_READ)
     && hasModuleAccess(req.adminRole, req.adminModuleAccess, "sentinelgrid");
+  const expensesStatus = resolveModuleStatus(moduleStatuses.expenses, "Em desenvolvimento", "warning");
   const canAccessSystemMaintenance = Boolean(String(req.adminUsername || "").trim());
 
   const moduleCards = [
@@ -2236,6 +2284,17 @@ function renderAdminModuleHubPage(req, res) {
       cta: env.sentinelgridEnabled
         ? (canAccessSentinelGrid ? "Acessar" : "Sem acesso")
         : "Em breve"
+    },
+    {
+      key: "expenses",
+      name: "Relatório de Despesas",
+      description: "Lançamento de despesas, comprovantes, aprovação e controle de reembolsos.",
+      status: expensesStatus.label,
+      statusVariant: expensesStatus.variant,
+      moduleVersion: String(moduleVersions.expenses || "0.1.0"),
+      // Login próprio do módulo: o card só leva à tela de login dele.
+      href: env.expensesEnabled && env.reactAppEnabled ? "/app/expenses/login" : "",
+      cta: env.expensesEnabled ? "Acessar" : "Em breve"
     },
     {
       key: "maintenance-system",
@@ -5651,6 +5710,17 @@ if (env.sentinelgridEnabled && registerSentinelGrid) {
     requireApiScope,
     requireAdminAuth,
     csrfProtection
+  });
+}
+
+if (env.expensesEnabled && registerExpenses) {
+  // Módulo com login próprio: não usa sessão, perfis nem contas do hub.
+  // API em /api/expenses, protegida pela sessão do módulo + CSRF.
+  expensesAccess = registerExpenses(app, {
+    asyncHandler,
+    csrfProtection,
+    sendEmail: (mail) => require("./services/email").sendTransactionalEmail(mail),
+    storage: objectStorage
   });
 }
 
