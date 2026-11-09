@@ -19,7 +19,9 @@ const EVENT_BY_ACTION = {
   START_REVIEW: EV.REVIEW_STARTED,
   APPROVE: EV.APPROVED,
   REJECT: EV.REJECTED,
-  RETURN: EV.RETURNED
+  RETURN: EV.RETURNED,
+  FINANCE_REJECT: EV.REJECTED,
+  FINANCE_RETURN: EV.RETURNED
 };
 
 // Regras de envio. Devolve a lista de problemas (vazia = pode enviar).
@@ -77,12 +79,22 @@ function createReviewService({ notifications }) {
         fields.approved_by_id = actor.userId;
         fields.approved_by_name = actor.username;
         fields.last_decision_reason = cleanReason;
-      } else if (actionKey === "REJECT") {
+      } else if (actionKey === "REJECT" || actionKey === "FINANCE_REJECT") {
         fields.rejected_at = repo.NOW;
         fields.last_decision_reason = cleanReason;
       } else if (actionKey === "RETURN") {
         fields.returned_at = repo.NOW;
         fields.last_decision_reason = cleanReason;
+      } else if (actionKey === "FINANCE_RETURN") {
+        // Volta para o colaborador e, no reenvio, para nova aprovação: a
+        // aprovação anterior deixa de valer (fica só no histórico).
+        await repo.clearItemApproval(db, report.id);
+        fields.returned_at = repo.NOW;
+        fields.last_decision_reason = cleanReason;
+        fields.approved_amount = null;
+        fields.approved_at = null;
+        fields.approved_by_id = null;
+        fields.approved_by_name = null;
       }
 
       const next = await repo.updateStatus(db, report.id, action.to, fields);

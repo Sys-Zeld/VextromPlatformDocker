@@ -45,14 +45,24 @@ const DECISION_COPY: Record<Decision, { title: string; label: string; variant: s
   "start-review": { title: "Iniciar análise", label: "Iniciar análise", variant: "primary", reason: "none", hint: "O relatório passará para EM ANÁLISE." },
   approve: { title: "Aprovar relatório", label: "Aprovar", variant: "success", reason: "optional", hint: "Aprovação integral: o valor aprovado será igual ao solicitado." },
   reject: { title: "Rejeitar relatório", label: "Rejeitar", variant: "danger", reason: "required", hint: "A rejeição encerra a solicitação. Informe o motivo." },
-  return: { title: "Devolver para correção", label: "Devolver", variant: "warning", reason: "required", hint: "O solicitante poderá corrigir e reenviar. Informe o que precisa ser ajustado." }
+  return: { title: "Devolver para correção", label: "Devolver", variant: "warning", reason: "required", hint: "O solicitante poderá corrigir e reenviar. Informe o que precisa ser ajustado." },
+  "finance-reject": {
+    title: "Rejeitar relatório (financeiro)", label: "Rejeitar", variant: "danger", reason: "required",
+    hint: "O relatório já aprovado não será pago e a solicitação é encerrada. Informe o motivo."
+  },
+  "finance-return": {
+    title: "Devolver para correção (financeiro)", label: "Devolver", variant: "warning", reason: "required",
+    hint: "A aprovação deixa de valer: o solicitante corrige e reenvia, e o relatório passa de novo pela aprovação antes do pagamento."
+  }
 };
 
 const ACTION_TO_DECISION: Partial<Record<string, Decision>> = {
   START_REVIEW: "start-review",
   APPROVE: "approve",
   REJECT: "reject",
-  RETURN: "return"
+  RETURN: "return",
+  FINANCE_REJECT: "finance-reject",
+  FINANCE_RETURN: "finance-return"
 };
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = { PIX: "Pix", TED: "TED", DEPOSITO: "Depósito", DINHEIRO: "Dinheiro", OUTRO: "Outro" };

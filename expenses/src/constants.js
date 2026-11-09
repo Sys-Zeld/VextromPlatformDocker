@@ -29,7 +29,18 @@ const ACTIONS = {
   APPROVE: { from: [STATUS.EM_ANALISE], to: STATUS.APROVADO, actor: "approver", label: "Aprovação", selfRestricted: true },
   REJECT: { from: [STATUS.EM_ANALISE], to: STATUS.REJEITADO, actor: "approver", label: "Rejeição", requiresReason: true },
   RETURN: { from: [STATUS.EM_ANALISE], to: STATUS.DEVOLVIDO, actor: "approver", label: "Devolução", requiresReason: true },
-  PAY: { from: [STATUS.APROVADO], to: STATUS.PAGO, actor: "finance", label: "Pagamento", selfRestricted: true }
+  PAY: { from: [STATUS.APROVADO], to: STATUS.PAGO, actor: "finance", label: "Pagamento", selfRestricted: true },
+  // Financeiro também pode barrar um relatório aprovado antes de pagar. A
+  // devolução volta para o colaborador corrigir; o reenvio passa de novo
+  // pela aprovação.
+  FINANCE_REJECT: {
+    from: [STATUS.APROVADO], to: STATUS.REJEITADO, actor: "finance", label: "Rejeição pelo financeiro",
+    requiresReason: true, selfRestricted: true
+  },
+  FINANCE_RETURN: {
+    from: [STATUS.APROVADO], to: STATUS.DEVOLVIDO, actor: "finance", label: "Devolução pelo financeiro",
+    requiresReason: true, selfRestricted: true
+  }
 };
 
 // Estados em que o solicitante pode editar dados e lançamentos.

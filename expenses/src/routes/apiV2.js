@@ -369,8 +369,15 @@ function createExpensesV2Router(deps, { auth, accounts, email }) {
     res.json({ ...result, page: query.page, pageSize: query.pageSize });
   }));
 
-  const DECISIONS = { "start-review": "START_REVIEW", approve: "APPROVE", reject: "REJECT", return: "RETURN" };
-  admin.post("/reports/:id/:decision(start-review|approve|reject|return)", asyncHandler(async (req, res) => {
+  const DECISIONS = {
+    "start-review": "START_REVIEW",
+    approve: "APPROVE",
+    reject: "REJECT",
+    return: "RETURN",
+    "finance-reject": "FINANCE_REJECT",
+    "finance-return": "FINANCE_RETURN"
+  };
+  admin.post("/reports/:id/:decision(start-review|approve|reject|return|finance-reject|finance-return)", asyncHandler(async (req, res) => {
     const { reason } = v.parseDecision(req.body);
     const report = await review.transition(actorOf(req), id(req.params.id), DECISIONS[req.params.decision], { reason });
     res.json({ report });

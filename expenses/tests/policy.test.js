@@ -48,7 +48,9 @@ test("workflow: matriz completa de transições válidas", () => {
     APPROVE: ["EM_ANALISE"],
     REJECT: ["EM_ANALISE"],
     RETURN: ["EM_ANALISE"],
-    PAY: ["APROVADO"]
+    PAY: ["APROVADO"],
+    FINANCE_REJECT: ["APROVADO"],
+    FINANCE_RETURN: ["APROVADO"]
   };
   for (const [action, def] of Object.entries(ACTIONS)) {
     const actor = def.actor === "owner" ? owner : manager;
@@ -68,6 +70,8 @@ test("workflow: destinos corretos", () => {
   assert.equal(ACTIONS.REJECT.to, "REJEITADO");
   assert.equal(ACTIONS.RETURN.to, "DEVOLVIDO");
   assert.equal(ACTIONS.PAY.to, "PAGO");
+  assert.equal(ACTIONS.FINANCE_REJECT.to, "REJEITADO");
+  assert.equal(ACTIONS.FINANCE_RETURN.to, "DEVOLVIDO");
 });
 
 test("workflow: usuário comum não executa ações de gestão (escalada de privilégio)", () => {
@@ -125,6 +129,19 @@ test("escopo das listas da Gestão: Aprovador filtrado; Financeiro e Administrad
   assert.equal(policy.approverScope(approver), "a-1");
   assert.equal(policy.approverScope(finance), null);
   assert.equal(policy.approverScope(admin), null);
+});
+
+test("financeiro: rejeita ou devolve relatório aprovado, com justificativa", () => {
+  for (const action of ["FINANCE_REJECT", "FINANCE_RETURN"]) {
+    assert.equal(code(() => policy.assertTransition(finance, report("APROVADO"), action, { reason: "x" })), "OK", action);
+    assert.equal(code(() => policy.assertTransition(finance, report("APROVADO"), action)), "EX_REASON_REQUIRED", action);
+    // Só depois da aprovação: antes disso a decisão é do aprovador.
+    assert.equal(code(() => policy.assertTransition(finance, report("EM_ANALISE"), action, { reason: "x" })), "EX_INVALID_TRANSITION", action);
+    // Aprovador (sem papel Financeiro) e o próprio solicitante não usam essas ações.
+    assert.equal(code(() => policy.assertTransition({ ...approver, seesAllReports: true }, report("APROVADO"), action, { reason: "x" })), "EX_FINANCE_REQUIRED", action);
+    assert.equal(code(() => policy.assertTransition(managerOwner, report("APROVADO"), action, { reason: "x" })), "EX_SELF_APPROVAL_FORBIDDEN", action);
+  }
+  assert.deepEqual(policy.availableActions(finance, report("APROVADO")), ["PAY", "FINANCE_REJECT", "FINANCE_RETURN"]);
 });
 
 test("papéis: gestão de usuários só para administrador da plataforma", () => {

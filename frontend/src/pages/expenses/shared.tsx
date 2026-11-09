@@ -35,7 +35,9 @@ export const ACTION_LABEL: Record<string, string> = {
   APPROVE: "Aprovação",
   REJECT: "Rejeição",
   RETURN: "Devolução",
-  PAY: "Pagamento"
+  PAY: "Pagamento",
+  FINANCE_REJECT: "Rejeição pelo financeiro",
+  FINANCE_RETURN: "Devolução pelo financeiro"
 };
 
 export function StatusBadge({ status }: { status: ExpenseStatus }) {

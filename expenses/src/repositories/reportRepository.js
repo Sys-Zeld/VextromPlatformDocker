@@ -140,6 +140,15 @@ async function listReports(db, filters) {
 
 /* -------------------------------- Lançamentos ------------------------------ */
 
+// Devolução após a aprovação: o valor aprovado deixa de valer (a próxima
+// aprovação define de novo). O histórico da aprovação anterior fica preservado.
+async function clearItemApproval(db, reportId) {
+  await db.query(
+    "UPDATE ex_items SET approved_amount = NULL, updated_at = NOW() WHERE report_id = $1 AND deleted_at IS NULL",
+    [reportId]
+  );
+}
+
 async function listItems(db, reportId) {
   const { rows } = await db.query(
     `SELECT i.*, c.name AS category_name
@@ -304,6 +313,7 @@ async function listDecisions(db, { limit, offset, userId, approverId }) {
 }
 
 module.exports = {
+  clearItemApproval,
   NOW,
   nextReportNumber,
   insertReport,

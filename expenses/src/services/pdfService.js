@@ -17,7 +17,9 @@ const ACTION_LABELS = {
   APPROVE: "Aprovação",
   REJECT: "Rejeição",
   RETURN: "Devolução",
-  PAY: "Pagamento"
+  PAY: "Pagamento",
+  FINANCE_REJECT: "Rejeição pelo financeiro",
+  FINANCE_RETURN: "Devolução pelo financeiro"
 };
 
 const fmtDate = (value) => {

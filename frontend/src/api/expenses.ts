@@ -21,7 +21,9 @@ const client = createApiClient({
 const { api, downloadFile } = client;
 
 export type ExpenseStatus = "RASCUNHO" | "ENVIADO" | "EM_ANALISE" | "DEVOLVIDO" | "APROVADO" | "REJEITADO" | "PAGO";
-export type WorkflowAction = "SUBMIT" | "RESUBMIT" | "START_REVIEW" | "APPROVE" | "REJECT" | "RETURN" | "PAY";
+export type WorkflowAction =
+  | "SUBMIT" | "RESUBMIT" | "START_REVIEW" | "APPROVE" | "REJECT" | "RETURN" | "PAY"
+  | "FINANCE_REJECT" | "FINANCE_RETURN";
 
 export interface ExpenseCategory {
   id: number;
@@ -336,7 +338,7 @@ export const getAdminDashboard = (period: { from?: string; to?: string }) =>
   api<DashboardData>(`${BASE}/admin/dashboard${qs(period)}`);
 export const listAllReports = (params: ListParams) => api<ReportList>(`${BASE}/admin/reports${qs(params)}`);
 
-export type Decision = "start-review" | "approve" | "reject" | "return";
+export type Decision = "start-review" | "approve" | "reject" | "return" | "finance-reject" | "finance-return";
 export const decide = (id: number, decision: Decision, reason = "") =>
   api<{ report: ExpenseReport }>(`${BASE}/admin/reports/${id}/${decision}`, { method: "POST", ...json({ reason }) });
 
