@@ -327,19 +327,44 @@ function ApproverField({ users, forUserId, value, onChange, current }: {
   );
 }
 
+// Mesmas regras do servidor (expenseValidators.js), com a mensagem do problema.
+function usernameError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return "Informe o usuário.";
+  if (/\s/.test(v)) return "O usuário não pode ter espaços. Use ponto ou sublinhado (ex.: nome.sobrenome).";
+  const invalid = [...new Set(v.replace(/[A-Za-z0-9._@-]/g, ""))];
+  if (invalid.length) return `Caractere não permitido: ${invalid.join(" ")}. Use letras sem acento, números, ponto, hífen, arroba ou sublinhado.`;
+  if (v.length < 3) return "O usuário deve ter ao menos 3 caracteres.";
+  if (v.length > 60) return "O usuário deve ter no máximo 60 caracteres.";
+  return null;
+}
+
+function emailError(value: string, required: boolean): string | null {
+  const v = value.trim();
+  if (!v) return required ? "Informe o e-mail para enviar o convite, ou marque a opção de senha provisória." : null;
+  if (/\s/.test(v)) return "O e-mail não pode ter espaços.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "E-mail inválido. Use o formato nome@empresa.com.";
+  return null;
+}
+
 function CreateUserModal({ show, users, onClose, onCreated }: {
   show: boolean; users: ExpenseUser[]; onClose: () => void; onCreated: () => void;
 }) {
   const [form, setForm] = useState<UserCreateInput>(EMPTY_CREATE);
+  // Erros de campo vazio só aparecem depois de tentar salvar; os de formato, ao digitar.
+  const [submitted, setSubmitted] = useState(false);
   const m = useMutation({ mutationFn: () => createExpenseUser(form), onSuccess: onCreated });
-  const close = () => { setForm(EMPTY_CREATE); m.reset(); onClose(); };
-  const emailOk = !form.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
-  const valid = /^[A-Za-z0-9._@-]{3,60}$/.test(form.username.trim()) && emailOk && (form.temporaryPassword || Boolean(form.email.trim()));
+  const close = () => { setForm(EMPTY_CREATE); setSubmitted(false); m.reset(); onClose(); };
+  const userErr = usernameError(form.username);
+  const mailErr = emailError(form.email, !form.temporaryPassword);
+  const valid = !userErr && !mailErr;
+  const showUserErr = userErr && (submitted || form.username.trim() !== "");
+  const showMailErr = mailErr && (submitted || form.email.trim() !== "");
   const result = m.data;
 
   return (
     <Modal show={show} onHide={close}>
-      <Form onSubmit={(e: FormEvent) => { e.preventDefault(); if (valid && !m.isPending) m.mutate(); }}>
+      <Form noValidate onSubmit={(e: FormEvent) => { e.preventDefault(); setSubmitted(true); if (valid && !m.isPending) m.mutate(); }}>
         <Modal.Header closeButton><Modal.Title as="h6">Novo usuário</Modal.Title></Modal.Header>
         {result ? (
           <>
@@ -367,10 +392,17 @@ function CreateUserModal({ show, users, onClose, onCreated }: {
           <>
             <Modal.Body className="d-flex flex-column gap-3">
               {m.error && <Alert variant="danger" className="mb-0">{errorMessage(m.error)}</Alert>}
-              <Form.Group>
+              {submitted && !valid && (
+                <Alert variant="warning" className="mb-0 small">Corrija os campos destacados para criar a conta.</Alert>
+              )}
+              <Form.Group controlId="new-username">
                 <Form.Label>Usuário (login) *</Form.Label>
                 <Form.Control required autoFocus maxLength={60} value={form.username} placeholder="nome.sobrenome"
+                  isInvalid={Boolean(showUserErr)} autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   onChange={(e) => setForm({ ...form, username: e.target.value })} />
+                {showUserErr
+                  ? <Form.Control.Feedback type="invalid">{userErr}</Form.Control.Feedback>
+                  : <Form.Text muted>Sem espaços nem acentos: letras, números, ponto, hífen, arroba ou sublinhado (3 a 60).</Form.Text>}
               </Form.Group>
               <Form.Group>
                 <Form.Label>Nome completo</Form.Label>
@@ -378,9 +410,11 @@ function CreateUserModal({ show, users, onClose, onCreated }: {
               </Form.Group>
               <Form.Group>
                 <Form.Label>E-mail {form.temporaryPassword ? "" : "*"}</Form.Label>
-                <Form.Control type="email" maxLength={200} value={form.email} isInvalid={!emailOk}
+                <Form.Control type="email" maxLength={200} value={form.email} isInvalid={Boolean(showMailErr)}
                   onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                <Form.Text muted>Usado para o convite, a recuperação de senha e as notificações.</Form.Text>
+                {showMailErr
+                  ? <Form.Control.Feedback type="invalid">{mailErr}</Form.Control.Feedback>
+                  : <Form.Text muted>Usado para o convite, a recuperação de senha e as notificações.</Form.Text>}
               </Form.Group>
               <RoleChecks value={form} onChange={(r) => setForm({ ...form, ...r })} />
               <ApproverField users={users} value={form.approverIds} onChange={(approverIds) => setForm({ ...form, approverIds })} />
@@ -390,7 +424,7 @@ function CreateUserModal({ show, users, onClose, onCreated }: {
             </Modal.Body>
             <Modal.Footer>
               <Button variant="outline-secondary" onClick={close}>Cancelar</Button>
-              <Button type="submit" disabled={!valid || m.isPending}>
+              <Button type="submit" disabled={m.isPending}>
                 {m.isPending ? <Spinner animation="border" size="sm" /> : form.temporaryPassword ? "Criar com senha provisória" : "Criar e enviar convite"}
               </Button>
             </Modal.Footer>
@@ -408,11 +442,12 @@ function EditUserModal({ user, users, onClose, onSave }: {
   const current = form && user ? form : user ? toUpdate(user) : null;
   const close = () => { setForm(null); onClose(); };
   if (!user || !current) return null;
-  const emailOk = !current.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(current.email.trim());
+  const mailErr = emailError(current.email, false);
+  const emailOk = !mailErr;
 
   return (
     <Modal show onHide={close}>
-      <Form onSubmit={(e: FormEvent) => { e.preventDefault(); if (emailOk) { onSave(current); setForm(null); } }}>
+      <Form noValidate onSubmit={(e: FormEvent) => { e.preventDefault(); if (emailOk) { onSave(current); setForm(null); } }}>
         <Modal.Header closeButton><Modal.Title as="h6">Editar {user.username}</Modal.Title></Modal.Header>
         <Modal.Body className="d-flex flex-column gap-3">
           <Form.Group>
@@ -423,7 +458,9 @@ function EditUserModal({ user, users, onClose, onSave }: {
             <Form.Label>E-mail</Form.Label>
             <Form.Control type="email" maxLength={200} value={current.email} isInvalid={!emailOk}
               onChange={(e) => setForm({ ...current, email: e.target.value })} />
-            <Form.Text muted>Trocar o e-mail encerra as sessões abertas da pessoa.</Form.Text>
+            {mailErr
+              ? <Form.Control.Feedback type="invalid">{mailErr}</Form.Control.Feedback>
+              : <Form.Text muted>Trocar o e-mail encerra as sessões abertas da pessoa.</Form.Text>}
           </Form.Group>
           <RoleChecks value={current} onChange={(r) => setForm({ ...current, ...r })} />
           <ApproverField users={users} forUserId={user.id} value={current.approverIds ?? []} current={user.approvers}
