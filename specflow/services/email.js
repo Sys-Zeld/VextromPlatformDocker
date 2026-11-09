@@ -190,9 +190,11 @@ async function sendSmtpTestEmail({ to }) {
  * Envio transacional simples (convite, recuperação de senha).
  * Não usa os templates configuráveis de propósito: e-mail de acesso não pode
  * depender de um modelo que alguém editou, senão o usuário fica sem entrar.
+ * `smtp` (opcional) substitui o servidor da plataforma — usado por módulos com
+ * SMTP próprio (ex.: Relatório de Despesas). Formato: { host, port, secure, user, pass, from }.
  */
-async function sendTransactionalEmail({ to, subject, heading, bodyLines = [], actionUrl, actionLabel, footNote }) {
-  const settings = await getEmailSettings();
+async function sendTransactionalEmail({ to, subject, heading, bodyLines = [], actionUrl, actionLabel, footNote, smtp = null }) {
+  const settings = smtp ? { smtp } : await getEmailSettings();
   const transporter = nodemailer.createTransport({
     host: settings.smtp.host,
     port: settings.smtp.port,

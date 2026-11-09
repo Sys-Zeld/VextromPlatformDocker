@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { AppTheme, applyTheme, getStoredTheme } from "../theme/applyTheme";
 import SgIcon, { SgIconName, isSgIconName } from "./sentinelgrid/SgIcon";
 import MaintenanceAlertsPopup from "./sentinelgrid/MaintenanceAlertsPopup";
+import NotificationBell from "./expenses/NotificationBell";
+import { AuthUser, getMe, getMeta, logout as expensesLogout } from "../api/expenses";
+import { isMobileDevice, setViewPreference } from "../pages/expenses/mobile/uiMode";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -103,6 +106,56 @@ const SENTINELGRID_NAV: NavEntry[] = [
   { to: "/sentinelgrid/dashboard", label: "Dashboard", icon: "dashboard" }
 ];
 
+// Relatório de Despesas: área do colaborador + grupo de gestão. As
+// "capacidades" expenses:* abaixo vêm dos papéis do cadastro do próprio módulo
+// (ver expensesNavCapabilities), não do perfil da plataforma.
+const EXPENSES_ADMIN_NAV: NavItem[] = [
+  { to: "/expenses/admin", label: "Dashboard administrativo", icon: "monitoring", end: true },
+  { to: "/expenses/admin/reports", label: "Todos os relatórios", icon: "fact_check" },
+  { to: "/expenses/admin/payments", label: "Reembolsos", icon: "payments" },
+  { to: "/expenses/admin/history", label: "Histórico de aprovações", icon: "history" },
+  { to: "/expenses/admin/categories", label: "Categorias", icon: "category" },
+  { to: "/expenses/admin/audit", label: "Auditoria", icon: "policy" }
+];
+
+const EXPENSES_NAV: NavEntry[] = [
+  { to: "/expenses", label: "Painel", icon: "dashboard", end: true },
+  { to: "/expenses/reports", label: "Meus relatórios", icon: "receipt_long" },
+  { to: "/expenses/reports/new", label: "Novo relatório", icon: "add_circle" },
+  { to: "/expenses/profile", label: "Meus dados bancários", icon: "account_balance" },
+  { to: "/expenses/history", label: "Histórico", icon: "timeline" },
+  { to: "/expenses/notifications", label: "Notificações", icon: "notifications" },
+  { to: "/expenses/change-password", label: "Trocar senha", icon: "password" },
+  { key: "expenses-admin", label: "Gestão", icon: "admin_panel_settings", capability: "expenses:manage", children: EXPENSES_ADMIN_NAV },
+  { to: "/expenses/users", label: "Usuários", icon: "manage_accounts", capability: "expenses:users" },
+  { to: "/expenses/settings", label: "Configurações", icon: "settings", capability: "expenses:users" }
+];
+
+// Rótulo dos papéis do usuário no módulo (exibido no topo).
+function expensesRoleLabel(u: AuthUser): string {
+  const roles = [u.isAdmin && "Administrador", u.isApprover && "Aprovador", u.isFinance && "Financeiro"].filter(Boolean);
+  return roles.length ? roles.join(" · ") : "Colaborador";
+}
+
+// Papéis do usuário no módulo de despesas → capacidades de navegação.
+function expensesNavCapabilities(actor?: { canManage: boolean; canManageUsers: boolean }): string[] {
+  if (!actor) return [];
+  return [
+    ...(actor.canManage ? ["expenses:manage"] : []),
+    ...(actor.canManageUsers ? ["expenses:users"] : [])
+  ];
+}
+
+const EXPENSES_MODULE: ModuleNav = {
+  key: "expenses",
+  subtitle: "Relatório de Despesas",
+  crumb: "Vextrom Platform · Relatório de Despesas",
+  section: "Despesas",
+  fallbackTitle: "Relatório de Despesas",
+  nav: EXPENSES_NAV,
+  footer: { href: "/admin/hub", label: "Service Hub", icon: "grid_view" }
+};
+
 const SERVICE_REPORT_MODULE: ModuleNav = {
   key: "service-report",
   subtitle: "Service Report",
@@ -125,6 +178,7 @@ const SENTINELGRID_MODULE: ModuleNav = {
 
 function resolveModule(pathname: string): ModuleNav {
   if (pathname.startsWith("/sentinelgrid")) return SENTINELGRID_MODULE;
+  if (pathname.startsWith("/expenses")) return EXPENSES_MODULE;
   return SERVICE_REPORT_MODULE;
 }
 
@@ -206,8 +260,44 @@ export default function Layout() {
   const location = useLocation();
   const mod = resolveModule(location.pathname);
   const sgIcon = activeSgIcon(location.pathname);
-  const { data: session } = useQuery({ queryKey: ["session"], queryFn: () => api<SessionInfo>("/session") });
-  const capabilities = session?.capabilities ?? [];
+  // O módulo de Despesas tem login próprio: lá não se consulta a sessão do hub
+  // (um 401 dela mandaria o usuário para o /admin/login).
+  const isExpenses = mod.key === "expenses";
+  const qc = useQueryClient();
+  const { data: session } = useQuery({
+    queryKey: ["session"],
+    queryFn: () => api<SessionInfo>("/session"),
+    enabled: !isExpenses
+  });
+  const { data: expensesMe } = useQuery({
+    queryKey: ["expenses", "me"],
+    queryFn: getMe,
+    enabled: isExpenses,
+    retry: false,
+    staleTime: 60_000
+  });
+  const { data: expensesMeta } = useQuery({
+    queryKey: ["expenses", "meta"],
+    queryFn: getMeta,
+    enabled: isExpenses && Boolean(expensesMe) && !expensesMe?.user.mustChangePassword,
+    staleTime: 5 * 60_000
+  });
+  const currentUser = isExpenses
+    ? (expensesMe ? { username: expensesMe.user.username, roleLabel: expensesRoleLabel(expensesMe.user) } : null)
+    : (session?.username ? { username: session.username, roleLabel: session.roleLabel } : null);
+  const onExpensesLogout = async () => {
+    await expensesLogout();
+    qc.removeQueries({ queryKey: ["expenses"] });
+    window.location.href = "/app/expenses/login?logout=1";
+  };
+  const onExpensesMobileView = () => {
+    setViewPreference("mobile");
+    window.location.href = "/app/expenses/m";
+  };
+  const capabilities = [
+    ...(isExpenses ? [] : session?.capabilities ?? []),
+    ...(mod.key === "expenses" ? expensesNavCapabilities(expensesMeta?.actor) : [])
+  ];
   // Enquanto a sessão não chega, capabilities está vazio e itens com exigência
   // ficam ocultos — some por um instante em vez de piscar e sumir.
   const visibleNav = filterNavByCapabilities(mod.nav, capabilities);
@@ -301,7 +391,7 @@ export default function Layout() {
     try { localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); } catch { /* indisponível */ }
     return next;
   });
-  const initials = (session?.username || "?").slice(0, 2).toUpperCase();
+  const initials = (currentUser?.username || "?").slice(0, 2).toUpperCase();
 
   return (
     <div className={`vx-shell${collapsed ? " is-collapsed" : ""}`}>
@@ -357,6 +447,7 @@ export default function Layout() {
             </div>
           </div>
           <div className="vx-topbar__controls">
+            {isExpenses && expensesMeta && <NotificationBell />}
             <select
               className="form-select form-select-sm"
               style={{ width: 130 }}
@@ -366,14 +457,26 @@ export default function Layout() {
             >
               {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            {session?.username && (
-              <span className="vx-user" title={session.roleLabel || undefined}>
+            {currentUser && (
+              <span className="vx-user" title={currentUser.roleLabel || undefined}>
                 <span className="vx-user__avatar">{initials}</span>
                 <span className="vx-user__name">
-                  {session.username}
-                  {session.roleLabel && <small className="d-block text-muted lh-1">{session.roleLabel}</small>}
+                  {currentUser.username}
+                  {currentUser.roleLabel && <small className="d-block text-muted lh-1">{currentUser.roleLabel}</small>}
                 </span>
               </span>
+            )}
+            {isExpenses && expensesMe && isMobileDevice() && (
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onExpensesMobileView} title="Voltar para a versão mobile">
+                <span className="material-symbols-outlined align-middle">smartphone</span>
+                <span className="d-none d-md-inline ms-1">Versão mobile</span>
+              </button>
+            )}
+            {isExpenses && expensesMe && (
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onExpensesLogout} title="Sair do módulo">
+                <span className="material-symbols-outlined align-middle">logout</span>
+                <span className="d-none d-md-inline ms-1">Sair</span>
+              </button>
             )}
           </div>
         </header>

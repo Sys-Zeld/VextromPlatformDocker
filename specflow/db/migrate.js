@@ -5,6 +5,7 @@ const { migrateConfigDb } = require("../../configdb/migrate");
 const { migrateServiceReport } = require("../../report_service/migrate");
 const { migrateModuleSpec } = require("../../module_spec/migrate");
 const { migrateSentinelGrid } = require("../../sentinelgrid/migrate");
+const { migrateExpenses } = require("../../expenses/migrate");
 
 async function migrate() {
   await ensureDatabaseExists({
@@ -189,6 +190,10 @@ async function migrate() {
 
   if (env.sentinelgridEnabled) {
     await migrateSentinelGrid();
+  }
+
+  if (env.expensesEnabled) {
+    await migrateExpenses();
   }
 
   if (env.moduleSpecEnabled) {

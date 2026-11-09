@@ -69,6 +69,7 @@ const moduleSpecDatabaseUrl = process.env.MODULE_SPEC_DATABASE_URL || withDataba
 const reportServiceDatabaseUrl = process.env.REPORT_SERVICE_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "reportservice");
 const configDatabaseUrl = process.env.CONFIG_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "configdb");
 const sentinelgridDatabaseUrl = process.env.SENTINELGRID_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "sentinelgrid");
+const expensesDatabaseUrl = process.env.EXPENSES_DATABASE_URL || withDatabaseName(baseDatabaseUrl, "expenses");
 
 module.exports = {
   nodeEnv,
@@ -81,6 +82,7 @@ module.exports = {
   moduleSpecEnabled: String(process.env.MODULE_SPEC_ENABLED || "false").toLowerCase() === "true",
   reportServiceEnabled: String(process.env.REPORT_SERVICE_ENABLED || "true").toLowerCase() === "true",
   sentinelgridEnabled: String(process.env.SENTINELGRID_ENABLED || "false").toLowerCase() === "true",
+  expensesEnabled: String(process.env.EXPENSES_ENABLED || "false").toLowerCase() === "true",
   admin: {
     user: process.env.ADMIN_USER || "admin",
     pass: process.env.ADMIN_PASS || "change-me",
@@ -114,7 +116,24 @@ module.exports = {
     sentinelgrid: {
       url: sentinelgridDatabaseUrl,
       ssl: parseBooleanFlag(process.env.SENTINELGRID_DATABASE_SSL, defaultDatabaseSsl)
+    },
+    expenses: {
+      url: expensesDatabaseUrl,
+      ssl: parseBooleanFlag(process.env.EXPENSES_DATABASE_SSL, defaultDatabaseSsl)
     }
+  },
+  expenses: {
+    // Chave dedicada para cifrar CPF/conta/Pix. Sem ela, deriva do ADMIN_SESSION_SECRET
+    // (trocar esse segredo tornaria os dados cifrados ilegíveis — prefira a chave própria).
+    dataKey: process.env.EXPENSES_DATA_KEY || "",
+    maxFileMb: Math.max(1, Number(process.env.EXPENSES_MAX_FILE_MB || 10)),
+    allowSelfApproval: parseBooleanFlag(process.env.EXPENSES_ALLOW_SELF_APPROVAL, false),
+    emailNotifications: parseBooleanFlag(process.env.EXPENSES_EMAIL_NOTIFICATIONS, false),
+    companyName: process.env.EXPENSES_COMPANY_NAME || "Vextrom",
+    // Login próprio do módulo (independente do hub).
+    sessionSecret: process.env.EXPENSES_SESSION_SECRET || "",
+    sessionCookieName: process.env.EXPENSES_SESSION_COOKIE_NAME || "ex_session",
+    sessionTtlHours: Math.max(1, Number(process.env.EXPENSES_SESSION_TTL_HOURS || 12))
   },
   smtp: {
     host: process.env.SMTP_HOST || process.env.MAILTRAP_SMTP_HOST || "",

@@ -28,6 +28,10 @@ const MODULE_CONFIG = {
   sentinelgrid: {
     dbUrl: env.databases.sentinelgrid.url,
     filePrefix: "sentinelgrid-backup"
+  },
+  expenses: {
+    dbUrl: env.databases.expenses.url,
+    filePrefix: "expenses-backup"
   }
 };
 
@@ -76,10 +80,11 @@ function runPgDump(databaseUrl, outputFile) {
 function normalizeTargets(rawTarget) {
   const target = String(rawTarget || "").trim().toLowerCase();
   if (!target || target === "all") {
-    return ["specflow", "config", "module-spec", "report-service", "sentinelgrid"];
+    return ["specflow", "config", "module-spec", "report-service", "sentinelgrid"]
+      .concat(env.expensesEnabled ? ["expenses"] : []);
   }
   if (!Object.prototype.hasOwnProperty.call(MODULE_CONFIG, target)) {
-    throw new Error("Modulo invalido. Use: specflow | config | module-spec | report-service | sentinelgrid | all.");
+    throw new Error("Modulo invalido. Use: specflow | config | module-spec | report-service | sentinelgrid | expenses | all.");
   }
   return [target];
 }
