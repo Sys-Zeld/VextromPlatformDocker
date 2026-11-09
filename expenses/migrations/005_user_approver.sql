@@ -1,14 +1,6 @@
--- Aprovadores definidos por usuário (um ou mais). Qualquer um deles — ou o
--- Administrador, como substituto — decide sobre os relatórios do usuário, e
--- só eles os enxergam na Gestão. A regra lê os aprovadores ATUAIS do
--- solicitante: mudar a lista transfere na hora os relatórios pendentes.
--- Sem nenhum aprovador disponível, o usuário não consegue enviar relatórios.
-CREATE TABLE ex_user_approvers (
-  user_id     TEXT NOT NULL REFERENCES ex_users(id) ON DELETE RESTRICT,
-  approver_id TEXT NOT NULL REFERENCES ex_users(id) ON DELETE RESTRICT,
-  created_by  TEXT NOT NULL DEFAULT '',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (user_id, approver_id),
-  CHECK (user_id <> approver_id)
-);
-CREATE INDEX ix_ex_user_approvers_approver ON ex_user_approvers (approver_id);
+-- Aprovador definido por usuário (primeira versão: um aprovador por usuário).
+-- Substituído pela lista de aprovadores em 007_user_approvers.sql, que copia
+-- este valor para a tabela nova e remove a coluna.
+ALTER TABLE ex_users ADD COLUMN approver_id TEXT REFERENCES ex_users(id) ON DELETE RESTRICT;
+ALTER TABLE ex_users ADD CONSTRAINT ck_ex_users_approver_not_self CHECK (approver_id IS NULL OR approver_id <> id);
+CREATE INDEX ix_ex_users_approver ON ex_users (approver_id) WHERE deleted_at IS NULL;
