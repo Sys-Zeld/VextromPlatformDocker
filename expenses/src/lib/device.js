@@ -6,8 +6,10 @@ const MOBILE_UA = /Android.+Mobile|iPhone|iPod|Windows Phone|IEMobile|Opera Mini
 
 // Cookie lido pelo SPA para seguir a mesma decisão nas navegações internas.
 const UI_COOKIE = "ex_ui";
-// Preferência do usuário ("desktop" = quer a versão completa no celular).
-const VIEW_COOKIE = "ex_view";
+// Preferência do usuário ("desktop" = quer a versão completa no celular),
+// válida até fechar o navegador. O nome antigo (ex_view, 1 ano) prendia o
+// celular na versão completa; trocar o nome descarta essas preferências.
+const VIEW_COOKIE = "ex_view_session";
 
 function isMobileRequest(req) {
   // Client Hint é mais confiável que o user-agent quando o navegador envia
@@ -33,4 +35,9 @@ function isMobilePath(path) {
   return path === "/m" || path.startsWith("/m/");
 }
 
-module.exports = { isMobileRequest, mobilePathFor, isMobilePath, UI_COOKIE, VIEW_COOKIE };
+// Telas que só existem na versão completa e que a versão mobile abre de
+// propósito (ex.: dados bancários): no celular, não redirecionam.
+const DESKTOP_ONLY = new Set(["/profile"]);
+const isDesktopOnlyPath = (path) => DESKTOP_ONLY.has(path);
+
+module.exports = { isMobileRequest, mobilePathFor, isMobilePath, isDesktopOnlyPath, UI_COOKIE, VIEW_COOKIE };

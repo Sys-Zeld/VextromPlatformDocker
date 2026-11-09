@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { logout } from "../../../api/expenses";
 import { useExpensesMe } from "../auth/ExpensesGuard";
 import { useMobileTopbar } from "./MobileShell";
-import { setViewPreference } from "./uiMode";
+import { BANK_DATA_URL, setViewPreference } from "./uiMode";
 
 // Aba "Mais": demais funções do colaborador, conta e troca de versão.
 // Dados bancários ficam só na versão completa.
@@ -38,7 +38,8 @@ export default function MobileMorePage() {
       <div className="exm-list">
         <Item icon="timeline" label="Histórico" to="/expenses/m/history" />
         <Item icon="password" label="Trocar senha" to="/expenses/m/change-password" />
-        <Item icon="account_balance" label="Meus dados bancários" hint="Abre a versão completa" onClick={() => openDesktop("/profile")} external />
+        <Item icon="account_balance" label="Meus dados bancários" hint="Abre a tela da versão completa"
+          onClick={() => { window.location.href = BANK_DATA_URL; }} external />
       </div>
 
       <div className="exm-list">

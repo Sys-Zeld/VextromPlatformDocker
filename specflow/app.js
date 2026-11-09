@@ -301,7 +301,8 @@ if (env.reactAppEnabled) {
       .then((actor) => {
         if (!actor) return res.redirect(`/app/expenses/login?next=${encodeURIComponent(req.originalUrl)}`);
         const wantsDesktop = (req.cookies && req.cookies[expensesDevice.VIEW_COOKIE]) === "desktop";
-        if (mobile && !wantsDesktop && req.method === "GET" && !expensesDevice.isMobilePath(req.path)) {
+        if (mobile && !wantsDesktop && req.method === "GET" && !expensesDevice.isMobilePath(req.path)
+          && !expensesDevice.isDesktopOnlyPath(req.path)) {
           return res.redirect(`/app/expenses${expensesDevice.mobilePathFor(req.path)}`);
         }
         const isAdminArea = req.path === "/admin" || req.path.startsWith("/admin/");

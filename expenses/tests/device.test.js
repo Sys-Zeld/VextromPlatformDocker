@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isMobileRequest, mobilePathFor, isMobilePath } = require("../src/lib/device");
+const { isMobileRequest, mobilePathFor, isMobilePath, isDesktopOnlyPath } = require("../src/lib/device");
 
 const UA = {
   iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
@@ -42,4 +42,9 @@ test("device: rotas da versão completa têm equivalente mobile", () => {
   assert.equal(isMobilePath("/m"), true);
   assert.equal(isMobilePath("/m/reports/1"), true);
   assert.equal(isMobilePath("/media"), false);
+});
+
+test("device: dados bancários abrem no celular sem redirecionar para a versão mobile", () => {
+  assert.equal(isDesktopOnlyPath("/profile"), true);
+  assert.equal(isDesktopOnlyPath("/reports"), false);
 });

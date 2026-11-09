@@ -7,7 +7,7 @@ import { confirmDialog } from "../../../components/ConfirmDialog";
 import { formatDate } from "../../../utils/format";
 import { StatusBadge, errorMessage, formatMoney, formatPeriod } from "../shared";
 import { useMobileTopbar } from "./MobileShell";
-import { setViewPreference } from "./uiMode";
+import { BANK_DATA_URL } from "./uiMode";
 
 // Resumo do relatório, despesas em cards e as ações do colaborador
 // (adicionar despesa, enviar para aprovação, excluir rascunho).
@@ -57,11 +57,8 @@ export default function MobileReportPage() {
   const onDelete = async () => {
     if (await confirmDialog(`Excluir o relatório ${r.report_number}?`)) mDelete.mutate();
   };
-  // Dados bancários ficam só na versão completa.
-  const openBankData = () => {
-    setViewPreference("desktop");
-    window.location.href = "/app/expenses/profile";
-  };
+  // Dados bancários ficam só na versão completa (sem mudar a preferência de versão).
+  const openBankData = () => { window.location.href = BANK_DATA_URL; };
 
   return (
     <>

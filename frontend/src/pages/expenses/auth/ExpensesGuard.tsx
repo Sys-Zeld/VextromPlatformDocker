@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Spinner } from "react-bootstrap";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { getMe } from "../../../api/expenses";
-import { isMobilePath, prefersMobile, toMobilePath } from "../mobile/uiMode";
+import { isDesktopOnlyPath, isMobilePath, prefersMobile, toMobilePath } from "../mobile/uiMode";
 
 // Sessão do módulo (login próprio). Sem sessão, o cliente HTTP já leva à tela
 // de login; com senha provisória, só a troca de senha fica acessível.
@@ -24,7 +24,7 @@ export default function ExpensesGuard() {
     return location.pathname === changePath ? <Outlet /> : <Navigate to={changePath} replace />;
   }
   // Celular: navegações internas (ex.: depois do login) seguem a decisão do servidor.
-  if (mobile && !isMobilePath(location.pathname)) {
+  if (mobile && !isMobilePath(location.pathname) && !isDesktopOnlyPath(location.pathname)) {
     return <Navigate to={toMobilePath(location.pathname)} replace />;
   }
   return <Outlet />;

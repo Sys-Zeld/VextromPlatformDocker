@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Form, Row, Spinner } from "react-bootstrap";
 import { ProfileData, getProfile, saveProfile } from "../../api/expenses";
 import { PageHeader, errorMessage, useExpensesMeta } from "./shared";
+import { isMobileDevice } from "./mobile/uiMode";
 
 const EMPTY: ProfileData = {
   fullName: "", area: "", cpf: "", email: "", phone: "", bankCode: "", bankName: "", agency: "",
@@ -66,6 +67,13 @@ export default function ProfilePage() {
 
   return (
     <div className="d-flex flex-column gap-4">
+      {/* No celular, esta é a única tela aberta fora da versão mobile. */}
+      {isMobileDevice() && (
+        <Alert variant="info" className="mb-0 d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <span>Depois de salvar, volte para a versão mobile.</span>
+          <a href="/app/expenses/m" className="btn btn-sm btn-primary">Voltar para a versão mobile</a>
+        </Alert>
+      )}
       <PageHeader
         title="Meu Perfil de Reembolso"
         subtitle="Dados usados para identificar você e efetuar os reembolsos. Somente você e a gestão financeira (de forma restrita) têm acesso."
