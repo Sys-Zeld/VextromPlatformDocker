@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Form, InputGroup, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Dropdown, Form, InputGroup, Modal, Spinner, Table } from "react-bootstrap";
 import {
   ExpenseUser,
   UserCreateInput,
@@ -17,11 +17,11 @@ import { PageHeader, errorMessage, formatDateTime, useExpensesMeta } from "../sh
 
 // Contas do módulo (login próprio, independente do hub).
 // Colaborador = toda conta ativa; Administrador, Aprovador e Financeiro são adicionais.
-// Cada usuário tem um aprovador definido: só ele (ou o Administrador) decide
-// sobre os relatórios da pessoa, e sem aprovador ela não consegue enviar.
+// Cada usuário tem um ou mais aprovadores: qualquer um deles (ou o Administrador)
+// decide sobre os relatórios da pessoa, e sem nenhum ela não consegue enviar.
 
 const EMPTY_CREATE: UserCreateInput = {
-  username: "", fullName: "", email: "", isAdmin: false, isApprover: false, isFinance: false, approverId: null, temporaryPassword: false
+  username: "", fullName: "", email: "", isAdmin: false, isApprover: false, isFinance: false, approverIds: [], temporaryPassword: false
 };
 
 const toUpdate = (u: ExpenseUser, patch: Partial<UserUpdateInput> = {}): UserUpdateInput => ({
@@ -31,7 +31,7 @@ const toUpdate = (u: ExpenseUser, patch: Partial<UserUpdateInput> = {}): UserUpd
   isAdmin: u.isAdmin,
   isApprover: u.isApprover,
   isFinance: u.isFinance,
-  approverId: u.approverId,
+  approverIds: u.approvers.map((a) => a.id),
   ...patch
 });
 
@@ -41,17 +41,46 @@ const displayName = (u: ExpenseUser) => u.fullName || u.username;
 const approverOptions = (users: ExpenseUser[], forUserId?: string) =>
   users.filter((u) => u.isApprover && u.status !== "disabled" && u.id !== forUserId);
 
-function ApproverSelect({ users, forUserId, value, onChange, size, disabled }: {
-  users: ExpenseUser[]; forUserId?: string; value: string | null; onChange: (id: string | null) => void;
-  size?: "sm"; disabled?: boolean;
+const hasAvailableApprover = (u: ExpenseUser) => u.approvers.some((a) => a.available);
+
+// Caixas de marcar com os aprovadores possíveis. Os já marcados que ficaram
+// indisponíveis (inativos/sem o papel) continuam listados para poder desmarcar.
+function ApproverChecks({ users, forUserId, value, onChange, disabled, idPrefix, current = [] }: {
+  users: ExpenseUser[]; forUserId?: string; value: string[]; onChange: (ids: string[]) => void;
+  disabled?: boolean; idPrefix: string; current?: ExpenseUser["approvers"];
 }) {
-  const options = approverOptions(users, forUserId);
+  const options = approverOptions(users, forUserId).map((a) => ({ id: a.id, name: displayName(a), available: true }));
+  const stale = current.filter((a) => value.includes(a.id) && !options.some((o) => o.id === a.id));
+  const toggle = (id: string, on: boolean) => onChange(on ? [...value, id] : value.filter((x) => x !== id));
   return (
-    <Form.Select size={size} value={value ?? ""} disabled={disabled} isInvalid={!value}
-      aria-label="Aprovador" onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">— Sem aprovador —</option>
-      {options.map((a) => <option key={a.id} value={a.id}>{displayName(a)}</option>)}
-    </Form.Select>
+    <div className="d-flex flex-column gap-1">
+      {[...options, ...stale].map((a) => (
+        <Form.Check key={a.id} id={`${idPrefix}-${a.id}`} disabled={disabled} checked={value.includes(a.id)}
+          label={a.available ? a.name : <span className="text-muted text-decoration-line-through" title="Inativo ou sem o papel Aprovador">{a.name}</span>}
+          onChange={(e) => toggle(a.id, e.target.checked)} />
+      ))}
+      {!options.length && !stale.length && <span className="small text-muted">Nenhum usuário com o papel Aprovador.</span>}
+    </div>
+  );
+}
+
+// Na tabela: botão com os nomes; marcar/desmarcar salva na hora.
+function ApproverDropdown({ user, users, busy, onChange }: {
+  user: ExpenseUser; users: ExpenseUser[]; busy: boolean; onChange: (ids: string[]) => void;
+}) {
+  const names = user.approvers.filter((a) => a.available).map((a) => a.name);
+  const missing = !hasAvailableApprover(user);
+  return (
+    <Dropdown autoClose="outside">
+      <Dropdown.Toggle size="sm" variant={missing ? "outline-danger" : "outline-secondary"} disabled={busy}
+        className="text-start text-truncate btn-no-icon" style={{ maxWidth: 240 }} title={names.join(", ") || "Sem aprovador"}>
+        {names.length ? names.join(", ") : "Sem aprovador"}
+      </Dropdown.Toggle>
+      <Dropdown.Menu className="p-2" style={{ minWidth: 240 }}>
+        <ApproverChecks users={users} forUserId={user.id} idPrefix={`row-${user.id}`} disabled={busy}
+          value={user.approvers.map((a) => a.id)} current={user.approvers} onChange={onChange} />
+      </Dropdown.Menu>
+    </Dropdown>
   );
 }
 
@@ -159,8 +188,8 @@ export default function UsersPage() {
   const term = search.trim().toLowerCase();
   const users = allUsers.filter((u) =>
     !term || [u.username, u.fullName, u.email].some((x) => x.toLowerCase().includes(term)));
-  const withoutApprover = allUsers.filter((u) => u.status !== "disabled" && !u.approverId);
-  const approveesOf = (id: string) => allUsers.filter((u) => u.approverId === id && u.status !== "disabled").length;
+  const withoutApprover = allUsers.filter((u) => u.status !== "disabled" && !hasAvailableApprover(u));
+  const approveesOf = (id: string) => allUsers.filter((u) => u.status !== "disabled" && u.approvers.some((a) => a.id === id)).length;
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -173,8 +202,8 @@ export default function UsersPage() {
       {notice && <Alert variant="success" dismissible onClose={() => setNotice(null)} className="mb-0">{notice}</Alert>}
       {!isLoading && withoutApprover.length > 0 && (
         <Alert variant="warning" className="mb-0">
-          <strong>{withoutApprover.length} usuário(s) sem aprovador</strong> não conseguem enviar relatórios:{" "}
-          {withoutApprover.map(displayName).join(", ")}. Defina na coluna <em>Aprovador</em>.
+          <strong>{withoutApprover.length} usuário(s) sem aprovador disponível</strong> não conseguem enviar relatórios:{" "}
+          {withoutApprover.map(displayName).join(", ")}. Defina na coluna <em>Aprovadores</em>.
         </Alert>
       )}
 
@@ -194,7 +223,7 @@ export default function UsersPage() {
                 <th className="text-center">Administrador</th>
                 <th className="text-center">Aprovador</th>
                 <th className="text-center">Financeiro</th>
-                <th style={{ minWidth: 200 }} title="Quem decide sobre os relatórios deste usuário">Aprovador</th>
+                <th style={{ minWidth: 200 }} title="Quem decide sobre os relatórios deste usuário (qualquer um deles)">Aprovadores</th>
                 <th>Último acesso</th>
                 <th className="text-end">Ações</th>
               </tr>
@@ -225,9 +254,9 @@ export default function UsersPage() {
                         onChange={(e) => toggleRole(u, "isFinance", e.target.checked)} />
                     </td>
                     <td>
-                      {u.status === "disabled" ? <span className="small">{u.approverName || "—"}</span> : (
-                        <ApproverSelect size="sm" users={allUsers} forUserId={u.id} value={u.approverId} disabled={busy}
-                          onChange={(approverId) => mUpdate.mutate({ u, input: toUpdate(u, { approverId }) })} />
+                      {u.status === "disabled" ? <span className="small">{u.approvers.map((a) => a.name).join(", ") || "—"}</span> : (
+                        <ApproverDropdown user={u} users={allUsers} busy={busy}
+                          onChange={(approverIds) => mUpdate.mutate({ u, input: toUpdate(u, { approverIds }) })} />
                       )}
                     </td>
                     <td className="small text-nowrap">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "—"}</td>
@@ -280,17 +309,19 @@ function RoleChecks({ value, onChange }: {
   );
 }
 
-function ApproverField({ users, forUserId, value, onChange }: {
-  users: ExpenseUser[]; forUserId?: string; value: string | null; onChange: (id: string | null) => void;
+function ApproverField({ users, forUserId, value, onChange, current }: {
+  users: ExpenseUser[]; forUserId?: string; value: string[]; onChange: (ids: string[]) => void;
+  current?: ExpenseUser["approvers"];
 }) {
   return (
     <Form.Group>
-      <Form.Label>Aprovador</Form.Label>
-      <ApproverSelect users={users} forUserId={forUserId} value={value} onChange={onChange} />
+      <Form.Label>Aprovadores</Form.Label>
+      <div className="border rounded p-2" style={{ maxHeight: 180, overflowY: "auto" }}>
+        <ApproverChecks users={users} forUserId={forUserId} value={value} onChange={onChange}
+          current={current} idPrefix={`modal-${forUserId || "new"}`} />
+      </div>
       <Form.Text muted>
-        {approverOptions(users, forUserId).length === 0
-          ? "Nenhum usuário com o papel Aprovador ainda. Marque o papel em alguém para poder escolhê-lo aqui."
-          : "Só ele (ou o Administrador) decide sobre os relatórios desta pessoa. Sem aprovador, ela não consegue enviar."}
+        Qualquer um dos marcados (ou o Administrador) decide sobre os relatórios desta pessoa. Sem nenhum, ela não consegue enviar.
       </Form.Text>
     </Form.Group>
   );
@@ -352,7 +383,7 @@ function CreateUserModal({ show, users, onClose, onCreated }: {
                 <Form.Text muted>Usado para o convite, a recuperação de senha e as notificações.</Form.Text>
               </Form.Group>
               <RoleChecks value={form} onChange={(r) => setForm({ ...form, ...r })} />
-              <ApproverField users={users} value={form.approverId} onChange={(approverId) => setForm({ ...form, approverId })} />
+              <ApproverField users={users} value={form.approverIds} onChange={(approverIds) => setForm({ ...form, approverIds })} />
               <Form.Check type="switch" id="temp-pass" checked={form.temporaryPassword}
                 label="Gerar senha provisória em vez de enviar convite (quando não há e-mail/SMTP)"
                 onChange={(e) => setForm({ ...form, temporaryPassword: e.target.checked })} />
@@ -395,8 +426,8 @@ function EditUserModal({ user, users, onClose, onSave }: {
             <Form.Text muted>Trocar o e-mail encerra as sessões abertas da pessoa.</Form.Text>
           </Form.Group>
           <RoleChecks value={current} onChange={(r) => setForm({ ...current, ...r })} />
-          <ApproverField users={users} forUserId={user.id} value={current.approverId ?? null}
-            onChange={(approverId) => setForm({ ...current, approverId })} />
+          <ApproverField users={users} forUserId={user.id} value={current.approverIds ?? []} current={user.approvers}
+            onChange={(approverIds) => setForm({ ...current, approverIds })} />
         </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-secondary" onClick={close}>Cancelar</Button>

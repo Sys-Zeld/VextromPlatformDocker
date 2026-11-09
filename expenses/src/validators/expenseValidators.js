@@ -122,8 +122,9 @@ const tokenPasswordSchema = z.object({
   newPassword: passwordField
 });
 
-// Aprovador do usuário: id da conta, ou null/"" para nenhum.
-const approverIdField = z.string().trim().max(80).nullable().transform((v) => v || null);
+// Aprovadores do usuário: ids de contas (sem repetição).
+const approverIdsField = z.array(z.string().trim().min(1).max(80)).max(20, "Máximo de 20 aprovadores")
+  .transform((ids) => [...new Set(ids)]);
 
 const userCreateSchema = z.object({
   username: usernameField,
@@ -132,7 +133,7 @@ const userCreateSchema = z.object({
   isAdmin: z.boolean().optional().default(false),
   isApprover: z.boolean().optional().default(false),
   isFinance: z.boolean().optional().default(false),
-  approverId: approverIdField.optional().default(null),
+  approverIds: approverIdsField.optional().default([]),
   // Sem e-mail/SMTP: gera senha provisória (troca obrigatória no 1º acesso).
   temporaryPassword: z.boolean().optional().default(false)
 });
@@ -144,8 +145,8 @@ const userUpdateSchema = z.object({
   isAdmin: z.boolean(),
   isApprover: z.boolean(),
   isFinance: z.boolean(),
-  // Ausente = mantém o aprovador atual.
-  approverId: approverIdField.optional(),
+  // Ausente = mantém a lista atual.
+  approverIds: approverIdsField.optional(),
   unlock: z.boolean().optional().default(false)
 });
 

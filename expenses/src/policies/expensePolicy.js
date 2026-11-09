@@ -9,15 +9,16 @@ const { forbidden, notFound, conflict, badRequest } = require("../lib/errors");
 //   canManage = acessa a Gestão (Aprovador, Financeiro ou Administrador).
 //   seesAllReports = Financeiro e Administrador. O Aprovador vê só os
 //   relatórios dos usuários que ele aprova.
-// report.owner_approver_id = aprovador atual do solicitante (ver getReport).
+// report.owner_approver_ids = aprovadores atuais do solicitante (ver getReport);
+// qualquer um deles decide.
 
 function isOwner(actor, report) {
   return Boolean(actor && report && actor.userId && report.user_id === actor.userId);
 }
 
 function isDesignatedApprover(actor, report) {
-  return Boolean(actor && actor.canApprove && report && report.owner_approver_id
-    && report.owner_approver_id === actor.userId);
+  return Boolean(actor && actor.canApprove && report && Array.isArray(report.owner_approver_ids)
+    && report.owner_approver_ids.includes(actor.userId));
 }
 
 function canView(actor, report) {
@@ -96,7 +97,7 @@ function assertTransition(actor, report, actionKey, { reason = "" } = {}) {
     throw forbidden("Não é permitido decidir sobre o próprio relatório.", "EX_SELF_APPROVAL_FORBIDDEN");
   }
   if (action.actor === "approver" && !decidesAsAdmin && !isDesignatedApprover(actor, report)) {
-    throw forbidden("Somente o aprovador definido para o solicitante (ou o administrador) pode decidir.", "EX_NOT_DESIGNATED_APPROVER");
+    throw forbidden("Somente um aprovador definido para o solicitante (ou o administrador) pode decidir.", "EX_NOT_DESIGNATED_APPROVER");
   }
   if (!action.from.includes(report.status)) {
     throw conflict(

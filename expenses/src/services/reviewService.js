@@ -36,13 +36,14 @@ async function submissionIssues(db, report) {
   const profile = await profileService.loadProfile(db, report.user_id);
   const readiness = profileService.reimbursementReadiness(profile);
   for (const missing of readiness.missing) issues.push(`Cadastro de reembolso: ${missing}`);
-  // Sem aprovador definido (ou com um que não pode mais aprovar), ninguém além
-  // do administrador decidiria: o envio fica bloqueado até o cadastro ser ajustado.
-  const approver = await userRepo.getApproverOf(db, report.user_id);
-  if (!approver) {
+  // Sem nenhum aprovador disponível, ninguém além do administrador decidiria:
+  // o envio fica bloqueado até o cadastro ser ajustado.
+  const approvers = await userRepo.listApproversOf(db, report.user_id);
+  if (!approvers.length) {
     issues.push("Aprovador não definido: peça ao administrador do módulo para definir o seu aprovador.");
-  } else if (approver.deleted_at || approver.status === "disabled" || !approver.is_approver) {
-    issues.push(`Aprovador indisponível (${approver.full_name || approver.username}): peça ao administrador para definir outro.`);
+  } else if (!approvers.some((a) => a.available)) {
+    const names = approvers.map((a) => a.full_name || a.username).join(", ");
+    issues.push(`Aprovadores indisponíveis (${names}): peça ao administrador para definir outro.`);
   }
   return { issues, profile };
 }

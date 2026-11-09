@@ -381,9 +381,8 @@ export interface ExpenseUser {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
-  /** Quem decide sobre os relatórios deste usuário; sem ele, o envio é bloqueado. */
-  approverId: string | null;
-  approverName: string | null;
+  /** Quem decide sobre os relatórios deste usuário (qualquer um deles); sem nenhum disponível, o envio é bloqueado. */
+  approvers: { id: string; name: string; available: boolean }[];
   locked: boolean;
   lockedUntil: string | null;
   mustChangePassword: boolean;
@@ -398,7 +397,7 @@ export interface UserCreateInput {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
-  approverId: string | null;
+  approverIds: string[];
   temporaryPassword: boolean;
 }
 
@@ -409,8 +408,8 @@ export interface UserUpdateInput {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
-  /** Ausente mantém o aprovador atual; null remove. */
-  approverId?: string | null;
+  /** Ausente mantém a lista atual. */
+  approverIds?: string[];
   unlock?: boolean;
 }
 

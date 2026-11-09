@@ -1,6 +1,6 @@
 // Contas do módulo (login próprio). Todas as leituras ignoram excluídos.
 
-const COLUMNS = `id, username, full_name, email, status, is_admin, is_approver, is_finance, approver_id,
+const COLUMNS = `id, username, full_name, email, status, is_admin, is_approver, is_finance,
                  must_change_password, failed_attempts, locked_until, session_version,
                  last_login_at, password_changed_at, created_by, created_at, updated_at`;
 
@@ -27,7 +27,11 @@ async function findForLogin(db, identifier) {
 async function list(db) {
   const { rows } = await db.query(
     `SELECT ${COLUMNS},
-            (SELECT COALESCE(NULLIF(a.full_name, ''), a.username) FROM ex_users a WHERE a.id = ex_users.approver_id) AS approver_name
+            COALESCE((SELECT json_agg(json_build_object('id', a.id, 'name', COALESCE(NULLIF(a.full_name, ''), a.username),
+                                                        'available', a.deleted_at IS NULL AND a.status <> 'disabled' AND a.is_approver)
+                                      ORDER BY LOWER(a.username))
+                        FROM ex_user_approvers ua JOIN ex_users a ON a.id = ua.approver_id
+                       WHERE ua.user_id = ex_users.id), '[]'::json) AS approvers
        FROM ex_users WHERE deleted_at IS NULL ORDER BY LOWER(username)`
   );
   return rows;
@@ -36,11 +40,11 @@ async function list(db) {
 async function insert(db, data) {
   const { rows } = await db.query(
     `INSERT INTO ex_users (username, full_name, email, password_hash, status, is_admin, is_approver, is_finance,
-                           must_change_password, password_changed_at, created_by, approver_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $4 <> '' THEN NOW() END, $10, $11)
+                           must_change_password, password_changed_at, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $4 <> '' THEN NOW() END, $10)
      RETURNING ${COLUMNS}`,
     [data.username, data.fullName, data.email, data.passwordHash || "", data.status, data.isAdmin, data.isApprover,
-      data.isFinance, data.mustChangePassword, data.createdBy, data.approverId || null]
+      data.isFinance, data.mustChangePassword, data.createdBy]
   );
   return rows[0];
 }
@@ -49,7 +53,6 @@ async function update(db, id, data) {
   const { rows } = await db.query(
     `UPDATE ex_users
         SET full_name = $2, email = $3, status = $4, is_admin = $5, is_approver = $6, is_finance = $7,
-            approver_id = $10,
             session_version = session_version + CASE WHEN $8 THEN 1 ELSE 0 END,
             failed_attempts = CASE WHEN $9 THEN 0 ELSE failed_attempts END,
             locked_until = CASE WHEN $9 THEN NULL ELSE locked_until END,
@@ -57,7 +60,7 @@ async function update(db, id, data) {
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING ${COLUMNS}`,
     [id, data.fullName, data.email, data.status, data.isAdmin, data.isApprover, data.isFinance,
-      Boolean(data.revokeSessions), Boolean(data.unlock), data.approverId || null]
+      Boolean(data.revokeSessions), Boolean(data.unlock)]
   );
   return rows[0] || null;
 }
@@ -112,25 +115,55 @@ async function countActiveAdmins(db, { excludeId = null } = {}) {
   return rows[0].c;
 }
 
-// Aprovador definido para o usuário (mesmo inativo ou excluído — quem chama
-// decide o que fazer); null se não houver.
-async function getApproverOf(db, userId) {
+/* ------------------------------- Aprovadores ------------------------------ */
+
+// Disponível = pode decidir: conta ativa (não excluída/desativada) com o papel.
+const AVAILABLE = "a.deleted_at IS NULL AND a.status <> 'disabled' AND a.is_approver";
+
+// Aprovadores definidos para o usuário, com `available` (inativos aparecem
+// para quem chama decidir o que fazer).
+async function listApproversOf(db, userId) {
   const { rows } = await db.query(
-    `SELECT a.id, a.username, a.full_name, a.email, a.status, a.is_approver, a.deleted_at
-       FROM ex_users u JOIN ex_users a ON a.id = u.approver_id
-      WHERE u.id = $1`,
+    `SELECT a.id, a.username, a.full_name, a.email, (${AVAILABLE}) AS available
+       FROM ex_user_approvers ua JOIN ex_users a ON a.id = ua.approver_id
+      WHERE ua.user_id = $1
+      ORDER BY LOWER(a.username)`,
     [userId]
   );
-  return rows[0] || null;
+  return rows;
 }
 
-// Usuários ativos que têm `approverId` como aprovador.
-async function countApprovees(db, approverId) {
+async function listApproverIdsOf(db, userId) {
+  const { rows } = await db.query("SELECT approver_id FROM ex_user_approvers WHERE user_id = $1", [userId]);
+  return rows.map((r) => r.approver_id);
+}
+
+// Substitui a lista de aprovadores do usuário.
+async function setApprovers(db, userId, approverIds, createdBy) {
+  await db.query("DELETE FROM ex_user_approvers WHERE user_id = $1 AND NOT (approver_id = ANY($2))", [userId, approverIds]);
+  if (approverIds.length) {
+    await db.query(
+      `INSERT INTO ex_user_approvers (user_id, approver_id, created_by)
+       SELECT $1, unnest($2::text[]), $3
+       ON CONFLICT (user_id, approver_id) DO NOTHING`,
+      [userId, approverIds, createdBy]
+    );
+  }
+}
+
+// Usuários ativos para os quais `approverId` é o ÚNICO aprovador disponível:
+// tirá-lo os deixaria sem quem aprove.
+async function listSoleApprovees(db, approverId) {
   const { rows } = await db.query(
-    "SELECT COUNT(*)::int AS c FROM ex_users WHERE approver_id = $1 AND deleted_at IS NULL AND status <> 'disabled'",
+    `SELECT u.username FROM ex_user_approvers ua JOIN ex_users u ON u.id = ua.user_id
+      WHERE ua.approver_id = $1 AND u.deleted_at IS NULL AND u.status <> 'disabled'
+        AND NOT EXISTS (
+          SELECT 1 FROM ex_user_approvers o JOIN ex_users a ON a.id = o.approver_id
+           WHERE o.user_id = ua.user_id AND o.approver_id <> $1 AND ${AVAILABLE})
+      ORDER BY LOWER(u.username)`,
     [approverId]
   );
-  return rows[0].c;
+  return rows.map((r) => r.username);
 }
 
 /* --------------------------------- Tokens --------------------------------- */
@@ -174,8 +207,10 @@ module.exports = {
   registerSuccess,
   softDelete,
   countActiveAdmins,
-  getApproverOf,
-  countApprovees,
+  listApproversOf,
+  listApproverIdsOf,
+  setApprovers,
+  listSoleApprovees,
   insertToken,
   findValidToken,
   markTokenUsed

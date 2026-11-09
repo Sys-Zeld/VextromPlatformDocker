@@ -20,8 +20,8 @@ const TITLES = {
   [EV.PAID]: "Reembolso pago"
 };
 
-// Quem recebe cada evento: o aprovador definido do solicitante (envios) ou o
-// próprio solicitante (decisões).
+// Quem recebe cada evento: os aprovadores disponíveis do solicitante (envios)
+// ou o próprio solicitante (decisões).
 const MANAGER_EVENTS = new Set([EV.SUBMITTED, EV.RESUBMITTED]);
 
 function formatDateTime(date) {
@@ -53,9 +53,8 @@ function createNotificationService(deps = {}, options = {}) {
     const recipients = [];
 
     if (MANAGER_EVENTS.has(event)) {
-      const approver = await userRepo.getApproverOf(db, report.user_id);
-      if (approver && !approver.deleted_at && approver.status !== "disabled") {
-        recipients.push({ userId: approver.id, email: approver.email || "", manager: true });
+      for (const a of await userRepo.listApproversOf(db, report.user_id)) {
+        if (a.available) recipients.push({ userId: a.id, email: a.email || "", manager: true });
       }
     } else {
       const profile = await profileRepo.getByUserId(db, report.user_id);

@@ -8,7 +8,7 @@ const { badRequest, notFound, conflict } = require("../lib/errors");
 
 // Gestão das contas do módulo (tela Usuários) — só Administrador do módulo.
 // Papéis: Colaborador (toda conta ativa), Aprovador, Financeiro, Administrador.
-// Cada usuário tem um aprovador definido (quem decide sobre os relatórios dele).
+// Cada usuário tem um ou mais aprovadores (qualquer um decide sobre os relatórios dele).
 
 function view(u) {
   const locked = Boolean(u.locked_until && new Date(u.locked_until) > new Date());
@@ -21,8 +21,8 @@ function view(u) {
     isAdmin: u.is_admin,
     isApprover: u.is_approver,
     isFinance: u.is_finance,
-    approverId: u.approver_id || null,
-    approverName: u.approver_name || null,
+    // [{ id, name, available }] — só na listagem.
+    approvers: u.approvers || [],
     locked,
     lockedUntil: locked ? u.locked_until : null,
     mustChangePassword: u.must_change_password,
@@ -52,23 +52,28 @@ function createAccountService({ auth }) {
     return user;
   }
 
-  // O aprovador escolhido precisa existir, ter o papel Aprovador e estar ativo.
-  async function assertValidApprover(db, approverId, userId = null) {
-    if (!approverId) return;
-    if (approverId === userId) throw badRequest("EX_APPROVER_SELF", "O usuário não pode ser o próprio aprovador.");
-    const approver = await userRepo.getById(db, approverId);
-    if (!approver || !approver.is_approver || approver.status === "disabled") {
-      throw badRequest("EX_APPROVER_INVALID", "O aprovador escolhido precisa ser um usuário ativo com o papel Aprovador.");
+  // Aprovadores ADICIONADOS precisam existir, ter o papel Aprovador e estar
+  // ativos. Os que já estavam na lista não são revalidados (um deles pode ter
+  // ficado inativo sem impedir de salvar outros dados do usuário).
+  async function assertValidApprovers(db, approverIds, { userId = null, current = [] } = {}) {
+    if (userId && approverIds.includes(userId)) {
+      throw badRequest("EX_APPROVER_SELF", "O usuário não pode ser o próprio aprovador.");
+    }
+    for (const approverId of approverIds.filter((a) => !current.includes(a))) {
+      const approver = await userRepo.getById(db, approverId);
+      if (!approver || !approver.is_approver || approver.status === "disabled") {
+        throw badRequest("EX_APPROVER_INVALID", "Os aprovadores escolhidos precisam ser usuários ativos com o papel Aprovador.");
+      }
     }
   }
 
-  // Quem é aprovador de alguém não pode perder o papel nem sair sem antes
-  // transferir esses usuários — eles ficariam sem quem aprove.
-  async function assertNoApprovees(db, user, action) {
-    const count = await userRepo.countApprovees(db, user.id);
-    if (count > 0) {
+  // Quem é o ÚNICO aprovador disponível de alguém não pode perder o papel nem
+  // sair antes de essas pessoas ganharem outro aprovador.
+  async function assertNotSoleApprover(db, user, action) {
+    const sole = await userRepo.listSoleApprovees(db, user.id);
+    if (sole.length) {
       throw badRequest("EX_APPROVER_IN_USE",
-        `${user.username} é aprovador de ${count} usuário(s). Defina outro aprovador para eles antes de ${action}.`);
+        `${user.username} é o único aprovador de: ${sole.join(", ")}. Defina outro aprovador para eles antes de ${action}.`);
     }
   }
 
@@ -83,7 +88,7 @@ function createAccountService({ auth }) {
     let user;
     try {
       user = await withTransaction(async (db) => {
-        await assertValidApprover(db, input.approverId);
+        await assertValidApprovers(db, input.approverIds);
         const created = await userRepo.insert(db, {
           username: input.username,
           fullName: input.fullName,
@@ -94,9 +99,9 @@ function createAccountService({ auth }) {
           isApprover: input.isApprover,
           isFinance: input.isFinance,
           mustChangePassword: Boolean(temporary),
-          createdBy: actor.username,
-          approverId: input.approverId
+          createdBy: actor.username
         });
+        await userRepo.setApprovers(db, created.id, input.approverIds, actor.username);
         await audit.record(db, actor, {
           action: "USER_CREATED",
           entityType: "user",
@@ -105,7 +110,7 @@ function createAccountService({ auth }) {
             username: created.username,
             email: created.email,
             roles: { admin: input.isAdmin, approver: input.isApprover, finance: input.isFinance },
-            approverId: input.approverId || null,
+            approverIds: input.approverIds,
             method: temporary ? "temporary_password" : "invite"
           }
         });
@@ -137,11 +142,12 @@ function createAccountService({ auth }) {
         const status = before.status === "invited" && input.status === "active" ? "invited" : input.status;
         const disabling = status === "disabled" && before.status !== "disabled";
         if (before.is_approver && (!input.isApprover || disabling)) {
-          await assertNoApprovees(db, before, input.isApprover ? "desativá-lo" : "remover o papel Aprovador");
+          await assertNotSoleApprover(db, before, input.isApprover ? "desativá-lo" : "remover o papel Aprovador");
         }
-        // Sem `approverId` no pedido, mantém o aprovador atual.
-        const approverId = input.approverId === undefined ? before.approver_id : input.approverId;
-        if (approverId !== before.approver_id) await assertValidApprover(db, approverId, before.id);
+        // Sem `approverIds` no pedido, mantém a lista atual.
+        const currentApprovers = await userRepo.listApproverIdsOf(db, before.id);
+        const approverIds = input.approverIds === undefined ? currentApprovers : input.approverIds;
+        await assertValidApprovers(db, approverIds, { userId: before.id, current: currentApprovers });
         const updated = await userRepo.update(db, before.id, {
           fullName: input.fullName,
           email: input.email,
@@ -149,18 +155,18 @@ function createAccountService({ auth }) {
           isAdmin: input.isAdmin,
           isApprover: input.isApprover,
           isFinance: input.isFinance,
-          approverId,
           revokeSessions: disabling || (before.email !== input.email),
           unlock: input.unlock
         });
+        await userRepo.setApprovers(db, before.id, approverIds, actor.username);
         await audit.record(db, actor, {
           action: "USER_UPDATED",
           entityType: "user",
           entityId: before.id,
           metadata: {
             username: before.username,
-            before: { status: before.status, email: before.email, admin: before.is_admin, approver: before.is_approver, finance: before.is_finance, approverId: before.approver_id },
-            after: { status: updated.status, email: updated.email, admin: updated.is_admin, approver: updated.is_approver, finance: updated.is_finance, approverId: updated.approver_id },
+            before: { status: before.status, email: before.email, admin: before.is_admin, approver: before.is_approver, finance: before.is_finance, approverIds: currentApprovers },
+            after: { status: updated.status, email: updated.email, admin: updated.is_admin, approver: updated.is_approver, finance: updated.is_finance, approverIds },
             unlocked: Boolean(input.unlock)
           }
         });
@@ -180,7 +186,7 @@ function createAccountService({ auth }) {
       if (target.is_admin && target.status === "active" && (await userRepo.countActiveAdmins(db, { excludeId: target.id })) === 0) {
         throw badRequest("EX_LAST_ADMIN", "O módulo precisa de pelo menos um administrador ativo.");
       }
-      if (target.is_approver) await assertNoApprovees(db, target, "excluí-lo");
+      if (target.is_approver) await assertNotSoleApprover(db, target, "excluí-lo");
       await userRepo.softDelete(db, target.id);
       await audit.record(db, actor, {
         action: "USER_DELETED",

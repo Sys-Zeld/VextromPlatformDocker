@@ -15,7 +15,7 @@ async function listAudit(db, { reportId, search, limit, offset, approverId }) {
   const params = [];
   const where = ["1=1"];
   // Aprovador: só eventos dos relatórios que ele aprova (sem os de contas).
-  if (approverId) { params.push(approverId); where.push(`r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`); }
+  if (approverId) { params.push(approverId); where.push(`r.user_id IN (SELECT ua.user_id FROM ex_user_approvers ua WHERE ua.approver_id = $${params.length})`); }
   if (reportId) { params.push(reportId); where.push(`l.report_id = $${params.length}`); }
   if (search) {
     params.push(`%${search.toLowerCase()}%`);

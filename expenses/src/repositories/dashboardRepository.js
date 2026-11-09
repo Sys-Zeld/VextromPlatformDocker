@@ -10,7 +10,7 @@ function scope({ userId, approverId, from, to }, alias = "r", dateColumn = "crea
   if (userId) { params.push(userId); where.push(`${alias}.user_id = $${params.length}`); }
   if (approverId) {
     params.push(approverId);
-    where.push(`${alias}.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`);
+    where.push(`${alias}.user_id IN (SELECT ua.user_id FROM ex_user_approvers ua WHERE ua.approver_id = $${params.length})`);
   }
   if (from) { params.push(from); where.push(`${alias}.${dateColumn}::date >= $${params.length}`); }
   if (to) { params.push(to); where.push(`${alias}.${dateColumn}::date <= $${params.length}`); }

@@ -35,7 +35,7 @@ async function getRaw(db, paymentId) {
 async function listAll(db, { limit, offset, from, to, approverId }) {
   const params = [];
   const where = ["1=1"];
-  if (approverId) { params.push(approverId); where.push(`r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`); }
+  if (approverId) { params.push(approverId); where.push(`r.user_id IN (SELECT ua.user_id FROM ex_user_approvers ua WHERE ua.approver_id = $${params.length})`); }
   if (from) { params.push(from); where.push(`p.payment_date >= $${params.length}`); }
   if (to) { params.push(to); where.push(`p.payment_date <= $${params.length}`); }
   const total = await db.query(

@@ -6,14 +6,14 @@ const { ACTIONS, STATUS } = require("../src/constants");
 // Atores e relatório de referência.
 const owner = { userId: "u-1", username: "ana", canSubmit: true, canManage: false };
 const other = { userId: "u-2", username: "bia", canSubmit: true, canManage: false };
-// manager = Aprovador + Financeiro e aprovador definido de "u-1" nos relatórios padrão.
+// manager = Aprovador + Financeiro e um dos aprovadores de "u-1" nos relatórios padrão.
 const manager = { userId: "m-1", username: "chefe", canSubmit: true, canManage: true, canApprove: true, canPay: true, seesAllReports: true };
 const approver = { userId: "a-1", username: "aprov", canSubmit: true, canManage: true, canApprove: true, canPay: false, seesAllReports: false };
 const finance = { userId: "f-1", username: "fin", canSubmit: true, canManage: true, canApprove: false, canPay: true, seesAllReports: true };
 const admin = { userId: "ad-1", username: "admin", canSubmit: true, canManage: true, canManageUsers: true, seesAllReports: true };
 const managerOwner = { ...manager, userId: "u-1" };
-// owner_approver_id = aprovador atual do solicitante (vem do getReport).
-const report = (status, extra = {}) => ({ id: 1, user_id: "u-1", owner_approver_id: "m-1", status, submitted_at: null, ...extra });
+// owner_approver_ids = aprovadores atuais do solicitante (vem do getReport).
+const report = (status, extra = {}) => ({ id: 1, user_id: "u-1", owner_approver_ids: ["m-1"], status, submitted_at: null, ...extra });
 
 const code = (fn) => {
   try { fn(); return "OK"; } catch (e) { return e.errorCode || e.message; }
@@ -79,7 +79,7 @@ test("workflow: usuário comum não executa ações de gestão (escalada de priv
 });
 
 test("papéis: Aprovador não paga; Financeiro não aprova", () => {
-  const ofApprover = (status) => report(status, { owner_approver_id: "a-1" });
+  const ofApprover = (status) => report(status, { owner_approver_ids: ["a-1"] });
   assert.equal(code(() => policy.assertTransition(approver, ofApprover("EM_ANALISE"), "APPROVE")), "OK");
   assert.equal(code(() => policy.assertTransition(approver, ofApprover("APROVADO"), "PAY")), "EX_FINANCE_REQUIRED");
   assert.equal(code(() => policy.assertTransition(finance, report("APROVADO"), "PAY")), "OK");
@@ -102,13 +102,23 @@ test("aprovador definido: só ele decide; outro aprovador não", () => {
   }
 });
 
+test("vários aprovadores: qualquer um deles decide e enxerga", () => {
+  const team = (status) => report(status, { owner_approver_ids: ["a-1", "m-1"] });
+  assert.equal(code(() => policy.assertTransition(approver, team("ENVIADO"), "START_REVIEW")), "OK");
+  assert.equal(code(() => policy.assertTransition(manager, team("EM_ANALISE"), "APPROVE")), "OK");
+  assert.equal(code(() => policy.assertCanView(approver, team("APROVADO"))), "OK");
+  // Fora da lista: não decide (e o aprovador "puro" nem enxerga).
+  assert.equal(code(() => policy.assertTransition({ ...manager, userId: "m-9" }, team("EM_ANALISE"), "APPROVE")), "EX_NOT_DESIGNATED_APPROVER");
+  assert.equal(code(() => policy.assertCanView({ ...approver, userId: "a-9" }, team("ENVIADO"))), "EX_REPORT_NOT_FOUND");
+});
+
 test("aprovador definido: Administrador decide como substituto, inclusive sem aprovador definido", () => {
   assert.equal(code(() => policy.assertTransition(admin, report("EM_ANALISE"), "APPROVE")), "OK");
-  assert.equal(code(() => policy.assertTransition(admin, report("ENVIADO", { owner_approver_id: null }), "START_REVIEW")), "OK");
+  assert.equal(code(() => policy.assertTransition(admin, report("ENVIADO", { owner_approver_ids: [] }), "START_REVIEW")), "OK");
   // ...mas não paga sem o papel Financeiro.
   assert.equal(code(() => policy.assertTransition(admin, report("APROVADO"), "PAY")), "EX_FINANCE_REQUIRED");
   // Solicitante sem aprovador: nenhum aprovador decide, só o Administrador.
-  assert.equal(code(() => policy.assertTransition(manager, report("EM_ANALISE", { owner_approver_id: null }), "APPROVE")), "EX_NOT_DESIGNATED_APPROVER");
+  assert.equal(code(() => policy.assertTransition(manager, report("EM_ANALISE", { owner_approver_ids: [] }), "APPROVE")), "EX_NOT_DESIGNATED_APPROVER");
 });
 
 test("escopo das listas da Gestão: Aprovador filtrado; Financeiro e Administrador veem tudo", () => {

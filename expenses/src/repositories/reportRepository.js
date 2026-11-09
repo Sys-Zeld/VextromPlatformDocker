@@ -36,8 +36,8 @@ async function insertReport(db, data) {
 async function getReport(db, id, { forUpdate = false } = {}) {
   if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) return null;
   const { rows } = await db.query(
-    // owner_approver_id: aprovador ATUAL do solicitante (usado pela política).
-    `SELECT r.*, (SELECT u.approver_id FROM ex_users u WHERE u.id = r.user_id) AS owner_approver_id
+    // owner_approver_ids: aprovadores ATUAIS do solicitante (usado pela política).
+    `SELECT r.*, ARRAY(SELECT ua.approver_id FROM ex_user_approvers ua WHERE ua.user_id = r.user_id) AS owner_approver_ids
        FROM ex_reports r WHERE r.id = $1 AND r.deleted_at IS NULL${forUpdate ? " FOR UPDATE OF r" : ""}`,
     [Number(id)]
   );
@@ -99,7 +99,7 @@ function buildListWhere(filters) {
 
   if (filters.userId) where.push(`r.user_id = ${add(filters.userId)}`);
   // Aprovador: só relatórios de quem tem ele como aprovador.
-  if (filters.approverId) where.push(`r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = ${add(filters.approverId)})`);
+  if (filters.approverId) where.push(`r.user_id IN (SELECT ua.user_id FROM ex_user_approvers ua WHERE ua.approver_id = ${add(filters.approverId)})`);
   if (filters.statuses && filters.statuses.length) where.push(`r.status = ANY(${add(filters.statuses)})`);
   if (filters.excludeStatuses && filters.excludeStatuses.length) {
     where.push(`NOT (r.status = ANY(${add(filters.excludeStatuses)}))`);
@@ -287,7 +287,7 @@ async function listDecisions(db, { limit, offset, userId, approverId }) {
   const params = [];
   let where = "1=1";
   if (userId) { params.push(userId); where = `r.user_id = $${params.length}`; }
-  if (approverId) { params.push(approverId); where = `r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`; }
+  if (approverId) { params.push(approverId); where = `r.user_id IN (SELECT ua.user_id FROM ex_user_approvers ua WHERE ua.approver_id = $${params.length})`; }
   const total = await db.query(
     `SELECT COUNT(*)::int AS c FROM ex_approval_history h JOIN ex_reports r ON r.id = h.report_id WHERE ${where}`,
     params
