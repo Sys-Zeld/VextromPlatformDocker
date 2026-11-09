@@ -36,7 +36,9 @@ async function insertReport(db, data) {
 async function getReport(db, id, { forUpdate = false } = {}) {
   if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) return null;
   const { rows } = await db.query(
-    `SELECT * FROM ex_reports WHERE id = $1 AND deleted_at IS NULL${forUpdate ? " FOR UPDATE" : ""}`,
+    // owner_approver_id: aprovador ATUAL do solicitante (usado pela política).
+    `SELECT r.*, (SELECT u.approver_id FROM ex_users u WHERE u.id = r.user_id) AS owner_approver_id
+       FROM ex_reports r WHERE r.id = $1 AND r.deleted_at IS NULL${forUpdate ? " FOR UPDATE OF r" : ""}`,
     [Number(id)]
   );
   return rows[0] || null;
@@ -96,6 +98,8 @@ function buildListWhere(filters) {
   const add = (value) => { params.push(value); return `$${params.length}`; };
 
   if (filters.userId) where.push(`r.user_id = ${add(filters.userId)}`);
+  // Aprovador: só relatórios de quem tem ele como aprovador.
+  if (filters.approverId) where.push(`r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = ${add(filters.approverId)})`);
   if (filters.statuses && filters.statuses.length) where.push(`r.status = ANY(${add(filters.statuses)})`);
   if (filters.excludeStatuses && filters.excludeStatuses.length) {
     where.push(`NOT (r.status = ANY(${add(filters.excludeStatuses)}))`);
@@ -155,10 +159,11 @@ async function getItem(db, itemId) {
 
 async function insertItem(db, reportId, input, createdBy) {
   const { rows } = await db.query(
-    `INSERT INTO ex_items (report_id, category_id, expense_date, description, justification, amount, merchant, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO ex_items (report_id, category_id, expense_date, description, justification, amount, merchant, notes,
+                           created_by, invoice_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [reportId, input.categoryId, input.expenseDate, input.description, input.justification,
-      input.amount, input.merchant, input.notes, createdBy]
+      input.amount, input.merchant, input.notes, createdBy, input.invoiceNumber || ""]
   );
   return rows[0];
 }
@@ -167,10 +172,10 @@ async function updateItem(db, itemId, input) {
   const { rows } = await db.query(
     `UPDATE ex_items
         SET category_id = $2, expense_date = $3, description = $4, justification = $5,
-            amount = $6, merchant = $7, notes = $8, updated_at = NOW()
+            amount = $6, merchant = $7, notes = $8, invoice_number = $9, updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
     [itemId, input.categoryId, input.expenseDate, input.description, input.justification,
-      input.amount, input.merchant, input.notes]
+      input.amount, input.merchant, input.notes, input.invoiceNumber || ""]
   );
   return rows[0] || null;
 }
@@ -278,10 +283,11 @@ async function listHistory(db, reportId) {
 }
 
 // Histórico consolidado de decisões (tela "Histórico de Aprovações").
-async function listDecisions(db, { limit, offset, userId }) {
+async function listDecisions(db, { limit, offset, userId, approverId }) {
   const params = [];
   let where = "1=1";
   if (userId) { params.push(userId); where = `r.user_id = $${params.length}`; }
+  if (approverId) { params.push(approverId); where = `r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`; }
   const total = await db.query(
     `SELECT COUNT(*)::int AS c FROM ex_approval_history h JOIN ex_reports r ON r.id = h.report_id WHERE ${where}`,
     params

@@ -32,12 +32,16 @@ async function getRaw(db, paymentId) {
   return rows[0] || null;
 }
 
-async function listAll(db, { limit, offset, from, to }) {
+async function listAll(db, { limit, offset, from, to, approverId }) {
   const params = [];
   const where = ["1=1"];
+  if (approverId) { params.push(approverId); where.push(`r.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`); }
   if (from) { params.push(from); where.push(`p.payment_date >= $${params.length}`); }
   if (to) { params.push(to); where.push(`p.payment_date <= $${params.length}`); }
-  const total = await db.query(`SELECT COUNT(*)::int AS c FROM ex_payments p WHERE ${where.join(" AND ")}`, params);
+  const total = await db.query(
+    `SELECT COUNT(*)::int AS c FROM ex_payments p JOIN ex_reports r ON r.id = p.report_id WHERE ${where.join(" AND ")}`,
+    params
+  );
   const { rows } = await db.query(
     `SELECT ${PUBLIC_COLUMNS}, r.report_number, r.title, r.requester_username, r.requester_name
        FROM ex_payments p JOIN ex_reports r ON r.id = p.report_id

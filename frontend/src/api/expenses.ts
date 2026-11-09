@@ -86,6 +86,7 @@ export interface ExpenseItem {
   justification: string;
   amount: string;
   merchant: string;
+  invoice_number: string;
   notes: string;
 }
 
@@ -141,6 +142,7 @@ export interface ExpensePayment {
 
 export interface ProfileData {
   fullName: string;
+  area: string;
   cpf: string;
   email: string;
   phone: string;
@@ -193,6 +195,7 @@ export interface ItemInput {
   justification: string;
   amount: string;
   merchant: string;
+  invoiceNumber: string;
   notes: string;
 }
 
@@ -315,6 +318,9 @@ export const paymentProofUrl = (paymentId: number, download = false) =>
 
 export const downloadReportPdf = (r: ExpenseReport) => downloadFile(`${BASE}/reports/${r.id}/pdf`, `${r.report_number}.pdf`);
 export const downloadReportZip = (r: ExpenseReport) => downloadFile(`${BASE}/reports/${r.id}/export.zip`, `${r.report_number}.zip`);
+/** Formulário de Reembolso no modelo Excel da Vextrom. */
+export const downloadReportXlsx = (r: ExpenseReport) =>
+  downloadFile(`${BASE}/reports/${r.id}/export.xlsx`, `Reembolso-${r.report_number}.xlsx`);
 
 export const listNotifications = () =>
   api<{ notifications: NotificationEntry[]; unread: number }>(`${BASE}/notifications`);
@@ -375,6 +381,9 @@ export interface ExpenseUser {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
+  /** Quem decide sobre os relatórios deste usuário; sem ele, o envio é bloqueado. */
+  approverId: string | null;
+  approverName: string | null;
   locked: boolean;
   lockedUntil: string | null;
   mustChangePassword: boolean;
@@ -389,6 +398,7 @@ export interface UserCreateInput {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
+  approverId: string | null;
   temporaryPassword: boolean;
 }
 
@@ -399,6 +409,8 @@ export interface UserUpdateInput {
   isAdmin: boolean;
   isApprover: boolean;
   isFinance: boolean;
+  /** Ausente mantém o aprovador atual; null remove. */
+  approverId?: string | null;
   unlock?: boolean;
 }
 

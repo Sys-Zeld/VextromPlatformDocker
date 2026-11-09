@@ -48,6 +48,7 @@ function createReportService({ storage, maxFileBytes }) {
     const statuses = query.status ? query.status.split(",").map((s) => s.trim()).filter((s) => STATUS[s]) : [];
     return repo.listReports(pool, {
       userId: scope === "all" ? null : actor.userId,
+      approverId: scope === "all" ? policy.approverScope(actor) : null,
       statuses,
       // Rascunhos alheios não interessam à gestão (não foram submetidos).
       excludeStatuses: scope === "all" && !statuses.length ? [STATUS.RASCUNHO] : [],

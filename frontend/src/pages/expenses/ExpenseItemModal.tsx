@@ -37,7 +37,7 @@ interface Pending {
   message?: string;
 }
 
-export const EMPTY_ITEM: ItemInput = { expenseDate: "", categoryId: "", description: "", justification: "", amount: "", merchant: "", notes: "" };
+export const EMPTY_ITEM: ItemInput = { expenseDate: "", categoryId: "", description: "", justification: "", amount: "", merchant: "", invoiceNumber: "", notes: "" };
 
 export const toInput = (i: ExpenseItem): ItemInput => ({
   expenseDate: String(i.expense_date).slice(0, 10),
@@ -46,6 +46,7 @@ export const toInput = (i: ExpenseItem): ItemInput => ({
   justification: i.justification,
   amount: String(i.amount).replace(".", ","),
   merchant: i.merchant || "",
+  invoiceNumber: i.invoice_number || "",
   notes: i.notes || ""
 });
 
@@ -214,13 +215,17 @@ export default function ExpenseItemModal(props: Props) {
                 onChange={(e) => setForm({ ...form, amount: sanitizeAmount(e.target.value) })}
               />
             </Col>
-            <Col md={8}>
+            <Col md={6}>
               <Form.Label>Descrição *</Form.Label>
               <Form.Control required maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </Col>
             <Col md={4}>
               <Form.Label>Estabelecimento</Form.Label>
               <Form.Control maxLength={200} value={form.merchant} onChange={(e) => setForm({ ...form, merchant: e.target.value })} />
+            </Col>
+            <Col md={2}>
+              <Form.Label>Nº nota fiscal</Form.Label>
+              <Form.Control maxLength={60} value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} />
             </Col>
             <Col md={12}>
               <Form.Label>Justificativa *</Form.Label>

@@ -1,6 +1,7 @@
 const pool = require("../db");
 const { withTransaction } = require("../db");
 const repo = require("../repositories/reportRepository");
+const userRepo = require("../repositories/userRepository");
 const profileService = require("./profileService");
 const audit = require("./auditService");
 const policy = require("../policies/expensePolicy");
@@ -35,6 +36,14 @@ async function submissionIssues(db, report) {
   const profile = await profileService.loadProfile(db, report.user_id);
   const readiness = profileService.reimbursementReadiness(profile);
   for (const missing of readiness.missing) issues.push(`Cadastro de reembolso: ${missing}`);
+  // Sem aprovador definido (ou com um que não pode mais aprovar), ninguém além
+  // do administrador decidiria: o envio fica bloqueado até o cadastro ser ajustado.
+  const approver = await userRepo.getApproverOf(db, report.user_id);
+  if (!approver) {
+    issues.push("Aprovador não definido: peça ao administrador do módulo para definir o seu aprovador.");
+  } else if (approver.deleted_at || approver.status === "disabled" || !approver.is_approver) {
+    issues.push(`Aprovador indisponível (${approver.full_name || approver.username}): peça ao administrador para definir outro.`);
+  }
   return { issues, profile };
 }
 

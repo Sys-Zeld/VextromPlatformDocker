@@ -29,6 +29,8 @@ function actorFromUser(u) {
     canPay: Boolean(u.is_finance),
     canManageUsers: Boolean(u.is_admin),
     canManage: Boolean(u.is_admin || u.is_approver || u.is_finance),
+    // Aprovador "puro" vê só os relatórios de quem ele aprova.
+    seesAllReports: Boolean(u.is_admin || u.is_finance),
     mustChangePassword: Boolean(u.must_change_password)
   };
 }

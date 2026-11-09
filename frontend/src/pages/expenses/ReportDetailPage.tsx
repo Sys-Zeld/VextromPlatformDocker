@@ -13,6 +13,7 @@ import {
   deleteItem,
   deleteReport,
   downloadReportPdf,
+  downloadReportXlsx,
   downloadReportZip,
   fileToBase64,
   getBankDetails,
@@ -130,9 +131,9 @@ export default function ReportDetailPage({ admin = false }: { admin?: boolean })
     }
   };
 
-  const exportFile = async (kind: "pdf" | "zip") => {
+  const exportFile = async (kind: "pdf" | "zip" | "xlsx") => {
     try {
-      await (kind === "pdf" ? downloadReportPdf(report) : downloadReportZip(report));
+      await (kind === "pdf" ? downloadReportPdf(report) : kind === "xlsx" ? downloadReportXlsx(report) : downloadReportZip(report));
     } catch (e) {
       onError(e);
     }
@@ -151,6 +152,7 @@ export default function ReportDetailPage({ admin = false }: { admin?: boolean })
         <div className="d-flex gap-2 flex-wrap">
           <Link to={backTo} className="btn btn-sm btn-outline-secondary">Voltar</Link>
           <Button size="sm" variant="outline-secondary" onClick={() => exportFile("pdf")}>Exportar PDF</Button>
+          <Button size="sm" variant="outline-secondary" onClick={() => exportFile("xlsx")} title="Formulário de Reembolso (modelo Excel)">Exportar Excel</Button>
           <Button size="sm" variant="outline-secondary" onClick={() => exportFile("zip")} title="PDF + comprovantes">Exportar ZIP</Button>
           {permissions.canEdit && <Button size="sm" variant="outline-primary" onClick={() => setEditOpen(true)}>Editar dados</Button>}
           {permissions.canDelete && (

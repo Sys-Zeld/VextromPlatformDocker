@@ -41,7 +41,7 @@ async function userDashboard(actor, period) {
 
 async function adminDashboard(actor, period) {
   policy.assertManager(actor);
-  const filters = { from: period.from, to: period.to };
+  const filters = { approverId: policy.approverScope(actor), from: period.from, to: period.to };
   // Rascunhos de terceiros não são solicitações: ficam fora da visão da gestão.
   const [summary, charts] = await Promise.all([
     dashboardRepo.statusSummary(pool, filters),

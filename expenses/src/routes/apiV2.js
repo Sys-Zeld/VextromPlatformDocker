@@ -6,6 +6,7 @@ const reportRepo = require("../repositories/reportRepository");
 const paymentRepo = require("../repositories/paymentRepository");
 const categoryRepo = require("../repositories/categoryRepository");
 const auditRepo = require("../repositories/auditRepository");
+const userRepo = require("../repositories/userRepository");
 const profileService = require("../services/profileService");
 const dashboardService = require("../services/dashboardService");
 const { createReportService } = require("../services/reportService");
@@ -13,6 +14,7 @@ const { createReviewService } = require("../services/reviewService");
 const { createPaymentService } = require("../services/paymentService");
 const { createNotificationService } = require("../services/notificationService");
 const { buildReportPdf, buildReportZip } = require("../services/pdfService");
+const { buildReimbursementXlsx } = require("../services/xlsxService");
 const policy = require("../policies/expensePolicy");
 const v = require("../validators/expenseValidators");
 const { DomainError, notFound, conflict } = require("../lib/errors");
@@ -39,7 +41,7 @@ function createExpensesV2Router(deps, { auth, accounts, email }) {
   const maxFileBytes = env.expenses.maxFileMb * 1024 * 1024;
 
   const notifications = createNotificationService(
-    { listManagers: accounts.listApproverContacts, sendEmail: email.send },
+    { sendEmail: email.send },
     { emailEnabled: email.notificationsEnabled, appBaseUrl: env.appBaseUrl }
   );
   const reports = createReportService({ storage, maxFileBytes });
@@ -272,7 +274,7 @@ function createExpensesV2Router(deps, { auth, accounts, email }) {
 
   /* ------------------------------- Exportação ----------------------------- */
 
-  async function exportDetail(req) {
+  async function exportDetail(req, extra = {}) {
     const detail = await reports.getReportDetail(actorOf(req), id(req.params.id));
     await auditRepo.insertAudit(pool, {
       reportId: detail.report.id,
@@ -281,10 +283,27 @@ function createExpensesV2Router(deps, { auth, accounts, email }) {
       action: "REPORT_EXPORTED",
       entityType: "report",
       entityId: detail.report.id,
-      metadata: { format: req.path.endsWith(".zip") ? "zip" : "pdf" }
+      metadata: { format: req.path.endsWith(".zip") ? "zip" : req.path.endsWith(".xlsx") ? "xlsx" : "pdf", ...extra }
     });
     return detail;
   }
+
+  // Formulário de Reembolso (modelo Excel). Conta bancária completa só para o
+  // próprio solicitante e para o Financeiro; os demais recebem mascarada.
+  router.get("/reports/:id/export.xlsx", asyncHandler(async (req, res) => {
+    const actor = actorOf(req);
+    const report = await reportRepo.getReport(pool, id(req.params.id));
+    policy.assertCanView(actor, report);
+    const revealBank = policy.isOwner(actor, report) || Boolean(actor.canPay);
+    const detail = await exportDetail(req, { bankRevealed: revealBank });
+    const full = await profileService.loadProfile(pool, report.user_id);
+    const profile = revealBank ? full : profileService.maskedView(full);
+    const approver = report.approved_by_id ? await userRepo.getById(pool, report.approved_by_id) : null;
+    const xlsx = await buildReimbursementXlsx(detail, { profile, approverName: approver && approver.full_name });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="Reembolso-${detail.report.report_number}.xlsx"`);
+    res.send(xlsx);
+  }));
 
   router.get("/reports/:id/pdf", asyncHandler(async (req, res) => {
     const detail = await exportDetail(req);
@@ -387,14 +406,18 @@ function createExpensesV2Router(deps, { auth, accounts, email }) {
 
   admin.get("/history", asyncHandler(async (req, res) => {
     const q = v.parseListQuery(req.query);
-    const result = await reportRepo.listDecisions(pool, { limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
+    const result = await reportRepo.listDecisions(pool, {
+      approverId: policy.approverScope(actorOf(req)), limit: q.pageSize, offset: (q.page - 1) * q.pageSize
+    });
     res.json({ ...result, page: q.page, pageSize: q.pageSize });
   }));
 
   admin.get("/audit", asyncHandler(async (req, res) => {
     const q = v.parseListQuery(req.query);
     const reportId = req.query.reportId ? id(req.query.reportId) : null;
-    const result = await auditRepo.listAudit(pool, { reportId, search: q.search, limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
+    const result = await auditRepo.listAudit(pool, {
+      reportId, search: q.search, approverId: policy.approverScope(actorOf(req)), limit: q.pageSize, offset: (q.page - 1) * q.pageSize
+    });
     res.json({ ...result, page: q.page, pageSize: q.pageSize });
   }));
 

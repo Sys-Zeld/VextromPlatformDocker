@@ -60,13 +60,15 @@ const user = (extra = {}) => ({
 test("papéis: colaborador, aprovador, financeiro e administrador do módulo", () => {
   const c = actorFromUser(user());
   assert.deepEqual([c.canSubmit, c.canApprove, c.canPay, c.canManage, c.canManageUsers], [true, false, false, false, false]);
+  // Aprovador vê só os relatórios de quem ele aprova; Financeiro e Administrador veem todos.
   const a = actorFromUser(user({ is_approver: true }));
-  assert.deepEqual([a.canApprove, a.canPay, a.canManage], [true, false, true]);
+  assert.deepEqual([a.canApprove, a.canPay, a.canManage, a.seesAllReports], [true, false, true, false]);
   const f = actorFromUser(user({ is_finance: true }));
-  assert.deepEqual([f.canApprove, f.canPay, f.canManage], [false, true, true]);
-  // Administrador gerencia usuários e enxerga a gestão, mas aprovar/pagar exigem o papel.
+  assert.deepEqual([f.canApprove, f.canPay, f.canManage, f.seesAllReports], [false, true, true, true]);
+  // Administrador gerencia usuários e enxerga a gestão; pagar exige o papel, e
+  // aprovar ele só faz como substituto (regra na política, não no papel).
   const adm = actorFromUser(user({ is_admin: true }));
-  assert.deepEqual([adm.canManageUsers, adm.canManage, adm.canApprove, adm.canPay], [true, true, false, false]);
+  assert.deepEqual([adm.canManageUsers, adm.canManage, adm.canApprove, adm.canPay, adm.seesAllReports], [true, true, false, false, true]);
   assert.equal(actorFromUser(user({ must_change_password: true })).mustChangePassword, true);
 });
 

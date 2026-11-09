@@ -1,12 +1,12 @@
 const auditRepo = require("../repositories/auditRepository");
 const profileRepo = require("../repositories/profileRepository");
+const userRepo = require("../repositories/userRepository");
 const { NOTIFICATION_EVENTS: EV, STATUS_LABELS } = require("../constants");
 const { formatBRL } = require("../lib/money");
 
 // Notificações internas (gravadas na transação da operação) + e-mail opcional
 // (disparado só DEPOIS do commit, sem bloquear nem desfazer a operação).
 //
-// deps.listManagers(): Promise<[{ userId, username, email }]>
 // deps.sendEmail({ to, subject, heading, bodyLines, actionUrl, actionLabel })
 // options: { emailEnabled: boolean | () => Promise<boolean>, appBaseUrl }
 
@@ -20,7 +20,8 @@ const TITLES = {
   [EV.PAID]: "Reembolso pago"
 };
 
-// Quem recebe cada evento: a gestão (envios) ou o solicitante (decisões).
+// Quem recebe cada evento: o aprovador definido do solicitante (envios) ou o
+// próprio solicitante (decisões).
 const MANAGER_EVENTS = new Set([EV.SUBMITTED, EV.RESUBMITTED]);
 
 function formatDateTime(date) {
@@ -28,8 +29,6 @@ function formatDateTime(date) {
 }
 
 function createNotificationService(deps = {}, options = {}) {
-  const listManagers = deps.listManagers || (async () => []);
-
   function buildMessage(event, report, actor, reason) {
     const lines = [
       `Relatório ${report.report_number} — ${report.title}`,
@@ -54,9 +53,9 @@ function createNotificationService(deps = {}, options = {}) {
     const recipients = [];
 
     if (MANAGER_EVENTS.has(event)) {
-      const managers = await listManagers().catch(() => []);
-      for (const m of managers) {
-        if (m.userId && m.userId !== report.user_id) recipients.push({ userId: m.userId, email: m.email || "", manager: true });
+      const approver = await userRepo.getApproverOf(db, report.user_id);
+      if (approver && !approver.deleted_at && approver.status !== "disabled") {
+        recipients.push({ userId: approver.id, email: approver.email || "", manager: true });
       }
     } else {
       const profile = await profileRepo.getByUserId(db, report.user_id);

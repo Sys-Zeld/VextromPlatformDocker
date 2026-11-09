@@ -23,6 +23,7 @@ const money = z.union([z.string(), z.number()]).transform((v, ctx) => {
 
 const profileSchema = z.object({
   fullName: required(200, "Nome completo"),
+  area: text(120, "Área"),
   cpf: z.string().trim().max(20).optional().default("")
     .refine((v) => !v || isValidCpf(v), "CPF inválido")
     .transform(onlyDigits),
@@ -70,6 +71,7 @@ const itemSchema = z.object({
   justification: required(2000, "Justificativa"),
   amount: money,
   merchant: text(200, "Estabelecimento"),
+  invoiceNumber: text(60, "Nº da nota fiscal"),
   notes: text(2000, "Observações")
 });
 
@@ -120,6 +122,9 @@ const tokenPasswordSchema = z.object({
   newPassword: passwordField
 });
 
+// Aprovador do usuário: id da conta, ou null/"" para nenhum.
+const approverIdField = z.string().trim().max(80).nullable().transform((v) => v || null);
+
 const userCreateSchema = z.object({
   username: usernameField,
   fullName: z.string().trim().max(200).optional().default(""),
@@ -127,6 +132,7 @@ const userCreateSchema = z.object({
   isAdmin: z.boolean().optional().default(false),
   isApprover: z.boolean().optional().default(false),
   isFinance: z.boolean().optional().default(false),
+  approverId: approverIdField.optional().default(null),
   // Sem e-mail/SMTP: gera senha provisória (troca obrigatória no 1º acesso).
   temporaryPassword: z.boolean().optional().default(false)
 });
@@ -138,6 +144,8 @@ const userUpdateSchema = z.object({
   isAdmin: z.boolean(),
   isApprover: z.boolean(),
   isFinance: z.boolean(),
+  // Ausente = mantém o aprovador atual.
+  approverId: approverIdField.optional(),
   unlock: z.boolean().optional().default(false)
 });
 

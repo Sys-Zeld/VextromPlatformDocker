@@ -4,10 +4,14 @@
 // Despesas "em circulação" para os gráficos: exclui rascunho e rejeitado.
 const CHART_STATUSES = ["ENVIADO", "EM_ANALISE", "DEVOLVIDO", "APROVADO", "PAGO"];
 
-function scope({ userId, from, to }, alias = "r", dateColumn = "created_at") {
+function scope({ userId, approverId, from, to }, alias = "r", dateColumn = "created_at") {
   const params = [];
   const where = [`${alias}.deleted_at IS NULL`];
   if (userId) { params.push(userId); where.push(`${alias}.user_id = $${params.length}`); }
+  if (approverId) {
+    params.push(approverId);
+    where.push(`${alias}.user_id IN (SELECT su.id FROM ex_users su WHERE su.approver_id = $${params.length})`);
+  }
   if (from) { params.push(from); where.push(`${alias}.${dateColumn}::date >= $${params.length}`); }
   if (to) { params.push(to); where.push(`${alias}.${dateColumn}::date <= $${params.length}`); }
   return { params, where };
@@ -30,7 +34,7 @@ async function statusSummary(db, filters) {
 
 // Período dos gráficos aplicado sobre a data da despesa.
 async function chartData(db, filters) {
-  const { params, where } = scope({ userId: filters.userId }, "r");
+  const { params, where } = scope({ userId: filters.userId, approverId: filters.approverId }, "r");
   params.push(CHART_STATUSES);
   where.push(`r.status = ANY($${params.length})`);
   where.push("i.deleted_at IS NULL");

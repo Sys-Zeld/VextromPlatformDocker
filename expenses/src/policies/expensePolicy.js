@@ -5,15 +5,29 @@ const { forbidden, notFound, conflict, badRequest } = require("../lib/errors");
 // a UI só esconde botões; quem decide é este módulo.
 //
 // actor = { userId, username, canSubmit, canApprove, canPay, canManage,
-//           canManageUsers, allowSelfApproval }
-//   canManage = vê todos os relatórios (Aprovador ou Financeiro).
+//           canManageUsers, seesAllReports, allowSelfApproval }
+//   canManage = acessa a Gestão (Aprovador, Financeiro ou Administrador).
+//   seesAllReports = Financeiro e Administrador. O Aprovador vê só os
+//   relatórios dos usuários que ele aprova.
+// report.owner_approver_id = aprovador atual do solicitante (ver getReport).
 
 function isOwner(actor, report) {
   return Boolean(actor && report && actor.userId && report.user_id === actor.userId);
 }
 
+function isDesignatedApprover(actor, report) {
+  return Boolean(actor && actor.canApprove && report && report.owner_approver_id
+    && report.owner_approver_id === actor.userId);
+}
+
 function canView(actor, report) {
-  return isOwner(actor, report) || Boolean(actor && actor.canManage);
+  return isOwner(actor, report) || Boolean(actor && actor.seesAllReports) || isDesignatedApprover(actor, report);
+}
+
+// Filtro das listas da Gestão: null = tudo; senão, só os relatórios dos
+// usuários que têm este ator como aprovador.
+function approverScope(actor) {
+  return actor && !actor.seesAllReports ? actor.userId : null;
 }
 
 // Para quem não pode ver, responde 404 (não revela que o relatório existe).
@@ -73,10 +87,16 @@ function assertTransition(actor, report, actionKey, { reason = "" } = {}) {
   if (action.actor === "owner" && !isOwner(actor, report)) {
     throw forbidden("Somente o solicitante pode executar esta ação.", "EX_NOT_OWNER");
   }
-  if (action.actor === "approver") assertApprover(actor);
+  // Decisão: o Administrador decide como substituto; os demais precisam ser
+  // Aprovador e, além disso, o aprovador definido para o solicitante.
+  const decidesAsAdmin = action.actor === "approver" && Boolean(actor.canManageUsers);
+  if (action.actor === "approver" && !decidesAsAdmin) assertApprover(actor);
   if (action.actor === "finance") assertFinance(actor);
   if (action.selfRestricted && isOwner(actor, report) && !actor.allowSelfApproval) {
     throw forbidden("Não é permitido decidir sobre o próprio relatório.", "EX_SELF_APPROVAL_FORBIDDEN");
+  }
+  if (action.actor === "approver" && !decidesAsAdmin && !isDesignatedApprover(actor, report)) {
+    throw forbidden("Somente o aprovador definido para o solicitante (ou o administrador) pode decidir.", "EX_NOT_DESIGNATED_APPROVER");
   }
   if (!action.from.includes(report.status)) {
     throw conflict(
@@ -106,6 +126,7 @@ function availableActions(actor, report) {
 module.exports = {
   isOwner,
   canView,
+  approverScope,
   isEditable,
   assertCanView,
   assertManager,

@@ -16,6 +16,7 @@ function decryptProfile(row) {
     userId: row.user_id,
     username: row.username,
     fullName: row.full_name,
+    area: row.area || "",
     cpf: cipher.decrypt(row.cpf_enc),
     email: row.email,
     phone: row.phone,
@@ -47,6 +48,7 @@ function maskedView(profile) {
   if (!profile) return null;
   return {
     fullName: profile.fullName,
+    area: profile.area,
     cpf: maskCpf(profile.cpf),
     email: profile.email,
     phone: profile.phone,
@@ -84,6 +86,7 @@ async function saveMyProfile(actor, input) {
       userId: actor.userId,
       username: actor.username,
       fullName: input.fullName,
+      area: input.area,
       cpfEnc: cipher.encrypt(input.cpf),
       email: input.email,
       phone: input.phone,

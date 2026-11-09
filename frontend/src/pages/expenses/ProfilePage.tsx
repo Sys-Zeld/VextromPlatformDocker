@@ -5,7 +5,7 @@ import { ProfileData, getProfile, saveProfile } from "../../api/expenses";
 import { PageHeader, errorMessage, useExpensesMeta } from "./shared";
 
 const EMPTY: ProfileData = {
-  fullName: "", cpf: "", email: "", phone: "", bankCode: "", bankName: "", agency: "",
+  fullName: "", area: "", cpf: "", email: "", phone: "", bankCode: "", bankName: "", agency: "",
   accountNumber: "", accountDigit: "", accountType: "", pixKey: "", pixKeyType: ""
 };
 
@@ -89,6 +89,11 @@ export default function ProfilePage() {
               <Col md={6}>
                 <Form.Label>Nome completo *</Form.Label>
                 <Form.Control required maxLength={200} value={form.fullName} onChange={set("fullName")} />
+              </Col>
+              <Col md={6}>
+                <Form.Label>Área</Form.Label>
+                <Form.Control maxLength={120} value={form.area} onChange={set("area")} placeholder="Ex.: Serviços" />
+                <Form.Text muted>Sai no Formulário de Reembolso (Excel).</Form.Text>
               </Col>
               <Col md={6}>
                 <Form.Label>CPF *</Form.Label>

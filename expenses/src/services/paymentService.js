@@ -120,6 +120,7 @@ function createPaymentService({ storage, maxFileBytes, notifications }) {
   async function listPending(actor, query) {
     policy.assertManager(actor);
     return repo.listReports(pool, {
+      approverId: policy.approverScope(actor),
       statuses: [STATUS.APROVADO],
       search: query.search,
       project: query.project,
@@ -133,6 +134,7 @@ function createPaymentService({ storage, maxFileBytes, notifications }) {
   async function listPayments(actor, query) {
     policy.assertManager(actor);
     return paymentRepo.listAll(pool, {
+      approverId: policy.approverScope(actor),
       from: query.from,
       to: query.to,
       limit: query.pageSize,

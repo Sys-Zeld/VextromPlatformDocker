@@ -6,11 +6,14 @@ const { ACTIONS, STATUS } = require("../src/constants");
 // Atores e relatório de referência.
 const owner = { userId: "u-1", username: "ana", canSubmit: true, canManage: false };
 const other = { userId: "u-2", username: "bia", canSubmit: true, canManage: false };
-const manager = { userId: "m-1", username: "chefe", canSubmit: true, canManage: true, canApprove: true, canPay: true };
-const approver = { userId: "a-1", username: "aprov", canSubmit: true, canManage: true, canApprove: true, canPay: false };
-const finance = { userId: "f-1", username: "fin", canSubmit: true, canManage: true, canApprove: false, canPay: true };
+// manager = Aprovador + Financeiro e aprovador definido de "u-1" nos relatórios padrão.
+const manager = { userId: "m-1", username: "chefe", canSubmit: true, canManage: true, canApprove: true, canPay: true, seesAllReports: true };
+const approver = { userId: "a-1", username: "aprov", canSubmit: true, canManage: true, canApprove: true, canPay: false, seesAllReports: false };
+const finance = { userId: "f-1", username: "fin", canSubmit: true, canManage: true, canApprove: false, canPay: true, seesAllReports: true };
+const admin = { userId: "ad-1", username: "admin", canSubmit: true, canManage: true, canManageUsers: true, seesAllReports: true };
 const managerOwner = { ...manager, userId: "u-1" };
-const report = (status, extra = {}) => ({ id: 1, user_id: "u-1", status, submitted_at: null, ...extra });
+// owner_approver_id = aprovador atual do solicitante (vem do getReport).
+const report = (status, extra = {}) => ({ id: 1, user_id: "u-1", owner_approver_id: "m-1", status, submitted_at: null, ...extra });
 
 const code = (fn) => {
   try { fn(); return "OK"; } catch (e) { return e.errorCode || e.message; }
@@ -76,14 +79,42 @@ test("workflow: usuário comum não executa ações de gestão (escalada de priv
 });
 
 test("papéis: Aprovador não paga; Financeiro não aprova", () => {
-  assert.equal(code(() => policy.assertTransition(approver, report("EM_ANALISE"), "APPROVE")), "OK");
-  assert.equal(code(() => policy.assertTransition(approver, report("APROVADO"), "PAY")), "EX_FINANCE_REQUIRED");
+  const ofApprover = (status) => report(status, { owner_approver_id: "a-1" });
+  assert.equal(code(() => policy.assertTransition(approver, ofApprover("EM_ANALISE"), "APPROVE")), "OK");
+  assert.equal(code(() => policy.assertTransition(approver, ofApprover("APROVADO"), "PAY")), "EX_FINANCE_REQUIRED");
   assert.equal(code(() => policy.assertTransition(finance, report("APROVADO"), "PAY")), "OK");
   assert.equal(code(() => policy.assertTransition(finance, report("EM_ANALISE"), "APPROVE")), "EX_APPROVER_REQUIRED");
   assert.equal(code(() => policy.assertTransition(finance, report("ENVIADO"), "START_REVIEW")), "EX_APPROVER_REQUIRED");
-  // Ambos enxergam todos os relatórios (gestão).
+  // Financeiro vê todos; o Aprovador, só os de quem ele aprova.
   assert.equal(code(() => policy.assertCanView(finance, report("APROVADO"))), "OK");
-  assert.equal(code(() => policy.assertCanView(approver, report("ENVIADO"))), "OK");
+  assert.equal(code(() => policy.assertCanView(approver, ofApprover("ENVIADO"))), "OK");
+  assert.equal(code(() => policy.assertCanView(approver, report("ENVIADO"))), "EX_REPORT_NOT_FOUND");
+});
+
+test("aprovador definido: só ele decide; outro aprovador não", () => {
+  const otherApprover = { ...manager, userId: "m-2" }; // vê tudo (Financeiro), mas não é o definido
+  for (const action of ["START_REVIEW", "APPROVE", "REJECT", "RETURN"]) {
+    const from = ACTIONS[action].from[0];
+    assert.equal(code(() => policy.assertTransition(manager, report(from), action, { reason: "x" })), "OK", action);
+    assert.equal(code(() => policy.assertTransition(otherApprover, report(from), action, { reason: "x" })), "EX_NOT_DESIGNATED_APPROVER", action);
+    // Aprovador "puro" de outra equipe nem enxerga o relatório.
+    assert.equal(code(() => policy.assertTransition(approver, report(from), action, { reason: "x" })), "EX_REPORT_NOT_FOUND", action);
+  }
+});
+
+test("aprovador definido: Administrador decide como substituto, inclusive sem aprovador definido", () => {
+  assert.equal(code(() => policy.assertTransition(admin, report("EM_ANALISE"), "APPROVE")), "OK");
+  assert.equal(code(() => policy.assertTransition(admin, report("ENVIADO", { owner_approver_id: null }), "START_REVIEW")), "OK");
+  // ...mas não paga sem o papel Financeiro.
+  assert.equal(code(() => policy.assertTransition(admin, report("APROVADO"), "PAY")), "EX_FINANCE_REQUIRED");
+  // Solicitante sem aprovador: nenhum aprovador decide, só o Administrador.
+  assert.equal(code(() => policy.assertTransition(manager, report("EM_ANALISE", { owner_approver_id: null }), "APPROVE")), "EX_NOT_DESIGNATED_APPROVER");
+});
+
+test("escopo das listas da Gestão: Aprovador filtrado; Financeiro e Administrador veem tudo", () => {
+  assert.equal(policy.approverScope(approver), "a-1");
+  assert.equal(policy.approverScope(finance), null);
+  assert.equal(policy.approverScope(admin), null);
 });
 
 test("papéis: gestão de usuários só para administrador da plataforma", () => {
@@ -104,7 +135,8 @@ test("workflow: rejeição e devolução exigem justificativa", () => {
 test("workflow: autoaprovação/autopagamento bloqueados, salvo política explícita", () => {
   assert.equal(code(() => policy.assertTransition(managerOwner, report("EM_ANALISE"), "APPROVE")), "EX_SELF_APPROVAL_FORBIDDEN");
   assert.equal(code(() => policy.assertTransition(managerOwner, report("APROVADO"), "PAY")), "EX_SELF_APPROVAL_FORBIDDEN");
-  const allowed = { ...managerOwner, allowSelfApproval: true };
+  // Com a política explícita, o Administrador pode aprovar o próprio (substituto).
+  const allowed = { ...admin, userId: "u-1", allowSelfApproval: true };
   assert.equal(code(() => policy.assertTransition(allowed, report("EM_ANALISE"), "APPROVE")), "OK");
 });
 

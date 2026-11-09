@@ -1,6 +1,6 @@
 // Contas do módulo (login próprio). Todas as leituras ignoram excluídos.
 
-const COLUMNS = `id, username, full_name, email, status, is_admin, is_approver, is_finance,
+const COLUMNS = `id, username, full_name, email, status, is_admin, is_approver, is_finance, approver_id,
                  must_change_password, failed_attempts, locked_until, session_version,
                  last_login_at, password_changed_at, created_by, created_at, updated_at`;
 
@@ -25,18 +25,22 @@ async function findForLogin(db, identifier) {
 }
 
 async function list(db) {
-  const { rows } = await db.query(`SELECT ${COLUMNS} FROM ex_users WHERE deleted_at IS NULL ORDER BY LOWER(username)`);
+  const { rows } = await db.query(
+    `SELECT ${COLUMNS},
+            (SELECT COALESCE(NULLIF(a.full_name, ''), a.username) FROM ex_users a WHERE a.id = ex_users.approver_id) AS approver_name
+       FROM ex_users WHERE deleted_at IS NULL ORDER BY LOWER(username)`
+  );
   return rows;
 }
 
 async function insert(db, data) {
   const { rows } = await db.query(
     `INSERT INTO ex_users (username, full_name, email, password_hash, status, is_admin, is_approver, is_finance,
-                           must_change_password, password_changed_at, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $4 <> '' THEN NOW() END, $10)
+                           must_change_password, password_changed_at, created_by, approver_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $4 <> '' THEN NOW() END, $10, $11)
      RETURNING ${COLUMNS}`,
     [data.username, data.fullName, data.email, data.passwordHash || "", data.status, data.isAdmin, data.isApprover,
-      data.isFinance, data.mustChangePassword, data.createdBy]
+      data.isFinance, data.mustChangePassword, data.createdBy, data.approverId || null]
   );
   return rows[0];
 }
@@ -45,6 +49,7 @@ async function update(db, id, data) {
   const { rows } = await db.query(
     `UPDATE ex_users
         SET full_name = $2, email = $3, status = $4, is_admin = $5, is_approver = $6, is_finance = $7,
+            approver_id = $10,
             session_version = session_version + CASE WHEN $8 THEN 1 ELSE 0 END,
             failed_attempts = CASE WHEN $9 THEN 0 ELSE failed_attempts END,
             locked_until = CASE WHEN $9 THEN NULL ELSE locked_until END,
@@ -52,7 +57,7 @@ async function update(db, id, data) {
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING ${COLUMNS}`,
     [id, data.fullName, data.email, data.status, data.isAdmin, data.isApprover, data.isFinance,
-      Boolean(data.revokeSessions), Boolean(data.unlock)]
+      Boolean(data.revokeSessions), Boolean(data.unlock), data.approverId || null]
   );
   return rows[0] || null;
 }
@@ -107,12 +112,25 @@ async function countActiveAdmins(db, { excludeId = null } = {}) {
   return rows[0].c;
 }
 
-async function listApprovers(db) {
+// Aprovador definido para o usuário (mesmo inativo ou excluído — quem chama
+// decide o que fazer); null se não houver.
+async function getApproverOf(db, userId) {
   const { rows } = await db.query(
-    `SELECT id, username, email FROM ex_users
-      WHERE deleted_at IS NULL AND status = 'active' AND is_approver`
+    `SELECT a.id, a.username, a.full_name, a.email, a.status, a.is_approver, a.deleted_at
+       FROM ex_users u JOIN ex_users a ON a.id = u.approver_id
+      WHERE u.id = $1`,
+    [userId]
   );
-  return rows;
+  return rows[0] || null;
+}
+
+// Usuários ativos que têm `approverId` como aprovador.
+async function countApprovees(db, approverId) {
+  const { rows } = await db.query(
+    "SELECT COUNT(*)::int AS c FROM ex_users WHERE approver_id = $1 AND deleted_at IS NULL AND status <> 'disabled'",
+    [approverId]
+  );
+  return rows[0].c;
 }
 
 /* --------------------------------- Tokens --------------------------------- */
@@ -156,7 +174,8 @@ module.exports = {
   registerSuccess,
   softDelete,
   countActiveAdmins,
-  listApprovers,
+  getApproverOf,
+  countApprovees,
   insertToken,
   findValidToken,
   markTokenUsed

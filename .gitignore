@@ -48,6 +48,8 @@ backups/
 *.zip
 *.tar.gz
 !report_service/templates/email/*.html
+# Logo do Formulário de Reembolso (Excel) — faz parte do código do módulo.
+!expenses/assets/*.png
 !frontend/index.html
 !frontend/**/*.html
 # Ícones de contexto do SentinelGrid (assets de UI versionados, apesar do *.png global)

@@ -63,7 +63,7 @@ export default function MobileItemPage() {
   useEffect(() => {
     if (!item) return;
     setForm(toInput(item));
-    if (item.merchant || item.notes) setMoreOpen(true);
+    if (item.merchant || item.invoice_number || item.notes) setMoreOpen(true);
   }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (detail.isLoading || meta.isLoading) return <div className="text-muted"><Spinner animation="border" size="sm" /> Carregando…</div>;
@@ -252,7 +252,7 @@ export default function MobileItemPage() {
       </div>
 
       <Button variant="link" className="align-self-start p-0" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
-        {moreOpen ? "Menos detalhes" : "Mais detalhes (estabelecimento, observações)"}
+        {moreOpen ? "Menos detalhes" : "Mais detalhes (estabelecimento, nota fiscal, observações)"}
       </Button>
       <Collapse in={moreOpen}>
         <div>
@@ -260,6 +260,10 @@ export default function MobileItemPage() {
             <div>
               <Form.Label>Estabelecimento</Form.Label>
               <Form.Control maxLength={200} value={form.merchant} onChange={set("merchant")} />
+            </div>
+            <div>
+              <Form.Label>Nº da nota fiscal</Form.Label>
+              <Form.Control maxLength={60} value={form.invoiceNumber} onChange={set("invoiceNumber")} />
             </div>
             <div>
               <Form.Label>Observações</Form.Label>
